@@ -1,0 +1,9 @@
+name = "qpac"
+comment = { en = "Install and remove packages", tr = "Paket kur ve kaldır" }
+icon = "◈"
+command = ["qpac"]
+category = "family"
+keywords = ["quvyta", "packages", "install", "paket", "kur"]
+
+[install]
+quvyta = "quvyta-packages"

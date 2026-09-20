@@ -1,0 +1,54 @@
+[package]
+name = "quvyta-desktop"
+description = "A desktop inside the terminal: windows, icons, a dock and a launcher, for the servers you reach over SSH"
+repository = "https://github.com/quvyta/desktop"
+homepage = "https://quvyta.com/qdesk/"
+readme = "README.md"
+keywords = ["tui", "terminal", "desktop", "window-manager", "ssh"]
+categories = ["command-line-utilities"]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+# Only what the program is built from goes into the package; the rest of the repository is for
+# working on it.
+include = ["/src/**", "/locales/**", "/keymaps/**", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE"]
+
+[lib]
+name = "qdesk"
+path = "src/lib.rs"
+
+# Both commands run the same program: the short name and the long one.
+[[bin]]
+name = "qdesk"
+path = "src/bin/qdesk.rs"
+
+[[bin]]
+name = "quvyta-desktop"
+path = "src/bin/quvyta-desktop.rs"
+
+[dependencies]
+quvyta-framework = { version = "0.1.13", features = ["pty"] }
+toml = { version = "1.1.6", default-features = false, features = ["std", "parse", "display", "preserve_order"] }
+
+[dev-dependencies]
+# By path and without a version, so publishing the application leaves it out.
+# Only for the measurement in tests/ssh_bytes.rs, which opens a pseudo-terminal of its own to
+# count what the desktop writes. The framework's terminal windows already build on this crate, so
+# it brings nothing new into the program.
+portable-pty = "0.9.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+cast_lossless = "deny"
+needless_pass_by_value = "deny"
+redundant_closure_for_method_calls = "deny"
+semicolon_if_nothing_returned = "deny"
+uninlined_format_args = "deny"

@@ -1,0 +1,7 @@
+name = { en = "Settings", tr = "Ayarlar" }
+comment = { en = "Theme, language, dock and dragging", tr = "Tema, dil, dock ve sürükleme" }
+icon = "settings"
+screen = "settings"
+category = "system"
+keywords = ["preferences", "theme", "language", "tercihler", "tema", "dil"]
+single = true

@@ -1,0 +1,237 @@
+# qdesk metinleri — Türkçe
+
+[meta]
+name = "Türkçe"
+code = "tr"
+
+[cli]
+usage = """qdesk                 masaüstünü açar
+  -h, --help          bu yardımı gösterir
+  -V, --version       sürümü yazar
+Masaüstündeyken ctrl+q ile çıkılır."""
+unknown-argument = "qdesk: {argument} diye bir seçenek yok; seçenekler için qdesk --help"
+
+[dock]
+clock-utc = "{time} UTC"
+unknown-machine = "bu makine"
+launcher = "Uygulamalar"
+# Dock'a sığmayan pencereleri tutan öğe.
+more = "Öteki pencereler"
+# Sağ uçtaki okunmamış bildirim sayısı ve ona basınca açılan liste.
+notices = "Bildirimler"
+
+[screen]
+too-small = "Terminal çok küçük"
+too-small-hint = "Masaüstü için en az {columns} sütun ve {rows} satır gerekiyor."
+
+[welcome]
+line = "Uygulamalar {icon} düğmesinin ardında; ya da ctrl alt space, sonra space."
+close = "Anladım"
+
+[category]
+system = "Sistem"
+development = "Geliştirme"
+files = "Dosyalar"
+network = "Ağ"
+office = "Ofis"
+media = "Ortam"
+family = "Aile"
+other = "Diğer"
+
+[launcher]
+search = "Ara"
+close = "Başlatıcıyı kapat"
+recents = "Son kullanılanlar"
+all = "Tümü"
+installable = "Kurulabilir"
+empty = "Henüz uygulama yok"
+empty-hint = "Girdiler ~/.local/share/quvyta/desktop/apps içinde; bir program kurmak bir girdi ekler."
+no-hits = "{query} ile eşleşen yok"
+no-hits-hint = "Arama adlara, açıklamalara ve komutlara bakar."
+with-qpac = "qpac ile kur"
+with-quvyta = "quvyta ile kur"
+install-quvyta = "{name} kurmak için şunu çalıştır: {command}"
+install-qpac = "qpac'ı aç ve {package} paketini kur; {name} kurulur kurulmaz burada belirir."
+menu-open = "{name} aç"
+menu-install-qpac = "{name} uygulamasını qpac ile kur"
+menu-install-quvyta = "{name} uygulamasını quvyta ile kur"
+menu-add-icon = "{name} masaüstüne eklensin"
+menu-remove-icon = "{name} masaüstünden kaldırılsın"
+hint-open = "aç"
+hint-add = "masaüstüne"
+hint-close = "kapat"
+
+[icon]
+open = "Aç"
+open-new = "Yeni pencerede aç"
+remove = "Masaüstünden kaldır"
+properties = "Özellikler"
+
+[floor]
+new-terminal = "Yeni terminal"
+add-application = "Uygulama ekle"
+arrange = "Simgeleri diz"
+settings = "Ayarlar"
+
+[target]
+shell = "kabuğun"
+
+[properties]
+built-in = "qdesk'in içinde"
+no-command = "qdesk'in bir ekranı"
+body = "{id} — {file} — {command}"
+
+[notice]
+no-viewer = "{name} bir dosya açıyor, qdesk'in henüz görüntüleyicisi yok"
+start-failed = "{program} başlatılamadı"
+start-failed-why = "{program} başlatılamadı: {reason}"
+install = "{name} kuruluyor"
+install-unknown = "{name} nasıl kurulacağını söylemiyor"
+unsaved = "Masaüstü kaydedilemedi"
+# Dock'taki sayının açtığı liste. Yalnız bu oturumun bildirimlerini tutar; qdesk kapanınca unutulur.
+list = "Bildirimler"
+list-empty = "Henüz söylenmiş bir şey yok"
+list-empty-hint = "Başka yere bakarken biten bir program, çalan bir zil ve qdesk'in kendi uyarıları buraya düşer."
+# Listenin bir satırı: üstte söylenen, yanında bildirimin kendisi.
+list-line = "{heading} — {body}"
+# Kendi başlığıyla gelen bir program bildirimi: başlık, sonra sözü.
+list-said = "{title}: {body}"
+# Zil çalan pencerenin kendi sözü yoktur; liste ne olduğunu söyler.
+bell = "zil çaldı"
+# Gidecek yeri olmayan bir yapıştırma: öndeki pencerenin programı bitmiş, son ekranı okunmak için
+# duruyor, yazılmak için değil.
+paste-nowhere = "Bu pencerenin programı bitti, yapıştırılan metin hiçbir yere gitmedi"
+
+[window]
+minimize = "Küçült"
+maximize = "Büyüt"
+tile = "Pencereleri döşe"
+close = "Kapat"
+restart = "Yeniden başlat"
+# Programı biten pencerenin altındaki satır.
+ended = "Program bitti, çıkış kodu {code}."
+ended-signal = "Program bitmeden durduruldu."
+close-title = "{name} kapatılsın mı?"
+close-running = "{name} hâlâ çalışıyor. Kapatılırsa sonlandırılacak."
+quit-title = "qdesk'ten çıkılsın mı?"
+quit-running = { one = "{n} program hâlâ çalışıyor. Çıkılırsa sonlandırılacak.", other = "{n} program hâlâ çalışıyor. Çıkılırsa hepsi sonlandırılacak." }
+quit = "Çık"
+tile-narrow = "Masaüstü pencereleri yan yana dizecek kadar geniş değil."
+tile-short = "Masaüstüne en çok {fits} pencere döşenebiliyor."
+
+[mode]
+# Tuşlar masaüstündeyken dock'un satırı.
+pick = "pencere"
+move = "taşı"
+resize = "boyut"
+maximize = "büyüt"
+minimize = "küçült"
+close = "kapat"
+tile = "döşe"
+launcher = "uygulama"
+notices = "bildirim"
+leave = "geri"
+back = "geri"
+release = "bırak"
+far = "{cells} hücre"
+
+# Yardım katmanı qdesk'in her tuşunu işiyle birlikte yazar. Masaüstü kipinin tuşları bunu söyler:
+# yalnız tuşlar masaüstündeyken çalışırlar, söylemeyen bir satır tutulmayacak bir söz verir.
+[keys]
+launcher = "Başlatıcıyı açar"
+close = "Açık olanı kapatır: başlatıcı, liste, sonra masaüstü kipi"
+desktop-mode = "Tuşları pencereden alıp masaüstüne verir, sonra geri"
+notices = "Masaüstü kipinde: son bildirimler"
+window-move = "Masaüstü kipinde: oklar pencereyi taşır"
+window-resize = "Masaüstü kipinde: oklar pencereyi boyutlandırır"
+window-release = "Masaüstü kipinde: bırakır, oklar yine pencere seçer"
+window-maximize = "Masaüstü kipinde: ekranı kaplar ya da eski boyuta döner"
+window-minimize = "Masaüstü kipinde: pencereyi dock'a indirir"
+window-close = "Masaüstü kipinde: pencereyi kapatır"
+window-tile = "Masaüstü kipinde: bütün pencereleri bir kerede döşer"
+window-left = "Masaüstü kipinde: sola seçer, taşır ya da boyutlandırır"
+window-right = "Masaüstü kipinde: sağa seçer, taşır ya da boyutlandırır"
+window-up = "Masaüstü kipinde: yukarı seçer, taşır ya da boyutlandırır"
+window-down = "Masaüstü kipinde: aşağı seçer, taşır ya da boyutlandırır"
+window-left-far = "Masaüstü kipinde: beş hücre sola"
+window-right-far = "Masaüstü kipinde: beş hücre sağa"
+window-up-far = "Masaüstü kipinde: beş hücre yukarı"
+window-down-far = "Masaüstü kipinde: beş hücre aşağı"
+
+# Zeminin kendi tuşları; hiçbir tuş haritasında değiller, yardım katmanı onları bu ekranın
+# tuşları olarak yazar.
+[help]
+icons-move = "Simgeler arasında dolaşır"
+icons-open = "Simgeyi açar"
+icons-clear = "Simge seçimini bırakır"
+icons-jump = "bir harf"
+icons-jump-label = "O harfle başlayan sonraki simgeye atlar"
+
+[expected]
+string = "bir metin"
+boolean = "true ya da false"
+table = "bir tablo"
+text = "bir metin ya da dil koduna göre metinler tablosu"
+string-list = "metinlerden oluşan bir dizi"
+size = "iki tam sayı: sütun ve satır"
+
+[diagnostic]
+title-warning = "Bir girdide uyarı var"
+title-error = "Bir girdi okunamadı"
+at = "{place} — {what}"
+unreadable = "Bu dosya okunamadı."
+not-utf8 = "Bu dosya UTF-8 ile yazılmamış."
+syntax = "Bu dosya geçerli TOML değil."
+wrong-type = "{key} alanı {expected} olmalı."
+invalid-value = "{key} alanında kullanılamayacak bir değer var."
+missing-name = "Bu girdinin adı yok."
+missing-launch = "Bu girdide ne komut var ne de açılacak bir şey."
+conflicting-launch = "Bu girdi neyin açılacağını birden fazla yoldan söylüyor."
+unknown-category = "{value} diye bir kategori yok; girdi Diğer'e gitti."
+unknown-field = "{key} qdesk'in bilmediği bir alan; girdi onsuz kullanılıyor."
+no-home = "{key} alanı ~ ile başlıyor ama burada ev klasörü yok."
+malformed-line = "Bir satır okunamadı ve atlandı."
+missing-group = "Bu dosyada [Desktop Entry] bölümü yok."
+missing-key = "Bu dosyada {key} satırı yok."
+bad-exec = "Exec satırı okunamıyor: kapanmamış bir tırnak ya da izin verilmeyen bir kaçış var."
+[settings]
+store-failed = "Ayarlar yazılamadı: {reason}"
+file-problems = "Ayar dosyasının bir kısmı okunamadı; orada yazan olduğu gibi duruyor, masaüstü onsuz geçerli olanı kullanıyor."
+read = "Anladım"
+
+appearance = "Görünüş"
+language = "Dil"
+theme = "Tema"
+glyphs = "Şekiller"
+glyphs-text = "Bütün Quvyta uygulamaları bu şekillerle çizer."
+glyphs-auto = "Otomatik"
+glyphs-nerd = "Nerd Font"
+glyphs-unicode = "Unicode"
+glyphs-ascii = "Düz ASCII"
+
+desktop = "Masaüstü"
+dock = "Görev çubuğu"
+dock-text = "Açık pencerelerin dizildiği satır hangi kenarda duracak."
+dock-top = "Üstte"
+dock-bottom = "Altta"
+
+connection = "Bağlantı"
+drag = "Pencere sürüklenirken"
+drag-live = "Canlı"
+drag-ghost = "Hayalet"
+drag-in-force-live = "Burada fareyle pencerenin kendisi geliyor."
+drag-in-force-ghost = "Burada fareyle bir ton alanı geliyor, pencere bırakınca oraya geçiyor; SSH üzerinden bu çok daha az veri demek."
+frame-cap = "Saniyedeki kare"
+frame-cap-automatic = "Otomatik"
+frame-cap-chosen = "Bir sayı"
+frame-cap-frames = "Kare"
+frame-cap-in-force = "Burada ekran saniyede en çok {frames} kez çiziliyor. Yazmak bunu beklemiyor."
+scrollback = "Hatırlanan satır"
+scrollback-text = "Bir terminal penceresi üst kenarının üstünde kaç satır tutsun. Dolu pek çok pencere megabaytlar demek."
+
+applications = "Uygulamalar"
+folders = "Girdiler bu klasörlerden okunuyor."
+problems = "Bunlar okunamadı, bu yüzden görünmüyor:"
+no-problems = "Bütün girdiler okundu"
+no-problems-text = "Bu klasörlerde dışarıda kalan bir şey yok."
+

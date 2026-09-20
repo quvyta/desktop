@@ -1,0 +1,9 @@
+name = "qfocus"
+comment = { en = "Focus timers, records and charts", tr = "Odak sayaçları, kayıtlar ve grafikler" }
+icon = "○"
+command = ["qfocus"]
+category = "family"
+keywords = ["quvyta", "focus", "timer", "odak", "sayaç"]
+
+[install]
+quvyta = "quvyta-focus"

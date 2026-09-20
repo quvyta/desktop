@@ -1,0 +1,37 @@
+# qdesk key bindings, layered over the framework's.
+#
+# These are the keys the desktop itself answers. A widget that wants the key gets it first: space
+# types a space in the launcher's search field, and Esc clears the selection while the floor has
+# the keys, so neither binding takes a key out of the hand of what is on screen.
+#
+# The keys under desktop-mode are single letters and arrows. They answer only while the desktop has
+# the keys (ctrl+alt+space); at any other time the desktop says nothing to them and they go on to
+# whatever is on screen, so a letter typed in a window stays the window's.
+
+# The framework binds the help layer to `?`. The design asks for `f1` (10.1), so both open it: a
+# key with a name on it is what a person reaches for, and `?` is the family's own.
+[global]
+help = ["f1", "?"]
+
+[app]
+launcher = "space"            # the launcher, as the desktop mode's hint line says
+close = "esc"                 # closes the launcher, then the window list, then desktop mode
+desktop-mode = "ctrl+alt+space"  # the keys leave the window and reach the desktop, and back
+
+window-move = "m"             # the arrows move the picked window
+window-resize = "r"           # the arrows size it from its right and bottom edge
+window-release = "enter"      # let go: the arrows pick windows again
+window-maximize = "z"
+window-minimize = "n"
+window-close = "x"
+window-tile = "t"
+notices = "b"                 # the list of recent notifications (bildirimler)
+
+window-left = "left"
+window-right = "right"
+window-up = "up"
+window-down = "down"
+window-left-far = "shift+left"
+window-right-far = "shift+right"
+window-up-far = "shift+up"
+window-down-far = "shift+down"

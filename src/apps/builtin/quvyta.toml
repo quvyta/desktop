@@ -1,0 +1,5 @@
+name = "quvyta"
+comment = { en = "Install, open and update the Quvyta family", tr = "Quvyta ailesini kur, aç ve güncelle" }
+command = ["quvyta"]
+category = "family"
+keywords = ["family", "aile", "install", "update", "kur", "güncelle"]

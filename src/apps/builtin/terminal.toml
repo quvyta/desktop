@@ -1,0 +1,6 @@
+name = "Terminal"
+comment = { en = "Your shell in a window", tr = "Kabuğunuz bir pencerede" }
+icon = "prompt"
+screen = "terminal"
+category = "system"
+keywords = ["shell", "console", "kabuk", "konsol"]

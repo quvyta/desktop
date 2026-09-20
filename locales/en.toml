@@ -1,0 +1,248 @@
+# qdesk text — English
+
+[meta]
+name = "English"
+code = "en"
+
+[cli]
+usage = """qdesk                 open the desktop
+  -h, --help          this text
+  -V, --version       print the version
+On the desktop, ctrl+q quits."""
+unknown-argument = "qdesk: unknown argument {argument}; see qdesk --help"
+
+[dock]
+# The clock when the local time zone is unknown: the time shown is UTC and says so.
+clock-utc = "{time} UTC"
+# Stands in for the machine name when the system gives none.
+unknown-machine = "this machine"
+launcher = "Applications"
+# The control at the end of the dock that holds the windows that do not fit.
+more = "More windows"
+# The count of unread notifications at the right end, and what a press on it opens.
+notices = "Notifications"
+
+[screen]
+too-small = "Terminal too small"
+too-small-hint = "The desktop needs at least {columns} columns and {rows} rows."
+
+[welcome]
+# Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
+line = "The applications are behind {icon}, or ctrl alt space and then space."
+close = "Got it"
+
+[category]
+system = "System"
+development = "Development"
+files = "Files"
+network = "Network"
+office = "Office"
+media = "Media"
+family = "Family"
+other = "Other"
+
+[launcher]
+search = "Search"
+close = "Close the launcher"
+recents = "Recent"
+all = "All"
+installable = "Installable"
+empty = "No applications yet"
+empty-hint = "Entries live in ~/.local/share/quvyta/desktop/apps; installing a program adds one."
+no-hits = "Nothing matches {query}"
+no-hits-hint = "The search looks at names, descriptions and commands."
+# The second line of a card whose program is not on this machine.
+with-qpac = "install with qpac"
+with-quvyta = "install with quvyta"
+install-quvyta = "Run this to install {name}: {command}"
+install-qpac = "Open qpac and install {package}; {name} appears here as soon as it is there."
+menu-open = "Open {name}"
+menu-install-qpac = "Install {name} with qpac"
+menu-install-quvyta = "Install {name} with quvyta"
+menu-add-icon = "Put {name} on the desktop"
+menu-remove-icon = "Take {name} off the desktop"
+hint-open = "open"
+hint-add = "to the desktop"
+hint-close = "close"
+
+[icon]
+open = "Open"
+open-new = "Open in a new window"
+remove = "Remove from the desktop"
+properties = "Properties"
+
+[floor]
+new-terminal = "New terminal"
+add-application = "Add an application"
+arrange = "Arrange icons"
+settings = "Settings"
+
+[target]
+# What the Terminal screen runs, where a command would be named.
+shell = "your shell"
+
+[properties]
+built-in = "inside qdesk"
+no-command = "a screen of qdesk"
+body = "{id} — {file} — {command}"
+
+[notice]
+# An entry that opens a file: the viewers are not built yet, so nothing pretends to show it.
+no-viewer = "{name} opens a file, and qdesk has no viewer for it yet"
+# A program that could not be started at all: it is not there, or no pseudo-terminal was free.
+start-failed = "{program} could not be started"
+# The whole sentence: the system's words with the program they belong to.
+start-failed-why = "{program} could not be started: {reason}"
+install = "Installing {name}"
+install-unknown = "{name} does not say how it is installed"
+unsaved = "The desktop could not be saved"
+# The list the dock's count opens. It holds this run's notifications and nothing older: it is
+# forgotten when qdesk closes.
+list = "Notifications"
+list-empty = "Nothing has been said yet"
+list-empty-hint = "A program that ends while you are elsewhere, a bell and a warning of qdesk's own come here."
+# One row of it: what was said above, and the notification itself.
+list-line = "{heading} — {body}"
+# A notification a program sent with a title of its own: the title and then its words.
+list-said = "{title}: {body}"
+# A window rang the bell: it has no words of its own, so the list says what happened.
+bell = "rang the bell"
+# A paste that had nowhere to go: the window in front holds a program that has ended, and its last
+# screen is there to be read, not typed into.
+paste-nowhere = "This window's program has ended, so the pasted text went nowhere"
+
+[window]
+minimize = "Minimize"
+maximize = "Maximize"
+tile = "Tile the windows"
+close = "Close"
+restart = "Restart"
+# The line a window shows once its program has ended.
+ended = "The program ended, exit code {code}."
+ended-signal = "The program was stopped before it could end."
+# Closing a window whose program is still running.
+close-title = "Close {name}?"
+close-running = "{name} is still running. Closing the window ends it."
+# Leaving qdesk while programs are running.
+quit-title = "Quit qdesk?"
+quit-running = { one = "{n} program is still running. Quitting ends it.", other = "{n} programs are still running. Quitting ends them." }
+quit = "Quit"
+tile-narrow = "The desktop is too narrow to tile windows side by side."
+tile-short = "The desktop has room for {fits} tiled windows, no more."
+
+[mode]
+# The dock's row while the keys are the desktop's.
+pick = "window"
+move = "move"
+resize = "size"
+maximize = "fill"
+minimize = "dock"
+close = "close"
+tile = "tile"
+launcher = "apps"
+notices = "notices"
+leave = "back"
+back = "back"
+release = "let go"
+far = "{cells} at a time"
+
+# The help layer names every key of qdesk by its action. The keys of desktop mode say so: they
+# answer only while the desktop has them, and a line that did not say it would be a promise the
+# key does not keep.
+[keys]
+launcher = "Open the launcher"
+close = "Close what is open: the launcher, a list, then desktop mode"
+desktop-mode = "Take the keys out of the window to the desktop, and back"
+notices = "Desktop mode: the recent notifications"
+window-move = "Desktop mode: the arrows move the window"
+window-resize = "Desktop mode: the arrows size the window"
+window-release = "Desktop mode: let go; the arrows pick windows again"
+window-maximize = "Desktop mode: fill the desktop, or give the size back"
+window-minimize = "Desktop mode: take the window down to the dock"
+window-close = "Desktop mode: close the window"
+window-tile = "Desktop mode: lay every window out at once"
+window-left = "Desktop mode: pick, move or size to the left"
+window-right = "Desktop mode: pick, move or size to the right"
+window-up = "Desktop mode: pick, move or size upwards"
+window-down = "Desktop mode: pick, move or size downwards"
+window-left-far = "Desktop mode: five cells to the left"
+window-right-far = "Desktop mode: five cells to the right"
+window-up-far = "Desktop mode: five cells up"
+window-down-far = "Desktop mode: five cells down"
+
+# Keys of the floor itself, which are in no keymap: the help layer lists them under this screen.
+[help]
+icons-move = "Move between the icons"
+icons-open = "Open the icon"
+icons-clear = "Let go of the icons"
+icons-jump = "a letter"
+icons-jump-label = "Jump to the next icon that starts with it"
+
+[expected]
+string = "a string"
+boolean = "true or false"
+table = "a table"
+text = "a string, or a table of strings by language"
+string-list = "a list of strings"
+size = "two whole numbers, columns and rows"
+
+[diagnostic]
+title-warning = "An entry has a warning"
+title-error = "An entry could not be read"
+at = "{place} — {what}"
+unreadable = "This file could not be read."
+not-utf8 = "This file is not written in UTF-8."
+syntax = "This file is not valid TOML."
+wrong-type = "{key} should hold {expected}."
+invalid-value = "{key} holds a value that cannot be used."
+missing-name = "This entry has no name."
+missing-launch = "This entry has neither a command nor something to open."
+conflicting-launch = "This entry says in more than one way what to open."
+unknown-category = "There is no category called {value}; the entry went to Other."
+unknown-field = "{key} is a field qdesk does not know; the entry is used without it."
+no-home = "{key} starts with ~ and there is no home folder here."
+malformed-line = "A line could not be read and was skipped."
+missing-group = "This file has no [Desktop Entry] group."
+missing-key = "This file has no {key} line."
+bad-exec = "The Exec line cannot be read: a quote is unclosed or an escape is not allowed."
+[settings]
+store-failed = "The settings could not be written: {reason}"
+file-problems = "Part of the settings file could not be read; what it says there is left as it is and the desktop uses what applies without it."
+read = "Understood"
+
+appearance = "Appearance"
+language = "Language"
+theme = "Theme"
+glyphs = "Glyphs"
+glyphs-text = "Every Quvyta application draws with these glyphs."
+glyphs-auto = "Automatic"
+glyphs-nerd = "Nerd Font"
+glyphs-unicode = "Unicode"
+glyphs-ascii = "Plain ASCII"
+
+desktop = "Desktop"
+dock = "Dock"
+dock-text = "Which edge the row of open windows sits on."
+dock-top = "Top"
+dock-bottom = "Bottom"
+
+connection = "Connection"
+drag = "Dragging a window"
+drag-live = "Live"
+drag-ghost = "Ghost"
+drag-in-force-live = "Here the window itself follows the mouse."
+drag-in-force-ghost = "Here a shaded area follows the mouse and the window jumps to it; over SSH that is a great deal less to send."
+frame-cap = "Frames a second"
+frame-cap-automatic = "Automatic"
+frame-cap-chosen = "A number"
+frame-cap-frames = "Frames"
+frame-cap-in-force = "Here the screen is drawn at most {frames} times a second. Typing never waits for it."
+scrollback = "Remembered lines"
+scrollback-text = "How many lines a terminal window keeps above its top edge. Many windows full of lines are many megabytes."
+
+applications = "Applications"
+folders = "Entries are read from these folders."
+problems = "These could not be read and are not shown:"
+no-problems = "Every entry was read"
+no-problems-text = "Nothing in these folders was left out."
+

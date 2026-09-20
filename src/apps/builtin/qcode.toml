@@ -1,0 +1,9 @@
+name = "qcode"
+comment = { en = "Coding tools in containers", tr = "Kapsayıcılarda kodlama araçları" }
+icon = "◆"
+command = ["qcode"]
+category = "family"
+keywords = ["quvyta", "code", "container", "kod", "kapsayıcı"]
+
+[install]
+quvyta = "quvyta-code"
