@@ -1,0 +1,20 @@
+[Unit]
+Description=qdesk on the first console, drawn by kmscon with no compositor
+Documentation=https://github.com/quvyta/desktop/tree/main/session
+After=systemd-user-sessions.service plymouth-quit-wait.service
+Conflicts=getty@tty1.service
+Before=getty.target
+
+[Service]
+# kmscon draws the console straight onto the screen through DRM/KMS and runs one program in it:
+# qdesk, as the user named in /etc/qdesk-session.conf. When qdesk is left, it starts again.
+# With no screen plugged in kmscon waits, and qdesk starts when one is.
+EnvironmentFile=/etc/qdesk-session.conf
+ExecStart=/usr/local/bin/kmscon --vt=1 --switchvt --font-engine=freetype --font-name=${FONT} --font-size=${FONT_SIZE} --login -- /usr/sbin/runuser -l ${QDESK_USER} -c "COLORTERM=truecolor exec qdesk"
+Restart=always
+RestartSec=2
+UtmpIdentifier=tty1
+TTYPath=/dev/tty1
+
+[Install]
+WantedBy=multi-user.target

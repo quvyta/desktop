@@ -76,7 +76,7 @@ fn done(id: &str, name: &str, code: u8) -> Entry {
 /// A desktop whose catalog holds `entries`, all of them installed, and nothing on its floor.
 fn desk(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> {
     let catalog = Catalog::new(entries, |entry| !matches!(entry.launch, Launch::Open(_)));
-    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true };
+    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
     harness_with(catalog, desktop, width, height)
 }
 

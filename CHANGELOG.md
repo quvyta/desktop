@@ -2,6 +2,20 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.1.5 - 2026-09-24
+
+### Added
+
+- Icons stay where you put them. Drag an icon to any free cell of the floor and it stays there, across restarts; dropped on another icon, the two swap places. While you drag, the cell it will land in is lit. Shift and an arrow move the icon under the cursor. **Arrange icons** puts them back in order. A desktop file from an earlier version still reads; its icons keep their order until you move one.
+- The launcher is a compact Start menu: at most 64 columns wide, in the corner above its dock button, with its applications in one list beside the shelves. The button opens and closes it and stays pressed while it is open; space typed into an empty search closes it too.
+- The floor can take another colour: **Settings → Desktop → Floor** offers Deep, Mist and Accent besides the theme's own. Each is made from the theme's colours, so it suits every theme; windows and the dock keep the theme.
+- A folder opens in qexp, the Quvyta ecosystem's file explorer, when it is installed, and in a Files window otherwise: a folder entry, a folder on the floor, and **Open in a new window** in Files. **Settings → Desktop → Open folders with qexp** turns it off.
+- `session/`: the files and the steps to boot a machine straight into qdesk, drawn on the bare screen by kmscon with no compositor. Tested on a Raspberry Pi 5. Nothing installs them for you.
+
+### Changed
+
+- Built on quvyta-framework 0.1.21.
+
 ## 0.1.4 - 2026-09-23
 
 ### Changed

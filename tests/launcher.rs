@@ -6,7 +6,9 @@ mod support;
 use qframe::color::ColorDepth;
 use qframe::event::{MouseButton, MouseKind};
 use qframe::icons::GlyphMode;
-use support::{decoration, desk, untouched};
+use qframe::prelude::*;
+use qframe::theme::State;
+use support::{decoration, desk, screen, untouched};
 
 /// The cell of the launcher button at the left end of the dock of a screen `height` rows tall.
 fn button(height: u16) -> (i32, i32) {
@@ -53,8 +55,10 @@ fn the_close_mark_and_a_press_on_the_floor_both_put_the_launcher_away() {
     harness.press("space");
     assert!(harness.app().launcher().is_some());
     // The close mark sits at the right end of the search row.
-    let (x, y) = harness.find("Search").expect("the search field is drawn");
-    harness.click(x + 60, y);
+    let (_, y) = harness.find("Search").expect("the search field is drawn");
+    let row = &screen(&harness)[usize::try_from(y).unwrap_or(0)];
+    let column = row.chars().position(|c| c == '×').expect("the close mark is on the search row");
+    harness.click(i32::try_from(column).unwrap_or(0), y);
     assert!(harness.app().launcher().is_none(), "the close mark closes it");
 }
 
@@ -236,4 +240,76 @@ fn the_welcome_line_stands_over_the_floor_without_hiding_the_dock() {
     let screen = harness.screen();
     assert!(screen.contains("Terminal"), "the icons are still there:\n{screen}");
     assert!(screen.lines().last().is_some_and(|dock| dock.contains("sunucu-1")), "{screen}");
+}
+
+/// Whether the launcher button at the left end of the bottom dock is drawn pressed: the chosen
+/// state of a framework button, its steady pillar in the first cell and the chosen tone under it.
+fn pressed(harness: &mut Harness<qdesk::app::Desk>, height: u16) -> bool {
+    // The pointer is taken off the dock first: under it the button lights up as any button does.
+    harness.hover(40, 1);
+    let row = screen(harness)[usize::from(height) - 1].clone();
+    let pillar = row.chars().nth(1) == Some('▌');
+    let theme = harness.env().theme();
+    let chosen = theme.style("button", None, &[State::Selected]).paint("bg").map(|paint| paint.at(0.0));
+    pillar && chosen.is_some() && harness.bg(2, height - 1) == chosen
+}
+
+#[test]
+fn the_dock_button_opens_and_closes_the_launcher_like_a_start_button() {
+    let mut harness = desk(80, 24);
+    assert!(!pressed(&mut harness, 24), "at rest the button is not pressed:\n{}", harness.screen());
+    harness.click(button(24).0, button(24).1);
+    assert!(harness.app().launcher().is_some(), "the first press opens it");
+    assert!(pressed(&mut harness, 24), "open, the button stays pressed:\n{}", harness.screen());
+    harness.click(button(24).0, button(24).1);
+    assert!(harness.app().launcher().is_none(), "the second press closes it:\n{}", harness.screen());
+    assert!(!pressed(&mut harness, 24), "and the button comes up again:\n{}", harness.screen());
+    assert!(harness.is_focused("floor"), "the keys go back to the floor");
+}
+
+#[test]
+fn a_second_space_closes_the_launcher_until_something_is_typed() {
+    let mut harness = desk(80, 24);
+    harness.press("space");
+    assert!(harness.app().launcher().is_some());
+    harness.press("space");
+    assert!(harness.app().launcher().is_none(), "space again closes it:\n{}", harness.screen());
+
+    // Once a word is typed a space belongs to the search.
+    harness.press("space");
+    harness.type_text("midnight");
+    harness.press("space");
+    assert!(harness.app().launcher().is_some(), "{}", harness.screen());
+    assert_eq!(harness.app().launcher().map(|launcher| launcher.query.as_str()), Some("midnight "));
+}
+
+#[test]
+fn in_desktop_mode_space_opens_the_launcher_and_space_closes_it() {
+    let mut harness = desk(80, 24);
+    harness.press("ctrl+alt+space");
+    harness.press("space");
+    assert!(harness.app().launcher().is_some(), "{}", harness.screen());
+    harness.press("space");
+    assert!(harness.app().launcher().is_none(), "{}", harness.screen());
+}
+
+#[test]
+fn the_launcher_is_a_compact_menu_in_the_corner_of_every_screen() {
+    for (width, height) in [(80_u16, 24_u16), (120, 40), (200, 50)] {
+        let mut harness = desk(width, height);
+        harness.press("space");
+        let rows = screen(&harness);
+        let top = rows.iter().position(|row| row.contains("Search")).expect("the search row");
+        let hints = rows.iter().rposition(|row| row.contains("open") && row.contains("close")).expect("the hint row");
+        let close = rows[top].chars().position(|c| c == '×').expect("the close mark");
+        // A Start menu: narrower than the old strip of 72 columns, and as tall as what it holds
+        // rather than stretched over the screen.
+        assert!(close < 64, "{width}x{height}: the launcher reaches column {close}:\n{}", harness.screen());
+        assert!(hints - top <= 12, "{width}x{height}: {} rows for seven shelves:\n{}", hints - top, harness.screen());
+        // It stands on the dock: its last row is the one above the dock's.
+        assert_eq!(hints + 2, usize::from(height) - 1, "{width}x{height}:\n{}", harness.screen());
+        // Every application is on one row with what it does beside it.
+        let terminal = rows.iter().find(|row| row.contains("Terminal") && row.contains("Your shell"));
+        assert!(terminal.is_some(), "{width}x{height}: the description stands beside the name:\n{}", harness.screen());
+    }
 }

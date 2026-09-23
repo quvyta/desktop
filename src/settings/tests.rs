@@ -171,7 +171,14 @@ fn saving_writes_what_was_chosen_and_nothing_that_is_the_default() {
 #[test]
 fn two_saves_in_a_row_leave_a_file_that_reads_back_the_same() {
     let folder = temp("twice");
-    let chosen = Prefs { dock: DockPosition::Top, drag: DragStyle::Live, frame_cap: Some(45), scrollback: 0 };
+    let chosen = Prefs {
+        dock: DockPosition::Top,
+        floor: FloorColor::Mist,
+        folders_in_explorer: false,
+        drag: DragStyle::Live,
+        frame_cap: Some(45),
+        scrollback: 0,
+    };
 
     let mut loaded = load_in(&folder);
     chosen.write(&mut loaded.settings);
@@ -249,5 +256,48 @@ fn every_problem_has_a_sentence_in_every_language() {
                 assert!(!words.starts_with('\u{27e6}'), "{wanted:?} has no words in {code}: {words}");
             }
         });
+    }
+}
+
+#[test]
+fn the_floor_colour_is_read_written_and_left_out_at_its_default() {
+    assert_eq!(parse("floor-color = \"mist\"\n").prefs.floor, FloorColor::Mist);
+    let unknown = parse("floor-color = \"plaid\"\n");
+    assert_eq!(unknown.prefs.floor, FloorColor::Theme, "a tone the desktop does not know leaves the theme's");
+    assert_eq!(unknown.diagnostics.len(), 1, "{:?}", unknown.diagnostics);
+
+    let folder = temp("floor-color");
+    let mut loaded = load_in(&folder);
+    Prefs { floor: FloorColor::Accent, ..Prefs::default() }.write(&mut loaded.settings);
+    loaded.settings.save().expect("saved");
+    assert!(read(&folder).contains("floor-color = \"accent\""), "{}", read(&folder));
+    assert_eq!(load_in(&folder).prefs.floor, FloorColor::Accent);
+
+    Prefs::default().write(&mut loaded.settings);
+    loaded.settings.save().expect("saved");
+    assert!(!read(&folder).contains("floor-color"), "the default is not written: {}", read(&folder));
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn every_floor_tone_keeps_the_icon_names_readable_in_every_theme() {
+    let registry = qframe::theme::ThemeRegistry::builtin();
+    let themes = registry.list();
+    assert!(themes.len() >= 4, "{themes:?}");
+    for (id, _) in themes {
+        let theme = registry.resolve(&id).theme.expect("a built-in theme builds");
+        let dim = theme.color("dim").expect("the theme has a dim text colour");
+        let text = theme.color("text").expect("the theme has a text colour");
+        for tone in FloorColor::ALL {
+            let ground = tone.in_theme(&theme).expect("the theme has a canvas");
+            let names = dim.contrast_ratio(ground);
+            assert!(names >= 4.5, "{id} {tone:?}: the icon names stand at {names:.2}:1 on the floor");
+            assert!(text.contrast_ratio(ground) >= 7.0, "{id} {tone:?}: the glyphs");
+        }
+        // Each tone is a tone of its own, not the canvas under another name.
+        let tones: Vec<_> = FloorColor::ALL.iter().filter_map(|tone| tone.in_theme(&theme)).collect();
+        for (index, tone) in tones.iter().enumerate() {
+            assert!(!tones[..index].contains(tone), "{id}: two tones are the same colour");
+        }
     }
 }

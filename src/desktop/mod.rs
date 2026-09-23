@@ -1,30 +1,32 @@
 //! The floor of the desktop and the icons standing on it.
 //!
-//! [`grid`] says where an icon goes and [`order`] what the person's own order is; both are pure.
+//! [`grid`] says where an icon goes and [`order`] what the person's own order and places are; both
+//! are pure.
 //! [`Floor`] draws the cells and reads the mouse and the keys, and [`IconCell`] draws one icon.
 //! The floor keeps nothing of its own: the application owns the selection, the cursor and the
 //! order, and hears about every change as an [`Action`].
 //!
 //! The floor is bare (VISION §4): no wallpaper, no frame, no line anywhere. A selected icon is
 //! the raised surface tone with the accent pillar down its left edge, and the band drawn from
-//! empty floor is the accent mixed into the floor, never an outline.
+//! empty floor is the accent mixed into the floor, never an outline. So is the cell a dragged icon
+//! would land in, as the snap preview of a window is.
 
 pub mod grid;
 pub mod order;
 
 use std::time::Duration;
 
-use qframe::event::{Event, KeyEvent, MouseButton, MouseEvent, MouseKind};
+use qframe::event::{Event, KeyEvent, KeyKind, MouseButton, MouseEvent, MouseKind};
 use qframe::geometry::{Rect, Size};
 use qframe::icons::Icons;
-use qframe::keymap::Key;
+use qframe::keymap::{Key, Modifiers};
 use qframe::style::CellStyle;
 use qframe::text;
 use qframe::widget::{Container, EventCx, MeasureCx, Node, PaintCx, Widget};
 
 use crate::apps::{Category, Entry};
 
-pub use grid::{CELL_HEIGHT, CELL_WIDTH, Grid, Step};
+pub use grid::{CELL_HEIGHT, CELL_WIDTH, Cell, Grid, Step};
 pub use order::Desktop;
 
 /// The Quvyta icon, on the launcher button. The framework's own icon set holds it; the
@@ -41,6 +43,10 @@ pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 
 /// How much of the accent the band mixes into the floor.
 const BAND_MIX: f32 = 0.20;
+
+/// How much of the accent the cell a dragged icon would land in mixes into the floor: the band's
+/// and the window snap preview's share, so every "this is where it goes" on the desktop is one tone.
+const DROP_MIX: f32 = 0.20;
 
 /// How much of the text colour a hovered icon lifts its cell by, as a pressable panel does.
 const HOVER_MIX: f32 = 0.08;
@@ -63,12 +69,16 @@ pub enum Action {
     Cursor(usize),
     /// An icon was opened: a double click, or Enter on the cursor.
     Open(usize),
-    /// An icon was dragged onto another cell of the grid.
-    Drop {
-        /// Where it came from.
-        from: usize,
-        /// Where it was dropped.
-        to: usize,
+    /// An icon was put into another cell: dropped there with the mouse, or moved with shift and
+    /// an arrow key.
+    Place {
+        /// The icon.
+        index: usize,
+        /// The cell it was put into, which may hold another icon.
+        cell: Cell,
+        /// The cell every icon was drawn in when it happened, in their order: where the others
+        /// stand, which is what the move is made against.
+        layout: Vec<Option<Cell>>,
     },
 }
 
@@ -211,9 +221,10 @@ struct FloorMemory {
     /// The grid and area painted last, which the mouse is read against.
     grid: Option<Grid>,
     area: Rect,
-    /// The icon the left button went down on, and whether the mouse has left its cell since.
+    /// The icon the left button went down on, and the cell of the floor the mouse is over while
+    /// it is held: where the icon would land.
     pressed: Option<usize>,
-    dragging: Option<usize>,
+    target: Option<Cell>,
     /// Where a band started, and the band it has grown to.
     band_from: Option<(i32, i32)>,
     band: Option<Rect>,
@@ -230,6 +241,7 @@ struct FloorMemory {
 /// and [`Tooltip`](qframe::widgets::Tooltip).
 pub struct Floor<Msg> {
     names: Vec<String>,
+    places: Vec<Option<Cell>>,
     cursor: Option<usize>,
     keys: bool,
     on: Box<dyn Fn(Action) -> Msg>,
@@ -241,7 +253,22 @@ impl<Msg: 'static> Floor<Msg> {
     /// through `on`.
     #[must_use]
     pub fn new(names: Vec<String>, on: impl Fn(Action) -> Msg + 'static) -> Self {
-        Self { names, cursor: None, keys: true, on: Box::new(on), cells: Vec::new() }
+        Self { names, places: Vec::new(), cursor: None, keys: true, on: Box::new(on), cells: Vec::new() }
+    }
+
+    /// The cells the icons want, in their order; an icon with no place of its own, or past the
+    /// end of `places`, flows into the first free cell.
+    #[must_use]
+    pub fn places(mut self, places: Vec<Option<Cell>>) -> Self {
+        self.places = places;
+        self
+    }
+
+    /// The grid the icons make in `area`.
+    fn grid(&self, area: Size) -> Grid {
+        let mut wanted = self.places.clone();
+        wanted.resize(self.cells.len(), None);
+        Grid::placed(area, &wanted)
     }
 
     /// Where the keyboard cursor is.
@@ -262,11 +289,11 @@ impl<Msg: 'static> Floor<Msg> {
     /// The grid of the last frame and the area it was drawn in.
     fn last(cx: &mut EventCx<'_, Msg>) -> Option<(Grid, Rect)> {
         let memory = cx.memory::<FloorMemory>();
-        memory.grid.map(|grid| (grid, memory.area))
+        memory.grid.clone().map(|grid| (grid, memory.area))
     }
 
     /// The icon at a screen cell.
-    fn icon_at(grid: Grid, area: Rect, x: i32, y: i32) -> Option<usize> {
+    fn icon_at(grid: &Grid, area: Rect, x: i32, y: i32) -> Option<usize> {
         grid.at(x - area.x, y - area.y)
     }
 
@@ -276,15 +303,29 @@ impl<Msg: 'static> Floor<Msg> {
             return false;
         }
         let steps = [(Key::Up, Step::Up), (Key::Down, Step::Down), (Key::Left, Step::Left), (Key::Right, Step::Right)];
+        // Shift with an arrow carries the icon under the cursor one cell that way, as a drag
+        // would; into a cell that holds an icon, the two change places.
+        let shifted = Modifiers { shift: true, ..Modifiers::default() };
+        if key.kind != KeyKind::Release
+            && key.chord.mods == shifted
+            && let Some((_, step)) = steps.into_iter().find(|(chord, _)| key.chord.key == *chord)
+        {
+            let Some(index) = self.cursor else { return false };
+            let Some(cell) = grid.cell(index).and_then(|from| grid.beside(from, step)) else { return false };
+            cx.emit((self.on)(Action::Place { index, cell, layout: grid.cells().to_vec() }));
+            return true;
+        }
         if let Some((_, step)) = steps.into_iter().find(|(chord, _)| key.is_plain(*chord)) {
-            let from = self.cursor.filter(|index| *index < grid.shown());
-            let target = from.map_or(0, |index| grid.step(index, step));
+            let from = self.cursor.filter(|index| grid.cell(*index).is_some());
+            // The first key lands on the first icon drawn.
+            let first = (0..grid.cells().len()).find(|index| grid.cell(*index).is_some()).unwrap_or(0);
+            let target = from.map_or(first, |index| grid.step(index, step));
             cx.memory::<FloorMemory>().typed = None;
             cx.emit((self.on)(Action::Cursor(target)));
             return true;
         }
         if key.is_plain(Key::Enter) {
-            let Some(index) = self.cursor.filter(|index| *index < grid.shown()) else { return false };
+            let Some(index) = self.cursor.filter(|index| grid.cell(*index).is_some()) else { return false };
             cx.emit((self.on)(Action::Open(index)));
             return true;
         }
@@ -309,20 +350,20 @@ impl<Msg: 'static> Floor<Msg> {
 
     fn on_mouse(&self, cx: &mut EventCx<'_, Msg>, mouse: &MouseEvent) -> bool {
         let Some((grid, area)) = Self::last(cx) else { return false };
-        let under = Self::icon_at(grid, area, mouse.x, mouse.y);
+        let under = Self::icon_at(&grid, area, mouse.x, mouse.y);
         match mouse.kind {
             MouseKind::Down(MouseButton::Right) => {
                 // An icon's own menu belongs to its cell; the floor's menu is the one wrapping
                 // the floor, so a right click on bare floor is left to bubble up to it.
                 let Some(index) = under else { return false };
-                let Some((node, rect)) = self.cell_of(index, grid, area) else { return false };
+                let Some((node, rect)) = self.cell_of(index, &grid, area) else { return false };
                 cx.forward(node, rect, &Event::Mouse(*mouse))
             }
             MouseKind::Down(MouseButton::Left) => {
                 cx.capture_pointer();
                 let memory = cx.memory::<FloorMemory>();
                 memory.pressed = under;
-                memory.dragging = None;
+                memory.target = None;
                 memory.band_from = under.is_none().then_some((mouse.x, mouse.y));
                 memory.band = None;
                 true
@@ -334,26 +375,26 @@ impl<Msg: 'static> Floor<Msg> {
                     return true;
                 }
                 if memory.pressed.is_some() {
-                    memory.dragging = under;
+                    memory.target = grid.cell_at(mouse.x - area.x, mouse.y - area.y);
                     return true;
                 }
                 false
             }
             MouseKind::Up(MouseButton::Left) => {
                 let now = cx.now();
-                let (pressed, dragging, from, drawn, clicked) = {
+                let (pressed, target, from, drawn, clicked) = {
                     let memory = cx.memory::<FloorMemory>();
-                    let taken = (memory.pressed, memory.dragging, memory.band_from, memory.band, memory.clicked);
+                    let taken = (memory.pressed, memory.target, memory.band_from, memory.band, memory.clicked);
                     memory.pressed = None;
-                    memory.dragging = None;
+                    memory.target = None;
                     memory.band_from = None;
                     memory.band = None;
                     memory.clicked = pressed_click(taken.0, now);
                     taken
                 };
                 if let Some(index) = pressed {
-                    let action = match dragging.filter(|to| *to != index) {
-                        Some(to) => Action::Drop { from: index, to },
+                    let action = match target.filter(|cell| grid.cell(index) != Some(*cell)) {
+                        Some(cell) => Action::Place { index, cell, layout: grid.cells().to_vec() },
                         None if clicked
                             .is_some_and(|(last, at)| last == index && now.saturating_sub(at) <= DOUBLE_CLICK) =>
                         {
@@ -377,7 +418,7 @@ impl<Msg: 'static> Floor<Msg> {
     }
 
     /// The node and screen rectangle of the icon at `index`.
-    fn cell_of(&self, index: usize, grid: Grid, area: Rect) -> Option<(&Node<Msg>, Rect)> {
+    fn cell_of(&self, index: usize, grid: &Grid, area: Rect) -> Option<(&Node<Msg>, Rect)> {
         let rect = grid.rect(index)?;
         let node = self.cells.get(index)?;
         Some((node, Rect::new(area.x + rect.x, area.y + rect.y, rect.width, rect.height)))
@@ -409,12 +450,13 @@ impl<Msg: 'static> Widget<Msg> for Floor<Msg> {
     }
 
     fn paint(&self, cx: &mut PaintCx<'_>, area: Rect) {
-        let grid = Grid::new(area.size(), self.cells.len());
-        {
+        let grid = self.grid(area.size());
+        let (pressed, target) = {
             let memory = cx.memory::<FloorMemory>();
-            memory.grid = Some(grid);
+            memory.grid = Some(grid.clone());
             memory.area = area;
-        }
+            (memory.pressed, memory.target)
+        };
         if area.is_empty() {
             return;
         }
@@ -422,10 +464,19 @@ impl<Msg: 'static> Widget<Msg> for Floor<Msg> {
         if self.keys {
             cx.register_focusable();
         }
-        for index in 0..grid.shown() {
-            if let Some((node, rect)) = self.cell_of(index, grid, area) {
+        for index in 0..self.cells.len() {
+            if let Some((node, rect)) = self.cell_of(index, &grid, area) {
                 cx.paint_child(node, rect);
             }
+        }
+        // Where a dragged icon would land: a tone over the whole cell, over the icon standing
+        // there too, since the two will change places.
+        if let (Some(index), Some(cell)) = (pressed, target)
+            && grid.cell(index) != Some(cell)
+        {
+            let rect = Grid::cell_rect(cell);
+            let rect = Rect::new(area.x + rect.x, area.y + rect.y, rect.width, rect.height);
+            cx.tint(rect.intersect(area), cx.color("accent"), DROP_MIX);
         }
         let band = cx.memory::<FloorMemory>().band;
         if let Some(band) = band {

@@ -52,7 +52,7 @@ fn env() -> Env {
 /// A desktop with nothing on its floor and the welcome line already seen, so the tests of the
 /// dock and the floor's tone see nothing else.
 fn desk_on(machine: Option<&str>, offset: Option<i16>, clock: &Clock, width: u16, height: u16) -> Harness<Desk> {
-    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true };
+    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
     let app = Desk::new(machine.map(str::to_owned), offset, clock.reader()).desktop(desktop);
     let mut harness = Harness::with_env(app, env(), width, height);
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
@@ -68,10 +68,11 @@ fn rows(harness: &Harness<Desk>) -> Vec<String> {
 }
 
 /// The dock row as a terminal of `width` columns shows it: the launcher button at the left end,
-/// the parts at the right one, one free cell after them.
+/// a button with the pillar's cell and a space before its glyph and two spaces after it, the parts
+/// at the right one, one free cell after them.
 fn dock_line(harness: &Harness<Desk>, width: u16, parts: &str) -> String {
     let glyph = harness.env().icons().glyph(quvyta_icon(harness.env().icons())).into_owned();
-    let left = format!("  {glyph} ");
+    let left = format!("   {glyph}  ");
     let used = qframe::text::width(&left) + qframe::text::width(parts) + 1;
     format!("{left}{}{parts}", " ".repeat(usize::from(width) - usize::from(used)))
 }

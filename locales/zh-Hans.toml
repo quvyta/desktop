@@ -68,11 +68,13 @@ hint-close = "关闭"
 [icon]
 open = "打开"
 open-new = "在新窗口中打开"
+rename = "重命名"
 remove = "从桌面移除"
 properties = "属性"
 
 [floor]
 new-terminal = "新建终端"
+new-folder = "新建文件夹"
 add-application = "添加应用"
 arrange = "排列图标"
 settings = "设置"
@@ -80,6 +82,7 @@ settings = "设置"
 # button's own glyph. The short form is used where the whole one does not fit.
 narrow-hint = "应用程序：{icon}，或 ctrl alt space 再按 space"
 narrow-hint-short = "应用程序：{icon}"
+help-move = "移动图标一格"
 
 [target]
 # What the Terminal screen runs, where a command would be named.
@@ -229,6 +232,14 @@ dock = "停靠栏"
 dock-text = "打开的窗口一排停靠在哪条边上。"
 dock-top = "顶部"
 dock-bottom = "底部"
+floor-color = "桌面底色"
+floor-color-text = "图标背后的底色。每种色调都由主题自身的颜色调配而成；窗口和程序坞仍保持主题配色。"
+floor-color-theme = "主题"
+floor-color-deep = "深邃"
+floor-color-mist = "薄雾"
+floor-color-accent = "强调色"
+folders-in-explorer = "用 {program} 打开文件夹"
+folders-in-explorer-text = "桌面上或“文件”中的文件夹会在生态系统的文件管理器中打开。若未安装 {program}，则改为在“文件”中打开。"
 
 connection = "连接"
 drag = "拖动窗口"

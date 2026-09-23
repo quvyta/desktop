@@ -112,8 +112,12 @@ fn desk_in(environment: Environment, extra: Vec<Entry>, icons: &[&str], width: u
         ..AssetDirs::default()
     };
     let env = Env::load(&dirs).expect("the built-in files load");
-    let desktop =
-        Desktop { icons: icons.iter().map(|id| (*id).to_owned()).collect(), recents: Vec::new(), welcome_seen: true };
+    let desktop = Desktop {
+        icons: icons.iter().map(|id| (*id).to_owned()).collect(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        ..Desktop::default()
+    };
     let clock = Box::new(|| MOMENT * 1_000);
     let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), clock)
         .apps(environment)

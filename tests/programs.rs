@@ -174,7 +174,7 @@ fn desk(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> {
     all.extend(entries);
     // Every program of these tests is one of the machine's own, so every entry is installed.
     let catalog = Catalog::new(all, |entry| !matches!(entry.launch, Launch::Open(_)));
-    let desktop = Desktop { icons, recents: Vec::new(), welcome_seen: true };
+    let desktop = Desktop { icons, recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
     harness_with(catalog, desktop, width, height)
 }
 
@@ -190,7 +190,7 @@ fn desk_over_ssh(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> 
     let mut all = builtins();
     all.extend(entries);
     let catalog = Catalog::new(all, |entry| !matches!(entry.launch, Launch::Open(_)));
-    let desktop = Desktop { icons, recents: Vec::new(), welcome_seen: true };
+    let desktop = Desktop { icons, recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
     let dirs = AssetDirs {
         locale_sources: qdesk::locales().iter().map(|(file, text)| ((*file).to_owned(), (*text).to_owned())).collect(),
         keymap_source: Some({

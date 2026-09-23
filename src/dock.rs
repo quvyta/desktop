@@ -1,13 +1,15 @@
 //! The dock: one row of the screen, at the bottom or, when the settings say so, at the top.
 //!
 //! Its left end holds the launcher button, then the open windows in the order they were opened,
-//! and its right side the name of the machine and the clock. Which of them fit in a given width is
+//! and its right side the name of the machine and the clock. The launcher button works like a
+//! Start button: it opens the launcher and closes it again, and it stays pressed while the launcher
+//! is open. Which of them fit in a given width is
 //! decided by [`plan`], a pure function, and drawn by [`view`] into whichever row it is given.
 //! Nothing here knows which edge that is: the row is the same row at either end.
 
 use qframe::prelude::*;
 use qframe::text;
-use qframe::widgets::{ContextItem, ContextMenu, IconButton};
+use qframe::widgets::{ContextItem, ContextMenu, Tooltip};
 
 use crate::desktop::quvyta_icon;
 use crate::wm::WindowId;
@@ -22,8 +24,11 @@ pub const EDGE: u16 = 1;
 /// Cells between two parts of the dock.
 pub const GAP: u16 = 3;
 
-/// Cells the launcher button takes: a space, its glyph and a space, in every glyph mode.
-pub const LAUNCHER_WIDTH: u16 = 3;
+/// Cells the Quvyta glyph on the launcher button takes, in every glyph mode.
+pub const LAUNCHER_GLYPH: u16 = 1;
+
+/// The id of the launcher button.
+pub const LAUNCHER: &str = "dock-launcher";
 
 /// Cells between two window items.
 pub const ITEM_GAP: u16 = 1;
@@ -119,7 +124,7 @@ pub struct Plan {
 /// ones go behind a `+n` control that opens a list of them (design 3.4).
 #[must_use]
 pub fn plan(width: u16, name: &str, clock: &str, count: &str, labels: &[Label], padding: u16) -> Plan {
-    let room = width.saturating_sub(2 * EDGE + LAUNCHER_WIDTH);
+    let room = width.saturating_sub(2 * EDGE + launcher_width(padding));
     let name_width = text::width(name);
     let count_width = if count.is_empty() { 0 } else { item_width(count, padding).saturating_add(GAP) };
     let with_clock = count_width.saturating_add(name_width).saturating_add(GAP).saturating_add(text::width(clock));
@@ -139,6 +144,15 @@ pub fn plan(width: u16, name: &str, clock: &str, count: &str, labels: &[Label], 
     let left = room.saturating_sub(right).saturating_sub(if right == 0 { 0 } else { GAP });
     let (shown, named, hidden) = windows(left, labels, padding);
     Plan { name: shown_name, count: count_shown, clock: clock_shown, shown, named, hidden }
+}
+
+/// Cells the launcher button takes with a button padding of `padding` columns on each side.
+///
+/// It is a button like the window items, not an icon button: a button has a chosen state, which
+/// is how it stays pressed while the launcher is open, and an icon button has none.
+#[must_use]
+pub fn launcher_width(padding: u16) -> u16 {
+    LAUNCHER_GLYPH.saturating_add(padding.saturating_mul(2))
 }
 
 /// Cells an item of this label takes as a button: the label between two paddings.
@@ -194,8 +208,10 @@ pub fn count_label(mark: &str, unread: usize) -> String {
 
 /// What a press on the dock means.
 pub struct Presses<'a, Msg> {
-    /// Opening the launcher.
+    /// Opening the launcher, or closing it while it is open.
     pub launcher: Msg,
+    /// Whether the launcher is open, which the button shows by staying pressed.
+    pub launcher_open: bool,
     /// Showing the windows that do not fit on the row.
     pub more: Msg,
     /// Opening the list of recent notifications.
@@ -217,8 +233,12 @@ pub fn view<Msg: Clone + 'static>(
     ui: &mut View<'_, Msg>,
 ) {
     let icon = quvyta_icon(ui.env().icons());
+    let glyph = ui.env().icons().glyph(icon).into_owned();
     ui.row(|ui| {
-        ui.add(IconButton::new(icon).on_press(presses.launcher.clone()).tooltip(t!("dock.launcher")));
+        let button = Button::new(glyph).selected(presses.launcher_open).on_press(presses.launcher.clone());
+        ui.add_with(Tooltip::new(t!("dock.launcher")), |ui| {
+            ui.add(button).id(LAUNCHER);
+        });
         // The gaps are spacers of their own and not a gap of the row: a row gap would also stand
         // between the spacer and the machine name and take cells the plan gave the name.
         for (index, item) in items.iter().take(plan.shown).enumerate() {
@@ -267,7 +287,7 @@ mod tests {
     const PAD: u16 = 2;
 
     /// The narrowest row the launcher button and both ends fit in.
-    const ROOM: u16 = 2 * EDGE + LAUNCHER_WIDTH;
+    const ROOM: u16 = 2 * EDGE + LAUNCHER_GLYPH + 2 * PAD;
 
     fn plan(width: u16, name: &str, clock: &str) -> Plan {
         super::plan(width, name, clock, "", &[], PAD)
@@ -303,16 +323,16 @@ mod tests {
     #[test]
     fn the_clock_goes_first_when_both_do_not_fit() {
         let name = "a".repeat(30);
-        // 30 + 3 + 5 + 2 + 3 = 43 fits exactly; one column less and the clock goes.
-        assert!(plan(43, &name, CLOCK).clock);
-        let narrower = plan(42, &name, CLOCK);
+        // 30 + 3 + 5 + 2 + 5 = 45 fits exactly; one column less and the clock goes.
+        assert!(plan(45, &name, CLOCK).clock);
+        let narrower = plan(44, &name, CLOCK);
         assert!(!narrower.clock);
         assert_eq!(narrower.name, name, "the whole name still fits alone");
     }
 
     #[test]
     fn a_name_too_long_for_the_row_is_cut_in_the_middle_keeping_its_end() {
-        let plan = plan(20, "build-server-europe-west-17", CLOCK);
+        let plan = plan(22, "build-server-europe-west-17", CLOCK);
         assert!(!plan.clock);
         assert_eq!(text::width(&plan.name), 15);
         assert!(plan.name.ends_with("west-17"), "{}", plan.name);
@@ -457,7 +477,7 @@ mod tests {
                     used = used.saturating_add(gap).saturating_add(control);
                 }
                 // What the right end of the row leaves the items.
-                let room = width.saturating_sub(2 * EDGE + LAUNCHER_WIDTH);
+                let room = width.saturating_sub(2 * EDGE + launcher_width(PAD));
                 let mut right = text::width(&plan.name);
                 if plan.clock {
                     right = right.saturating_add(GAP).saturating_add(text::width(CLOCK));

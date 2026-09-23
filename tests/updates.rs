@@ -55,8 +55,12 @@ fn env() -> Env {
 
 /// qdesk started over the ecosystem's `folders`, as a person starts it, with the usual floor.
 fn started(folders: Option<UpdateFolders>) -> Harness<Desk> {
-    let desktop =
-        Desktop { icons: ICONS.iter().map(|id| (*id).to_owned()).collect(), recents: Vec::new(), welcome_seen: true };
+    let desktop = Desktop {
+        icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        ..Desktop::default()
+    };
     let apps = Environment { shell: Some(PathBuf::from(HARMLESS)), ..Environment::default() };
     let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), Box::new(|| MOMENT * 1_000))
         .apps(apps)

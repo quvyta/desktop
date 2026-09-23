@@ -3,8 +3,9 @@
 //!
 //! The desktop shares the look of every Quvyta application: the theme, the language and the
 //! glyph mode are the framework's keys, kept beside qdesk's own in one file. qdesk's own keys
-//! say where the dock sits, how a window follows the mouse while it is dragged, how often the
-//! screen may be drawn and how many lines a terminal window remembers.
+//! say where the dock sits, what colour the floor is, whether a folder opens in the ecosystem's
+//! file explorer, how a window follows the mouse while it is
+//! dragged, how often the screen may be drawn and how many lines a terminal window remembers.
 //!
 //! The file is `desktop.conf` in the Quvyta ecosystem's folder, `~/.config/quvyta` on Linux, next
 //! to the files of the other Quvyta applications; the desktop's other configuration files
@@ -24,6 +25,7 @@
 //! send and shows the window's shape before it lands, so it is no longer split by the link: it is
 //! `ghost` everywhere, and only Settings changes it.
 
+mod floor_color;
 mod screen;
 #[cfg(test)]
 mod tests;
@@ -33,6 +35,7 @@ use std::path::{Path, PathBuf};
 use qframe::runtime::FrameLimit;
 use qframe::storage::{Family, Schema, Setting, SettingKind, Settings};
 
+pub use floor_color::{FloorColor, ground};
 pub use screen::{Applications, LIST, Msg, Request, Screen, Shared, UPDATE_NOTICE, update, view};
 
 use crate::apps::{Diagnostic, DiagnosticKind, Position};
@@ -67,6 +70,11 @@ impl UpdateFolders {
 
 /// The key of the dock's side: `top` or `bottom`.
 pub const DOCK_POSITION: &str = "dock-position";
+/// The key of the floor's colour: `theme`, `deep`, `mist` or `accent`.
+pub const FLOOR_COLOR: &str = "floor-color";
+/// The key of whether a folder opens in the ecosystem's file explorer when it is on the machine:
+/// `true` or `false`.
+pub const FOLDERS_IN_EXPLORER: &str = "folders-in-explorer";
 /// The key of the drag style: `live` or `ghost`.
 pub const DRAG_STYLE: &str = "drag-style";
 /// The key of the frame cap in frames a second. Without it the cap follows the link.
@@ -173,6 +181,11 @@ pub fn frame_cap(setting: Option<u16>, remote: bool) -> u16 {
 pub struct Prefs {
     /// Which edge the dock sits on.
     pub dock: DockPosition,
+    /// The colour of the floor.
+    pub floor: FloorColor,
+    /// Whether a folder opens in the ecosystem's file explorer, `qexp`, when it is on the machine,
+    /// rather than in a Files window.
+    pub folders_in_explorer: bool,
     /// How a window follows the mouse while it is dragged.
     pub drag: DragStyle,
     /// Frames a second, when a number was chosen; `None` follows the link.
@@ -182,11 +195,13 @@ pub struct Prefs {
 }
 
 impl Default for Prefs {
-    /// The dock at the bottom, a ghost drag, the frame cap following the link, two thousand
+    /// The dock at the bottom, the floor in the theme's canvas, folders in the explorer, a ghost drag, the frame cap following the link, two thousand
     /// lines of scrollback.
     fn default() -> Self {
         Self {
             dock: DockPosition::default(),
+            floor: FloorColor::default(),
+            folders_in_explorer: true,
             drag: DragStyle::default(),
             frame_cap: None,
             scrollback: SCROLLBACK_DEFAULT,
@@ -203,6 +218,8 @@ impl Prefs {
         let most = i64::from(FRAME_CAP_MOST);
         Schema::builtin()
             .choice(DOCK_POSITION, DockPosition::ALL.map(DockPosition::name), DockPosition::default().name())
+            .choice(FLOOR_COLOR, FloorColor::ALL.map(FloorColor::name), FloorColor::default().name())
+            .flag(FOLDERS_IN_EXPLORER, true)
             .choice(DRAG_STYLE, DragStyle::ALL.map(DragStyle::name), DragStyle::default().name())
             // No default of its own: without the key the cap follows the link, and a number
             // outside the range is left out rather than replaced by one.
@@ -222,6 +239,11 @@ impl Prefs {
                 .get::<String>(DOCK_POSITION)
                 .and_then(|name| DockPosition::from_name(&name))
                 .unwrap_or(defaults.dock),
+            floor: settings
+                .get::<String>(FLOOR_COLOR)
+                .and_then(|name| FloorColor::from_name(&name))
+                .unwrap_or(defaults.floor),
+            folders_in_explorer: settings.get::<bool>(FOLDERS_IN_EXPLORER).unwrap_or(defaults.folders_in_explorer),
             drag: settings
                 .get::<String>(DRAG_STYLE)
                 .and_then(|name| DragStyle::from_name(&name))
@@ -244,6 +266,13 @@ impl Prefs {
     pub fn write(&self, settings: &mut Settings) {
         let defaults = Self::default();
         store(settings, DOCK_POSITION, self.dock.name().to_owned(), self.dock == defaults.dock);
+        store(settings, FLOOR_COLOR, self.floor.name().to_owned(), self.floor == defaults.floor);
+        store(
+            settings,
+            FOLDERS_IN_EXPLORER,
+            self.folders_in_explorer,
+            self.folders_in_explorer == defaults.folders_in_explorer,
+        );
         store(settings, DRAG_STYLE, self.drag.name().to_owned(), self.drag == defaults.drag);
         let frames = self.frame_cap.unwrap_or(FRAME_CAP_LOCAL);
         store(settings, FRAME_CAP, i64::from(frames), self.frame_cap.is_none());

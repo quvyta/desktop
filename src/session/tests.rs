@@ -78,6 +78,7 @@ fn environment(home: &Path) -> Environment {
         path: None,
         shell: Some(PathBuf::from("/bin/sh")),
         editor: None,
+        desktop: None,
     }
 }
 

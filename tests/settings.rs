@@ -1,10 +1,12 @@
 //! The Settings screen: its sections at several sizes, glyph modes and colour depths, an option
 //! changed, and the applications section with and without problems to report.
 
+mod support;
+
 use std::path::PathBuf;
 
 use qdesk::apps::{Diagnostic, DiagnosticKind, Expected, Folders, Position};
-use qdesk::settings::{self, Applications, DockPosition, DragStyle, Msg, Prefs, Screen, Shared};
+use qdesk::settings::{self, Applications, DockPosition, DragStyle, FloorColor, Msg, Prefs, Screen, Shared};
 use qframe::color::ColorDepth;
 use qframe::env::{AssetDirs, Env};
 use qframe::icons::{GlyphMode, IconMode};
@@ -323,4 +325,88 @@ fn the_largest_numbers_are_whole_in_their_fields() {
     assert!(shown.contains("10000"), "the scrollback field shows all five digits:\n{shown}");
     let lines = shown.lines().find(|line| line.contains("Remembered lines")).unwrap_or_default();
     assert!(!lines.contains('…'), "the row is not cut: {lines}");
+}
+
+/// A fresh folder under the system's temporary folder for one test's settings file; never the
+/// person's own config folder.
+fn folder(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("qdesk-test-floor-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("folder");
+    dir
+}
+
+/// Opens the Settings window from its icon on the floor.
+fn open_settings(harness: &mut Harness<qdesk::app::Desk>) {
+    let (x, y) = harness.find("Settings").expect("the Settings icon is on the floor");
+    harness.click(x, y);
+    harness.click(x, y);
+    assert_eq!(harness.app().windows().len(), 1, "the window opened:\n{}", harness.screen());
+}
+
+/// A cell of the floor that no window covers and no icon stands on: the far corner above the
+/// dock, or the one below the window when the window reaches it.
+fn floor_cell(harness: &Harness<qdesk::app::Desk>, width: u16, height: u16) -> (u16, u16) {
+    let corner = (width - 1, height - 2);
+    let covered =
+        harness.app().windows().iter().any(|window| window.rect().contains(i32::from(corner.0), i32::from(corner.1)));
+    assert!(!covered, "the corner is free of windows:\n{}", harness.screen());
+    corner
+}
+
+#[test]
+fn the_floor_takes_the_colour_clicked_on_the_settings_screen_and_keeps_it_after_a_restart() {
+    let config = folder("restart");
+    let (width, height) = (140, 44);
+    let mut harness = support::desk_in(&config, width, height);
+    let theme = harness.env().theme();
+    let canvas = theme.color("canvas");
+    let deep = FloorColor::Deep.in_theme(theme).expect("the theme has a canvas");
+    assert_ne!(Some(deep), canvas, "the chosen tone is not the theme's own");
+    let dock_before = harness.bg(width / 2, height - 1);
+
+    open_settings(&mut harness);
+    let (x, y) = floor_cell(&harness, width, height);
+    assert_eq!(harness.bg(x, y), canvas, "the floor starts in the theme's canvas");
+    harness.click_text("Deep");
+    assert_eq!(harness.app().prefs().floor, FloorColor::Deep);
+    assert_eq!(harness.bg(x, y), Some(deep), "the floor changes at once:\n{}", harness.screen());
+    assert_eq!(harness.bg(width / 2, height - 1), dock_before, "the dock keeps the theme");
+    let written = std::fs::read_to_string(config.join("desktop.conf")).expect("the settings file is written");
+    assert!(written.contains("floor-color = \"deep\""), "{written}");
+
+    // The next run reads it back from the file.
+    let again = support::desk_in(&config, width, height);
+    assert_eq!(again.app().prefs().floor, FloorColor::Deep);
+    assert_eq!(again.bg(x, y), Some(deep), "after a restart the floor is still deep:\n{}", again.screen());
+    let _ = std::fs::remove_dir_all(&config);
+}
+
+#[test]
+fn a_floor_colour_the_file_does_not_know_is_said_and_the_theme_stays() {
+    let config = folder("unknown");
+    std::fs::write(config.join("desktop.conf"), "floor-color = \"plaid\"\n").expect("file");
+    let loaded = settings::load_in(&config);
+    assert_eq!(loaded.prefs.floor, FloorColor::Theme);
+    assert_eq!(loaded.diagnostics.len(), 1, "{:?}", loaded.diagnostics);
+    assert!(loaded.diagnostics[0].location().contains("desktop.conf:1"), "{:?}", loaded.diagnostics);
+    let harness = support::desk_in(&config, 100, 30);
+    let canvas = harness.env().theme().color("canvas");
+    assert_eq!(harness.bg(99, 28), canvas, "{}", harness.screen());
+    let _ = std::fs::remove_dir_all(&config);
+}
+
+#[test]
+fn the_floor_colour_is_chosen_on_the_desktop_section_in_both_languages() {
+    let mut harness = screen(100, 30);
+    let shown = harness.screen();
+    for text in ["Floor", "Theme", "Deep", "Mist", "Accent"] {
+        assert!(shown.contains(text), "no `{text}`:\n{shown}");
+    }
+    harness.set_locale("tr").render();
+    let shown = harness.screen();
+    for text in ["Zemin", "Derin", "Sis", "Vurgu"] {
+        assert!(shown.contains(text), "no `{text}`:\n{shown}");
+    }
+    assert_eq!(decoration(&shown), None, "{shown}");
 }

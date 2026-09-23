@@ -17,7 +17,7 @@ use qframe::prelude::*;
 use qframe::storage::Family;
 use qframe::widgets::{EmptyState, NumberInput, ScrollView, Segmented, Select, SettingRow, SettingsList, Switch};
 
-use super::{DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, Prefs, SCROLLBACK_MOST, frame_cap};
+use super::{DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, FloorColor, Prefs, SCROLLBACK_MOST, frame_cap};
 use crate::apps::{Diagnostic, Folders};
 
 /// The widget id of the list of settings, which takes the keyboard when the screen opens.
@@ -60,6 +60,10 @@ pub enum Msg {
     Shared(Shared),
     /// The dock was moved to an edge.
     Dock(DockPosition),
+    /// A colour was chosen for the floor.
+    Floor(FloorColor),
+    /// Folders were set to open in the ecosystem's file explorer (`true`) or in Files.
+    FoldersInExplorer(bool),
     /// A drag style was chosen.
     Drag(DragStyle),
     /// A frame cap was chosen, or `None` to follow the link again.
@@ -147,6 +151,10 @@ pub fn update<M: From<Msg> + Clone + Send + 'static>(
             (command, Some(Request::Shared(change)))
         }
         Msg::Dock(dock) => (Command::none(), Some(Request::Prefs(Prefs { dock, ..*prefs }))),
+        Msg::Floor(floor) => (Command::none(), Some(Request::Prefs(Prefs { floor, ..*prefs }))),
+        Msg::FoldersInExplorer(folders_in_explorer) => {
+            (Command::none(), Some(Request::Prefs(Prefs { folders_in_explorer, ..*prefs })))
+        }
         Msg::Drag(drag) => (Command::none(), Some(Request::Prefs(Prefs { drag, ..*prefs }))),
         Msg::FrameCap(frames) => {
             let frame_cap = frames.map(|frames| frames.clamp(FRAME_CAP_LEAST, FRAME_CAP_MOST));
@@ -253,6 +261,26 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
                             .selected(chosen)
                             .on_select(|index| M::from(Msg::Dock(DockPosition::ALL[index]))),
                     );
+                });
+                // Named choices: the floor around this window shows the tone the moment it is
+                // chosen, which says more than a swatch beside the name would.
+                let tones = FloorColor::ALL.map(|tone| t!(&format!("settings.floor-color-{}", tone.name())));
+                let chosen = FloorColor::ALL.iter().position(|tone| *tone == prefs.floor).unwrap_or(0);
+                let row = SettingRow::new(t!("settings.floor-color")).description(t!("settings.floor-color-text"));
+                list.row(row, |ui| {
+                    ui.add(
+                        Segmented::new(tones)
+                            .selected(chosen)
+                            .on_select(|index| M::from(Msg::Floor(FloorColor::ALL[index]))),
+                    );
+                });
+
+                // The explorer's name is the program's, the one a person installs and would type.
+                let about = t!("settings.folders-in-explorer-text", program = crate::app::EXPLORER);
+                let row = SettingRow::new(t!("settings.folders-in-explorer", program = crate::app::EXPLORER))
+                    .description(about);
+                list.row(row, |ui| {
+                    ui.add(Switch::new(prefs.folders_in_explorer).on_toggle(|on| M::from(Msg::FoldersInExplorer(on))));
                 });
 
                 list.heading(t!("settings.connection"));

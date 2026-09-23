@@ -3,7 +3,7 @@
 
 mod support;
 
-use qdesk::desktop::{CELL_HEIGHT, CELL_WIDTH};
+use qdesk::desktop::{CELL_HEIGHT, CELL_WIDTH, Desktop};
 use qframe::color::ColorDepth;
 use qframe::event::{MouseButton, MouseKind};
 use qframe::icons::GlyphMode;
@@ -149,14 +149,137 @@ fn typing_a_letter_jumps_to_the_icon_whose_name_starts_with_it() {
     assert_eq!(harness.buffer()[(0, 0)].symbol(), "▌", "and back up to Terminal");
 }
 
+/// The middle of the name row of the cell at `column`, `row` of an 80 by 24 floor.
+fn cell_middle(column: u16, row: u16) -> (i32, i32) {
+    (i32::from(column * CELL_WIDTH) + 5, i32::from(row * CELL_HEIGHT) + 1)
+}
+
 #[test]
-fn dragging_an_icon_onto_another_cell_moves_it_inside_the_grid() {
+fn an_icon_dropped_on_bare_floor_stays_in_that_cell_and_no_other_icon_moves() {
+    let mut harness = desk(80, 24);
+    harness.drag((3, 1), cell_middle(4, 2));
+    assert_eq!(harness.app().order().places.get("terminal"), Some(&(4, 2)), "{:?}", harness.app().order());
+    assert_eq!(
+        harness.find("Terminal"),
+        Some((41, 7)),
+        "it stands where it was dropped:
+{}",
+        harness.screen()
+    );
+    assert_eq!(harness.find("Settings"), Some((1, 4)), "the others stay where they were");
+    assert_eq!(harness.find("Midnight"), Some((1, 7)));
+    assert!(screen(&harness)[1].trim().is_empty(), "the cell it left is bare floor: {:?}", screen(&harness)[1]);
+    assert_eq!(harness.app().order().icons, ["terminal", "settings", "mc"], "the order is not what moved");
+    assert_eq!(harness.buffer()[(40, 7)].symbol(), "▌", "the cursor went with it");
+}
+
+#[test]
+fn an_icon_dropped_on_another_changes_places_with_it() {
     let mut harness = desk(80, 24);
     harness.drag((3, 1), (3, 7));
-    assert_eq!(harness.app().order().icons, ["settings", "mc", "terminal"]);
-    assert_eq!(harness.find("Settings"), Some((1, 1)), "the others moved up");
-    assert_eq!(harness.find("Terminal"), Some((1, 7)), "and it stands where it was dropped");
+    assert_eq!(
+        harness.find("Terminal"),
+        Some((1, 7)),
+        "it stands where it was dropped:
+{}",
+        harness.screen()
+    );
+    assert_eq!(harness.find("Midnight"), Some((1, 1)), "and the icon that stood there took its cell");
+    assert_eq!(harness.find("Settings"), Some((1, 4)), "the icon between them stays");
     assert_eq!(harness.buffer()[(0, 6)].symbol(), "▌", "the cursor followed it");
+}
+
+#[test]
+fn where_a_dragged_icon_would_land_is_a_tone_mixed_into_the_floor_with_no_line() {
+    let mut harness = desk(80, 24);
+    harness.mouse(MouseKind::Down(MouseButton::Left), 3, 1);
+    harness.mouse(MouseKind::Drag(MouseButton::Left), 45, 7);
+    let canvas = harness.env().theme().color("canvas").expect("the theme has a canvas");
+    let accent = harness.env().theme().color("accent").expect("the theme has an accent");
+    for (x, y) in [(40, 6), (45, 7), (49, 8)] {
+        let tone = harness.bg(x, y).expect("the cell is drawn");
+        assert_ne!(tone, canvas, "the whole cell it would land in is lifted: ({x}, {y})");
+        assert_ne!(tone, accent, "by a mix, not the accent itself");
+    }
+    assert_eq!(harness.bg(50, 7), Some(canvas), "the cell beside it is untouched");
+    assert_eq!(harness.bg(39, 7), Some(canvas));
+    let screen = harness.screen();
+    assert_eq!(
+        support::decoration(&screen),
+        None,
+        "the landing cell is a tone, never a line:
+{screen}"
+    );
+    harness.mouse(MouseKind::Up(MouseButton::Left), 45, 7);
+    // The pointer rests on the icon that landed there and lifts it as it lifts any icon; away
+    // from it, the cell is the floor's own tone again.
+    harness.hover(70, 20);
+    assert_eq!(harness.bg(45, 8), Some(canvas), "the tone goes with the drop");
+}
+
+#[test]
+fn a_place_the_screen_became_too_small_for_is_drawn_nearby_and_kept() {
+    let mut desktop =
+        Desktop { icons: support::ICONS.map(str::to_owned).to_vec(), welcome_seen: true, ..Desktop::default() };
+    desktop.places.insert("terminal".to_owned(), (6, 4));
+    let mut harness = support::harness_with(support::catalog(), desktop, 80, 24);
+    assert_eq!(
+        harness.find("Terminal"),
+        Some((61, 13)),
+        "its own cell:
+{}",
+        harness.screen()
+    );
+    // Sixty by sixteen holds six columns of five cells: the seventh column is gone.
+    harness.resize(60, 16);
+    assert_eq!(
+        harness.find("Terminal"),
+        Some((51, 13)),
+        "the nearest cell there is:
+{}",
+        harness.screen()
+    );
+    assert_eq!(harness.app().order().places.get("terminal"), Some(&(6, 4)), "its own cell is not forgotten");
+    harness.resize(80, 24);
+    assert_eq!(
+        harness.find("Terminal"),
+        Some((61, 13)),
+        "and it goes back when there is room:
+{}",
+        harness.screen()
+    );
+}
+
+#[test]
+fn shift_and_an_arrow_move_the_icon_under_the_cursor_one_cell() {
+    let mut harness = desk(80, 24);
+    harness.press("down");
+    harness.press("shift+right");
+    assert_eq!(
+        harness.find("Terminal"),
+        Some((11, 1)),
+        "one cell to the right:
+{}",
+        harness.screen()
+    );
+    assert_eq!(harness.app().order().places.get("terminal"), Some(&(1, 0)));
+    harness.press("shift+down").press("shift+down");
+    assert_eq!(harness.find("Terminal"), Some((11, 7)));
+    harness.press("shift+left");
+    assert_eq!(
+        harness.find("Terminal"),
+        Some((1, 7)),
+        "onto Midnight Commander:
+{}",
+        harness.screen()
+    );
+    assert_eq!(harness.find("Midnight"), Some((11, 7)), "which took its cell");
+    // Nothing moves past the edge of the floor.
+    harness.press("shift+left");
+    assert_eq!(harness.find("Terminal"), Some((1, 7)));
+    // The plain arrows still walk the icons from where the cursor is.
+    harness.press("up");
+    assert_eq!(harness.buffer()[(0, 3)].symbol(), "▌", "up to Settings");
 }
 
 #[test]
@@ -192,6 +315,20 @@ fn arranging_the_icons_puts_them_in_the_order_of_their_names() {
     harness.mouse(MouseKind::Down(MouseButton::Right), FLOOR.0, FLOOR.1);
     harness.click_text("Arrange icons");
     assert_eq!(harness.app().order().icons, ["mc", "settings", "terminal"]);
+}
+
+#[test]
+fn arranging_the_icons_lets_go_of_the_places_they_were_put_in() {
+    let mut harness = desk(80, 24);
+    harness.drag((3, 1), cell_middle(4, 2));
+    harness.drag((3, 4), cell_middle(6, 5));
+    assert_eq!(harness.find("Settings"), Some((61, 16)), "{}", harness.screen());
+    harness.mouse(MouseKind::Down(MouseButton::Right), FLOOR.0 + 20, FLOOR.1);
+    harness.click_text("Arrange icons");
+    assert!(harness.app().order().places.is_empty(), "{:?}", harness.app().order().places);
+    assert_eq!(harness.find("Midnight"), Some((1, 1)), "they flow in the order of their names:\n{}", harness.screen());
+    assert_eq!(harness.find("Settings"), Some((1, 4)));
+    assert_eq!(harness.find("Terminal"), Some((1, 7)));
 }
 
 #[test]

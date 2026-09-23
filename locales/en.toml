@@ -66,11 +66,13 @@ hint-close = "close"
 [icon]
 open = "Open"
 open-new = "Open in a new window"
+rename = "Rename"
 remove = "Remove from the desktop"
 properties = "Properties"
 
 [floor]
 new-terminal = "New terminal"
+new-folder = "New folder"
 add-application = "Add an application"
 arrange = "Arrange icons"
 settings = "Settings"
@@ -78,6 +80,8 @@ settings = "Settings"
 # button's own glyph. The short form is used where the whole one does not fit.
 narrow-hint = "Applications: {icon}, or ctrl alt space then space"
 narrow-hint-short = "Applications: {icon}"
+# In the help layer, beside shift and the arrows.
+help-move = "Move the icon one cell"
 
 [target]
 # What the Terminal screen runs, where a command would be named.
@@ -227,6 +231,14 @@ dock = "Dock"
 dock-text = "Which edge the row of open windows sits on."
 dock-top = "Top"
 dock-bottom = "Bottom"
+floor-color = "Floor"
+floor-color-text = "The colour behind the icons. Every tone is made of the theme's own colours; windows and the dock keep the theme."
+floor-color-theme = "Theme"
+floor-color-deep = "Deep"
+floor-color-mist = "Mist"
+floor-color-accent = "Accent"
+folders-in-explorer = "Open folders with {program}"
+folders-in-explorer-text = "A folder on the desktop or in Files opens in the ecosystem's file explorer. When {program} is not installed, Files opens instead."
 
 connection = "Connection"
 drag = "Dragging a window"

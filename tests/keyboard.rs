@@ -94,7 +94,7 @@ fn the_whole_desktop_is_driven_from_the_keyboard_from_opening_an_application_to_
     let catalog = Catalog::new(vec![ending, waiting], |entry| !matches!(entry.launch, Launch::Open(_)));
     // A floor with no icons on it: everything below goes through the launcher, which is the way a
     // person who knows what they want reaches an application.
-    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true };
+    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
     let mut harness = harness_with(catalog, desktop, 100, 30);
 
     // The launcher, from the floor: space, a few letters, Enter.

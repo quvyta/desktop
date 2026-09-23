@@ -68,11 +68,13 @@ hint-close = "закрыть"
 [icon]
 open = "Открыть"
 open-new = "Открыть в новом окне"
+rename = "Переименовать"
 remove = "Убрать с рабочего стола"
 properties = "Свойства"
 
 [floor]
 new-terminal = "Новый терминал"
+new-folder = "Новая папка"
 add-application = "Добавить приложение"
 arrange = "Упорядочить значки"
 settings = "Настройки"
@@ -80,6 +82,7 @@ settings = "Настройки"
 # button's own glyph. The short form is used where the whole one does not fit.
 narrow-hint = "Приложения: {icon} или ctrl alt space, затем space"
 narrow-hint-short = "Приложения: {icon}"
+help-move = "Переместить значок на одну клетку"
 
 [target]
 # What the Terminal screen runs, where a command would be named.
@@ -229,6 +232,14 @@ dock = "Док"
 dock-text = "На какой кромке размещается ряд открытых окон."
 dock-top = "Вверху"
 dock-bottom = "Внизу"
+floor-color = "Фон"
+floor-color-text = "Цвет за значками. Каждый тон составлен из цветов самой темы; окна и док остаются в стиле темы."
+floor-color-theme = "Тема"
+floor-color-deep = "Глубина"
+floor-color-mist = "Дымка"
+floor-color-accent = "Акцент"
+folders-in-explorer = "Открывать папки через {program}"
+folders-in-explorer-text = "Папка на рабочем столе или в разделе Файлы открывается в файловом менеджере экосистемы. Если {program} не установлен, вместо него открываются Файлы."
 
 connection = "Соединение"
 drag = "Перетаскивание окна"

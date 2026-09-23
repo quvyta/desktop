@@ -13,14 +13,16 @@ use qframe::prelude::*;
 use qframe::runtime::{ClipboardEvent, Confirm, FrameLimit, Task, Update, UpdateCheck};
 use qframe::storage::{Family, FolderChanges, FolderWatch, Settings, machine_name};
 use qframe::widgets::{
-    ContextItem, ContextMenu, EmptyState, FileManager, FileManagerMsg, FileView, HelpLayer, KeyHints, Panel, RowMark,
-    Toast, Tooltip,
+    ContextItem, ContextMenu, EmptyState, Field, FileChange, FileManager, FileManagerMsg, FileManagerState, FileView,
+    FolderEntry, Form, HelpLayer, KeyHints, Modal, NameFor, Panel, RowMark, TextInput, Toast, Tooltip,
 };
 
 use crate::apps::{
     Catalog, Category, Diagnostic, Entry, Environment, Install, Launch, Localized, Screen, Source, WindowPrefs,
+    find_program, is_executable,
 };
-use crate::desktop::{self, Desktop, Floor, IconCell, grid};
+use crate::desktop::order::file_id;
+use crate::desktop::{self, Cell, Desktop, Floor, IconCell, grid};
 use crate::dock;
 use crate::files::{self, FilesWindow};
 use crate::inbox::{Inbox, Notice};
@@ -42,6 +44,16 @@ pub const NARROW_HEIGHT: u16 = 16;
 /// The name of the floor, so the keys go back to it when a surface above it closes.
 pub const FLOOR: &str = "floor";
 
+/// The name of the field that asks for the name of a new folder of the Desktop, or a new name for
+/// one of its entries, so the keys go to it when the dialog opens.
+pub const NAME_FIELD: &str = "desktop-folder-name";
+
+/// The width of that dialog, in cells: the framework's file manager asks with the same.
+const NAMING_WIDTH: u16 = 48;
+
+/// The program a folder opens in when it is on the machine: the ecosystem's file explorer.
+pub const EXPLORER: &str = "qexp";
+
 /// How far an arrow key with shift moves or sizes a window in desktop mode (design 3.3).
 pub const FAR_STEP: u16 = 5;
 
@@ -54,6 +66,8 @@ pub type WallClock = Box<dyn Fn() -> i64>;
 ///
 /// Returns the terminal's error when the screen cannot be taken over or restored.
 pub fn run() -> io::Result<()> {
+    // The environment names no Desktop folder yet: the framework is to give it (request F13), and
+    // until then the floor shows the applications alone.
     let environment = Environment::from_process();
     let path = Desktop::path();
     let (desktop, mut notices) = match &path {
@@ -148,6 +162,9 @@ pub enum Msg {
     Floor(desktop::Action),
     /// Open the launcher.
     OpenLauncher,
+    /// Open the launcher, or close it while it is open: the dock's button and the key of the
+    /// launcher, which work like a Start button.
+    ToggleLauncher,
     /// Close whatever surface is open above the floor.
     Close,
     /// Something happened in the launcher.
@@ -201,8 +218,15 @@ pub enum Msg {
     OpenFile(PathBuf),
     /// "Open a terminal here" on a folder of a Files window.
     TerminalHere(PathBuf),
-    /// "Open in a new window" on a folder of a Files window.
+    /// "Open in a new window" on a folder of a Files window, and opening a folder of the Desktop.
     FilesHere(PathBuf),
+    /// Something happened to the Desktop folder: it was read, an operation on it ended, or the
+    /// dialog asking for a name changed.
+    DesktopFolder(FileManagerMsg),
+    /// "New folder" on the floor's menu: ask for a name and make it in the Desktop folder.
+    NewFolder,
+    /// "Rename" on the menu of an entry of the Desktop folder, by its name.
+    RenameEntry(String),
     /// A window's program said something, or ended.
     Program(session::Report),
     /// A window's program said nothing before the bound of its watch was up, so the watch is
@@ -293,6 +317,10 @@ pub struct Desk {
     failures: BTreeMap<WindowId, Failure>,
     /// The file manager of every Files window, gone with its window.
     files: BTreeMap<WindowId, FilesWindow>,
+    /// The manager of the Desktop folder, whose entries stand on the floor after the applications;
+    /// `None` when there is no Desktop folder. Nothing of it is drawn as a file manager: it reads
+    /// and watches the folder, checks and makes names, and the floor shows what it read.
+    folder: Option<FileManagerState>,
     dragging: Option<wm::Dragging>,
     keys: Option<Keys>,
     more: bool,
@@ -358,6 +386,7 @@ impl Desk {
             attention: BTreeSet::new(),
             failures: BTreeMap::new(),
             files: BTreeMap::new(),
+            folder: None,
             dragging: None,
             keys: None,
             more: false,
@@ -408,6 +437,8 @@ impl Desk {
     /// The environment the entries and the programs are looked for in.
     #[must_use]
     pub fn apps(mut self, apps: Environment) -> Self {
+        // The Desktop folder is read when the desktop starts, after every other part is given.
+        self.folder = apps.desktop.clone().map(FileManagerState::new);
         self.apps = apps;
         // The programs need the shell and the home folder of this environment, and keep whatever
         // settings have been given so far, in whichever order the two were set.
@@ -471,6 +502,28 @@ impl Desk {
             .filter(|id| self.catalog.is_installed(id))
             .filter_map(|id| self.catalog.get(id))
             .collect()
+    }
+
+    /// The entries of the Desktop folder the floor shows after the applications: folders first,
+    /// then files, by name, the hidden ones left out. Empty until the folder has been read, and
+    /// with no Desktop folder.
+    #[must_use]
+    pub fn folder_entries(&self) -> Vec<&FolderEntry> {
+        self.folder.as_ref().and_then(|folder| folder.shown_children("")).unwrap_or_default()
+    }
+
+    /// The manager of the Desktop folder, while there is one.
+    #[must_use]
+    pub fn desktop_folder(&self) -> Option<&FileManagerState> {
+        self.folder.as_ref()
+    }
+
+    /// The ids of every icon on the floor, in the order the floor counts them: the applications,
+    /// then the entries of the Desktop folder.
+    #[must_use]
+    pub fn floor_ids(&self) -> Vec<String> {
+        let apps = self.icons().into_iter().map(|entry| entry.id.clone());
+        apps.chain(self.folder_entries().into_iter().map(|entry| file_id(&entry.name))).collect()
     }
 
     /// Whether the welcome line is on screen.
@@ -624,7 +677,7 @@ impl Desk {
 
     /// What the floor's actions mean.
     fn on_floor(&mut self, action: desktop::Action) -> Command<Msg> {
-        let ids: Vec<String> = self.icons().iter().map(|entry| entry.id.clone()).collect();
+        let ids = self.floor_ids();
         // Any touch of the floor puts the launcher away, as a press outside it does.
         let closing = if self.launcher.take().is_some() { Command::focus(FLOOR) } else { Command::none() };
         match action {
@@ -647,16 +700,13 @@ impl Desk {
             desktop::Action::Cursor(index) => self.cursor = Some(index),
             // Opening is the view's business: it makes the message with the name in it.
             desktop::Action::Open(index) => self.cursor = Some(index),
-            desktop::Action::Drop { from, to } => {
-                let mut order = self.desktop.icons.clone();
-                // The order file may hold ids no entry answers to; the floor counts only the ones
-                // it drew, so the move is made on those and the rest keep their places at the end.
-                if let (Some(moved_from), Some(moved_to)) = (place(&order, &ids, from), place(&order, &ids, to)) {
-                    order = grid::moved(&order, moved_from, moved_to);
-                    self.desktop.set_icons(order);
-                    // The cursor follows the icon, and it counts the icons the floor draws, not
-                    // the places of the file.
-                    self.cursor = Some(to);
+            desktop::Action::Place { index, cell, layout } => {
+                let drawn: Vec<(String, Option<Cell>)> =
+                    ids.into_iter().zip(layout.into_iter().chain(std::iter::repeat(None))).collect();
+                if self.desktop.place(&drawn, index, cell) {
+                    // The order of the icons does not change, so the cursor, which counts in it,
+                    // stays on the icon that moved.
+                    self.cursor = Some(index);
                     return Command::batch([closing, self.save()]);
                 }
             }
@@ -669,6 +719,11 @@ impl Desk {
         let Some(launcher) = &mut self.launcher else { return Command::none() };
         match message {
             launcher::Msg::Close => {
+                self.launcher = None;
+                return Command::focus(FLOOR);
+            }
+            // A space typed into the empty search is the launcher's key pressed again, not a search.
+            launcher::Msg::Query(query) if launcher::closes(&launcher.query, &query) => {
                 self.launcher = None;
                 return Command::focus(FLOOR);
             }
@@ -705,8 +760,11 @@ impl Desk {
             return Command::batch([closing, saved]);
         };
         let opened = match &entry.launch {
-            // A folder is what the Files window is for, so an entry that names one opens it there.
-            Launch::Open(path) if path.is_dir() => self.open_files(&entry, path.clone(), fresh),
+            // A folder opens where every folder opens: the explorer, else a Files window.
+            Launch::Open(path) if path.is_dir() => match self.explorer_on(path) {
+                Some(explorer) => self.open_entry(&explorer, true),
+                None => self.open_files(&entry, path.clone(), fresh),
+            },
             // A file waits for the viewers; opening a window that could show nothing would be
             // worse than saying so.
             Launch::Open(_) => {
@@ -769,6 +827,93 @@ impl Desk {
         let read = window.manager.load(move |message| Msg::Files(id, message));
         self.files.insert(id, window);
         read
+    }
+
+    /// The window that shows `folder` in the ecosystem's file explorer, when Settings says folders
+    /// open there and [`EXPLORER`] is on the `PATH` of the environment — the same `PATH` the entries' programs
+    /// are looked for in, so a test decides whether there is one. `None` opens a Files window.
+    ///
+    /// The window is named after the folder and started in it, and its program is given the folder
+    /// by its whole path; a folder whose path is not text keeps the Files window, rather than
+    /// giving the explorer a guessed name.
+    fn explorer_on(&self, folder: &Path) -> Option<Entry> {
+        if !self.prefs.folders_in_explorer {
+            return None;
+        }
+        let program = find_program(EXPLORER, self.apps.path.as_deref(), is_executable)?;
+        let words = vec![program.to_str()?.to_owned(), folder.to_str()?.to_owned()];
+        let name =
+            folder.file_name().map_or_else(|| folder.display().to_string(), |name| name.to_string_lossy().into_owned());
+        let mut entry = Self::made_entry(EXPLORER, &name, "folder", Category::Files, Launch::Command(words));
+        entry.folder = Some(folder.to_path_buf());
+        Some(entry)
+    }
+
+    /// Opens `folder` in a window of its own: the explorer's, else a Files window.
+    fn open_folder(&mut self, folder: PathBuf) -> Command<Msg> {
+        let opened = match self.explorer_on(&folder) {
+            Some(explorer) => self.open_entry(&explorer, true),
+            None => {
+                let entry = self.screen_entry("files", Screen::Files);
+                self.open_files(&entry, folder, true)
+            }
+        };
+        Command::batch([opened, self.body_focus()])
+    }
+
+    /// Reads the Desktop folder, and follows it while the desktop runs. A screen test's desktop
+    /// does not follow it, for the reason [`watch`](Self::watch) gives; it reads the folder again
+    /// after each of its own changes to it, which the manager does by itself.
+    fn read_folder(&mut self) -> Command<Msg> {
+        let following = self.patience.is_none();
+        let Some(folder) = &mut self.folder else { return Command::none() };
+        folder.set_following(following);
+        folder.load(Msg::DesktopFolder)
+    }
+
+    /// Hands a message to the manager of the Desktop folder, keeping the floor in step with it: a
+    /// renamed entry keeps its place, the places of entries gone from the folder are dropped, and
+    /// the keys go back to the floor when the dialog asking for a name closes.
+    fn on_folder(&mut self, message: FileManagerMsg) -> Command<Msg> {
+        let Some(folder) = &mut self.folder else { return Command::none() };
+        let mut renamed = false;
+        if let FileManagerMsg::Done(results) = &message {
+            for (_, result) in results {
+                // Only an entry of the folder itself stands on the floor; one moved inside a
+                // folder of it leaves, and its place goes when the folder is read again.
+                if let Ok(FileChange::Moved(from, to)) = result
+                    && !from.contains('/')
+                    && !to.contains('/')
+                {
+                    let (from, to) = (file_id(from), file_id(to));
+                    self.desktop.rename_place(&from, &to);
+                    for selected in &mut self.selection {
+                        if *selected == from {
+                            selected.clone_from(&to);
+                        }
+                    }
+                    renamed = true;
+                }
+            }
+        }
+        let root_read = matches!(&message, FileManagerMsg::Listed(key, Ok(_)) if key.is_empty());
+        let asking = folder.naming().is_some();
+        let answer = folder.update(message, Msg::DesktopFolder);
+        let asked = asking && folder.naming().is_none();
+        if root_read && let Some(entries) = folder.children("") {
+            let names: BTreeSet<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+            renamed |= self.desktop.keep_files(|name| names.contains(name));
+        }
+        let saved = if renamed { self.save() } else { Command::none() };
+        let back = if asked { Command::focus(FLOOR) } else { Command::none() };
+        Command::batch([answer, saved, back])
+    }
+
+    /// Opens the dialog asking for a name in the Desktop folder, with the keys in its field.
+    fn ask_name(&mut self, message: FileManagerMsg) -> Command<Msg> {
+        let Some(folder) = &mut self.folder else { return Command::none() };
+        let asked = folder.update(message, Msg::DesktopFolder);
+        Command::batch([asked, Command::focus(NAME_FIELD)])
     }
 
     /// Opens `file`, chosen in a Files window, in a terminal window of its own: in the person's
@@ -1452,6 +1597,14 @@ impl Desk {
                 self.launcher = Some(Launcher::default());
                 Command::focus(launcher::SEARCH)
             }
+            Msg::ToggleLauncher if self.launcher.is_some() => {
+                self.launcher = None;
+                Command::focus(FLOOR)
+            }
+            Msg::ToggleLauncher => {
+                self.launcher = Some(Launcher::default());
+                Command::focus(launcher::SEARCH)
+            }
             Msg::Close => self.on_close(),
             Msg::Resized(size) => {
                 self.windows.resize(size);
@@ -1506,11 +1659,10 @@ impl Desk {
             Msg::Files(id, message) => self.on_files(id, message),
             Msg::OpenFile(file) => self.open_file(&file),
             Msg::TerminalHere(folder) => self.terminal_here(folder),
-            Msg::FilesHere(folder) => {
-                let entry = self.screen_entry("files", Screen::Files);
-                let opened = self.open_files(&entry, folder, true);
-                Command::batch([opened, self.body_focus()])
-            }
+            Msg::FilesHere(folder) => self.open_folder(folder),
+            Msg::DesktopFolder(message) => self.on_folder(message),
+            Msg::NewFolder => self.ask_name(FileManagerMsg::NewFolder(String::new())),
+            Msg::RenameEntry(name) => self.ask_name(FileManagerMsg::Rename(name)),
             Msg::FilesView(id, view) => {
                 if let Some(window) = self.files.get_mut(&id) {
                     window.view = view;
@@ -1549,6 +1701,8 @@ impl Desk {
                 let mut icons = order.clone();
                 icons.extend(self.desktop.icons.iter().filter(|id| !order.contains(id)).cloned());
                 self.desktop.set_icons(icons);
+                // Every icon flows again, in that order.
+                self.desktop.clear_places();
                 self.cursor = None;
                 self.save()
             }
@@ -1610,7 +1764,8 @@ impl Desk {
             Some(keys) => Self::hints_view(keys, ui),
             None => {
                 let presses = dock::Presses {
-                    launcher: Msg::OpenLauncher,
+                    launcher: Msg::ToggleLauncher,
+                    launcher_open: self.launcher.is_some(),
                     more: Msg::MoreWindows,
                     notices: Msg::Notices,
                     press: &|item: &dock::Item| Msg::Dock(item.id),
@@ -1652,6 +1807,8 @@ impl Desk {
     /// The floor, with the windows over it and the launcher and the welcome line above them.
     fn body(&self, items: &[dock::Item], plan: &dock::Plan, ui: &mut View<'_, Msg>) {
         ui.stack(|ui| {
+            // The floor's colour from the settings, under the icons; the windows keep the theme.
+            settings::ground(self.prefs.floor, ui);
             self.floor(ui);
             self.windows_view(ui);
             if self.more && plan.hidden > 0 {
@@ -1665,6 +1822,9 @@ impl Desk {
             }
             if self.welcome() {
                 Self::welcome_view(ui);
+            }
+            if let Some(folder) = &self.folder {
+                Self::naming_view(folder, ui);
             }
             if self.help {
                 self.help_view(ui);
@@ -1943,7 +2103,8 @@ impl Desk {
             format!("{}{}{}{}", arrow("arrow-left"), arrow("arrow-up"), arrow("arrow-right"), arrow("arrow-down"));
         ui.add(
             HelpLayer::new(Msg::Help)
-                .hint(arrows, t!("help.icons-move"))
+                .hint(arrows.clone(), t!("help.icons-move"))
+                .hint(format!("shift {arrows}"), t!("floor.help-move"))
                 .hint("enter", t!("help.icons-open"))
                 .hint("esc", t!("help.icons-clear"))
                 .hint(t!("help.icons-jump"), t!("help.icons-jump-label")),
@@ -1981,17 +2142,47 @@ impl Desk {
     }
 
     /// The icons on the floor, each with its own menu, and the menu of the empty floor.
+    ///
+    /// The applications come first, in their order, and the entries of the Desktop folder after
+    /// them, each standing in its own place when it has one.
     fn floor(&self, ui: &mut View<'_, Msg>) {
         let language = ui.env().i18n().active().to_owned();
-        let entries = self.icons();
-        let targets: Vec<Target> = entries.iter().map(|entry| Target::of(entry, &language)).collect();
-        let names: Vec<String> = targets.iter().map(|target| target.name.clone()).collect();
-        let glyphs: Vec<String> = entries.iter().map(|entry| desktop::glyph_of(entry, ui.env().icons())).collect();
-        let selection: Vec<bool> = targets.iter().map(|target| self.selection.contains(&target.id)).collect();
+        let icons = ui.env().icons();
+        let mut shown: Vec<FloorIcon> = self
+            .icons()
+            .into_iter()
+            .map(|entry| {
+                let target = Target::of(entry, &language);
+                FloorIcon {
+                    id: target.id.clone(),
+                    name: target.name.clone(),
+                    glyph: desktop::glyph_of(entry, icons),
+                    open: Msg::Open(target.clone()),
+                    menu: Self::icon_items(&target, &self.desktop),
+                }
+            })
+            .collect();
+        if let Some(folder) = &self.folder {
+            for entry in self.folder_entries() {
+                let path = folder.root().join(&entry.name);
+                let open = if entry.folder { Msg::FilesHere(path) } else { Msg::OpenFile(path) };
+                shown.push(FloorIcon {
+                    id: file_id(&entry.name),
+                    name: entry.name.clone(),
+                    glyph: icons.glyph(if entry.folder { "folder" } else { "file" }).into_owned(),
+                    menu: Self::entry_items(&entry.name, &open),
+                    open,
+                });
+            }
+        }
+        let names: Vec<String> = shown.iter().map(|icon| icon.name.clone()).collect();
+        let places: Vec<Option<Cell>> = shown.iter().map(|icon| self.desktop.places.get(&icon.id).copied()).collect();
         let cursor = self.cursor;
-        // In desktop mode the arrows pick a window, so the floor lets them through.
-        let keys = self.launcher.is_none() && self.keys.is_none();
-        let opening = targets.clone();
+        // In desktop mode the arrows pick a window, so the floor lets them through; while a name
+        // is asked for, the keys are the dialog's.
+        let naming = self.folder.as_ref().is_some_and(|folder| folder.naming().is_some());
+        let keys = self.launcher.is_none() && self.keys.is_none() && !naming;
+        let opening: Vec<Msg> = shown.iter().map(|icon| icon.open.clone()).collect();
         let hidden = Self::narrow(ui.size());
         let hint = hidden.then(|| Self::narrow_hint(ui));
         ui.add_with(ContextMenu::new(self.floor_items(&language)), |ui| {
@@ -2002,22 +2193,23 @@ impl Desk {
                 Self::narrow_hint_view(line, ui);
                 return;
             }
-            let floor = Floor::new(names.clone(), move |action| match action {
-                desktop::Action::Open(index) => opening.get(index).cloned().map_or(Msg::Ignore, Msg::Open),
+            let floor = Floor::new(names, move |action| match action {
+                desktop::Action::Open(index) => opening.get(index).cloned().unwrap_or(Msg::Ignore),
                 other => Msg::Floor(other),
             })
+            .places(places)
             .cursor(cursor)
             .keys(keys);
             ui.add_with(floor, |ui| {
-                for (index, target) in targets.iter().enumerate() {
-                    let cell = IconCell::new(glyphs[index].clone(), target.name.clone())
-                        .selected(selection[index])
+                for (index, icon) in shown.into_iter().enumerate() {
+                    let cell = IconCell::new(icon.glyph, icon.name.clone())
+                        .selected(self.selection.contains(&icon.id))
                         .cursor(cursor == Some(index));
-                    let menu = ContextMenu::new(Self::icon_items(target, &self.desktop));
-                    let shortened = grid::shown_name(&target.name) != target.name;
+                    let menu = ContextMenu::new(icon.menu);
+                    let shortened = grid::shown_name(&icon.name) != icon.name;
                     if shortened {
                         // The cell shows what fits; the whole name is one hover away.
-                        ui.add_with(Tooltip::new(target.name.clone()), |ui| {
+                        ui.add_with(Tooltip::new(icon.name), |ui| {
                             ui.add_with(menu, |ui| {
                                 ui.add(cell);
                             });
@@ -2033,6 +2225,42 @@ impl Desk {
             .fill();
         })
         .fill();
+    }
+
+    /// The dialog asking for the name of a new folder of the Desktop, or a new name for one of its
+    /// entries, while one is asked for. It is the framework's file manager's own dialog in words
+    /// and in checks — the same title, field and buttons, and the manager says what is wrong with a
+    /// name as it is typed — standing over the desktop instead of inside a window.
+    fn naming_view(folder: &FileManagerState, ui: &mut View<'_, Msg>) {
+        let Some(naming) = folder.naming() else { return };
+        let (title, confirm) = match &naming.purpose {
+            NameFor::Rename(key) => {
+                (t!("quvyta.file-manager.rename-title", name = key.as_str()), t!("quvyta.file-manager.rename-do"))
+            }
+            _ => (t!("quvyta.file-manager.new-folder-title"), t!("quvyta.file-manager.create")),
+        };
+        let close = Msg::DesktopFolder(FileManagerMsg::CloseNaming);
+        let submit = Msg::DesktopFolder(FileManagerMsg::Submit);
+        let dialog = Modal::new()
+            .title(title)
+            .width(NAMING_WIDTH)
+            .on_close(close.clone())
+            .action(Button::new(t!("quvyta.file-manager.cancel")).on_press(close))
+            .action(Button::new(confirm).variant("primary").on_press(submit.clone()));
+        let problem = folder.naming_problem().map(|problem| problem.message());
+        let value = naming.value.clone();
+        ui.add_with(dialog, |ui| {
+            Form::new().show(ui, |fields| {
+                let label = t!("quvyta.file-manager.name-label");
+                fields.field(Field::new(label).error(problem.clone()), |ui| {
+                    let input = TextInput::new(value)
+                        .invalid(problem.is_some())
+                        .on_change(|value| Msg::DesktopFolder(FileManagerMsg::Name(value)))
+                        .on_submit(move |_| submit.clone());
+                    ui.add(input).id(NAME_FIELD).fill_width();
+                });
+            });
+        });
     }
 
     /// The one line a floor too narrow for icons shows in their place (3.7): where the
@@ -2074,12 +2302,23 @@ impl Desk {
         items
     }
 
+    /// The rows of the menu of an entry of the Desktop folder called `name`, which `open` opens.
+    fn entry_items(name: &str, open: &Msg) -> Vec<ContextItem<Msg>> {
+        vec![
+            ContextItem::new(t!("icon.open"), open.clone()),
+            ContextItem::new(t!("icon.rename"), Msg::RenameEntry(name.to_owned())),
+        ]
+    }
+
     /// The rows of the empty floor's menu.
     fn floor_items(&self, language: &str) -> Vec<ContextItem<Msg>> {
         let entry = |id: &str| self.catalog.get(id).map(|entry| Target::of(entry, language));
         let mut items = Vec::new();
         if let Some(terminal) = entry("terminal") {
             items.push(ContextItem::new(t!("floor.new-terminal"), Msg::Open(terminal)));
+        }
+        if self.folder.is_some() {
+            items.push(ContextItem::new(t!("floor.new-folder"), Msg::NewFolder));
         }
         items.push(ContextItem::new(t!("floor.add-application"), Msg::OpenLauncher));
         let mut arranged: Vec<(String, String)> =
@@ -2151,11 +2390,14 @@ fn wait(changes: FolderChanges, run: u64) -> Command<Msg> {
     Command::perform(move || Msg::Changed(run, !changes.next().is_empty()))
 }
 
-/// The place of the icon the floor drew at `index` in the whole order, which may hold ids the
-/// floor did not draw.
-fn place(order: &[String], drawn: &[String], index: usize) -> Option<usize> {
-    let id = drawn.get(index)?;
-    order.iter().position(|kept| kept == id)
+/// One icon as the floor draws it: what it is called and drawn with, what opening it does, and
+/// the rows of its menu.
+struct FloorIcon {
+    id: String,
+    name: String,
+    glyph: String,
+    open: Msg,
+    menu: Vec<ContextItem<Msg>>,
 }
 
 /// The id of the row the notification `index` is drawn on, so the keys can reach it.
@@ -2175,8 +2417,9 @@ impl App for Desk {
         let problems = self.notices.clone();
         let notices: Vec<Command<Msg>> = problems.iter().map(|problem| self.told(problem)).collect();
         let watching = self.watch();
+        let reading = self.read_folder();
         let asked = self.ask_for_update();
-        Command::batch([self.next_minute(), watching, Command::focus(FLOOR), asked].into_iter().chain(notices))
+        Command::batch([self.next_minute(), watching, reading, Command::focus(FLOOR), asked].into_iter().chain(notices))
     }
 
     fn resized(&self, size: Size) -> Option<Msg> {
@@ -2202,7 +2445,7 @@ impl App for Desk {
 
     fn action(&self, name: &str) -> Option<Msg> {
         match name {
-            "launcher" => Some(Msg::OpenLauncher),
+            "launcher" => Some(Msg::ToggleLauncher),
             "close" => Some(Msg::Close),
             "desktop-mode" => Some(Msg::DesktopMode),
             // The help layer is reached wherever the keys are the desktop's, and says so itself.

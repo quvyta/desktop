@@ -68,11 +68,13 @@ hint-close = "閉じる"
 [icon]
 open = "開く"
 open-new = "新しいウィンドウで開く"
+rename = "名前を変更"
 remove = "デスクトップから外す"
 properties = "プロパティ"
 
 [floor]
 new-terminal = "新しいターミナル"
+new-folder = "新しいフォルダー"
 add-application = "アプリケーションを追加"
 arrange = "アイコンを並べる"
 settings = "設定"
@@ -80,6 +82,7 @@ settings = "設定"
 # button's own glyph. The short form is used where the whole one does not fit.
 narrow-hint = "アプリケーション: {icon}、または ctrl alt space の後に space"
 narrow-hint-short = "アプリケーション: {icon}"
+help-move = "アイコンを1マス移動"
 
 [target]
 # What the Terminal screen runs, where a command would be named.
@@ -229,6 +232,14 @@ dock = "ドック"
 dock-text = "開いているウィンドウの列をどの端に置くかを決めます。"
 dock-top = "上"
 dock-bottom = "下"
+floor-color = "背景"
+floor-color-text = "アイコンの後ろの色です。どの色調もテーマの色だけで構成されます。ウィンドウとドックはテーマのままです。"
+floor-color-theme = "テーマ"
+floor-color-deep = "ディープ"
+floor-color-mist = "ミスト"
+floor-color-accent = "アクセント"
+folders-in-explorer = "フォルダを {program} で開く"
+folders-in-explorer-text = "デスクトップや「ファイル」のフォルダは、エコシステムのファイルエクスプローラーで開きます。{program} がインストールされていない場合は、代わりに「ファイル」が開きます。"
 
 connection = "接続"
 drag = "ウィンドウのドラッグ"

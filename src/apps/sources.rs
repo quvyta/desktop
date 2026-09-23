@@ -29,6 +29,10 @@ pub struct Environment {
     /// The program the person opens a file with: `VISUAL`, else `EDITOR`, as a command line that
     /// may carry arguments of its own (`emacs -nw`).
     pub editor: Option<String>,
+    /// The person's Desktop folder, whose entries stand on the floor after the applications: the
+    /// folder the XDG user directories name for it, in the language of the system (`~/Desktop`,
+    /// `~/Masaüstü`). `None` shows the applications alone.
+    pub desktop: Option<PathBuf>,
 }
 
 impl Environment {
@@ -65,6 +69,11 @@ impl Environment {
                 .into_iter()
                 .filter_map(|name| lookup(name)?.into_string().ok())
                 .find(|editor| !editor.trim().is_empty()),
+            // The Desktop folder is not an environment variable: the XDG user directories name it
+            // in a file of their own, in the system's language. Reading that file is the
+            // framework's to do (request F13, `user_dir(UserDir::Desktop)`), so until it does the
+            // floor shows the applications alone.
+            desktop: None,
         }
     }
 
@@ -258,6 +267,7 @@ mod tests {
             path: Some(scratch.0.join("bin").into_os_string()),
             shell: None,
             editor: None,
+            desktop: None,
         }
     }
 

@@ -68,11 +68,13 @@ hint-close = "fermer"
 [icon]
 open = "Ouvrir"
 open-new = "Ouvrir dans une nouvelle fenêtre"
+rename = "Renommer"
 remove = "Retirer du bureau"
 properties = "Propriétés"
 
 [floor]
 new-terminal = "Nouveau terminal"
+new-folder = "Nouveau dossier"
 add-application = "Ajouter une application"
 arrange = "Disposer les icônes"
 settings = "Paramètres"
@@ -80,6 +82,7 @@ settings = "Paramètres"
 # button's own glyph. The short form is used where the whole one does not fit.
 narrow-hint = "Applications : {icon}, ou ctrl alt space puis space"
 narrow-hint-short = "Applications : {icon}"
+help-move = "Déplacer l'icône d'une case"
 
 [target]
 # What the Terminal screen runs, where a command would be named.
@@ -229,6 +232,14 @@ dock = "Dock"
 dock-text = "Sur quel bord se trouve la rangée de fenêtres ouvertes."
 dock-top = "Haut"
 dock-bottom = "Bas"
+floor-color = "Fond"
+floor-color-text = "La couleur derrière les icônes. Chaque teinte est faite des couleurs du thème ; les fenêtres et le dock gardent le thème."
+floor-color-theme = "Thème"
+floor-color-deep = "Profond"
+floor-color-mist = "Brume"
+floor-color-accent = "Accent"
+folders-in-explorer = "Ouvrir les dossiers avec {program}"
+folders-in-explorer-text = "Un dossier du bureau ou de Fichiers s'ouvre dans l'explorateur de fichiers de l'écosystème. Si {program} n'est pas installé, Fichiers s'ouvre à la place."
 
 connection = "Connexion"
 drag = "Déplacement d'une fenêtre"

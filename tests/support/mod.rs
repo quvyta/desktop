@@ -115,8 +115,12 @@ pub fn catalog() -> Catalog {
 /// A desktop with `icons` on its floor, the welcome line already seen.
 #[must_use]
 pub fn desk_with(icons: &[&str], width: u16, height: u16) -> Harness<Desk> {
-    let desktop =
-        Desktop { icons: icons.iter().map(|id| (*id).to_owned()).collect(), recents: Vec::new(), welcome_seen: true };
+    let desktop = Desktop {
+        icons: icons.iter().map(|id| (*id).to_owned()).collect(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        ..Desktop::default()
+    };
     harness(desktop, width, height)
 }
 
@@ -149,8 +153,12 @@ pub fn harness_with(catalog: Catalog, desktop: Desktop, width: u16, height: u16)
 /// same wherever it runs.
 #[must_use]
 pub fn desk_over_ssh(width: u16, height: u16) -> Harness<Desk> {
-    let desktop =
-        Desktop { icons: ICONS.iter().map(|id| (*id).to_owned()).collect(), recents: Vec::new(), welcome_seen: true };
+    let desktop = Desktop {
+        icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        ..Desktop::default()
+    };
     built(catalog(), desktop, width, height, true)
 }
 
@@ -179,4 +187,28 @@ pub fn screen(harness: &Harness<Desk>) -> Vec<String> {
 #[must_use]
 pub fn decoration(screen: &str) -> Option<char> {
     screen.chars().find(|c| matches!(c, '[' | ']' | '|' | '{' | '}') || ('\u{2500}'..='\u{257F}').contains(c))
+}
+
+/// The usual test desktop reading and writing its settings in `config`, a folder the test made:
+/// what one run chooses in Settings, the next run built over the same folder reads back.
+#[must_use]
+pub fn desk_in(config: &Path, width: u16, height: u16) -> Harness<Desk> {
+    let loaded = qdesk::settings::load_in(config);
+    let clock = Box::new(|| MOMENT * 1_000);
+    let apps = Environment { shell: Some(PathBuf::from(HARMLESS)), ..Environment::default() };
+    let desktop = Desktop {
+        icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        ..Desktop::default()
+    };
+    let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), clock)
+        .apps(apps)
+        .catalog(catalog())
+        .desktop(desktop)
+        .settings(loaded.settings, loaded.prefs, loaded.diagnostics)
+        .watch_within(PATIENCE);
+    let mut harness = Harness::with_env(app, env(), width, height);
+    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
+    harness
 }
