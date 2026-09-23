@@ -8,7 +8,7 @@
 
 ## Where it stands
 
-This is **0.1.0**, the first release. It is a young program: what is on this page is what it does on screen today, and the end of the page says plainly what it does not do yet — there is no file manager and no picture viewer, and the programs in its windows do not survive a dropped connection.
+This is **0.1.2**, the third release. It is a young program: what is on this page is what it does on screen today, and the end of the page says plainly what it does not do yet — there is no file manager and no picture viewer, and the programs in its windows do not survive a dropped connection.
 
 ## Install
 
@@ -31,7 +31,7 @@ The program is installed as `qdesk` and also as `quvyta-desktop`. It needs nothi
 - **A launcher with search and shelves.** It rises above the dock without dimming what is behind it. The search looks at names, descriptions and commands. The shelves are Recent, All, one for each category, and Installable — the entries whose program is not on this machine, each saying how qpac or quvyta would install it. Enter opens an application, ctrl+enter puts it on the desktop.
 - **Applications as small files.** A desktop entry is a short TOML file naming the application and its command. Entries come from four places, highest first: your own folder (`~/.local/share/quvyta/desktop/apps`), the system's folders, the entries built into qdesk, and the system's `.desktop` files that say `Terminal=true` — so htop, vim and btop are found without anyone writing an entry for them. A broken file never stops the others: it becomes a warning naming the file, line and column, and the Settings screen lists them.
 - **Two built-in screens.** Terminal opens your shell in a window; Settings is a screen of qdesk itself.
-- **A Settings screen.** The language, theme and glyph mode every Quvyta application shares; how a window is dragged and how many frames a second are drawn; how many lines a terminal window remembers; and the folders entries are read from, with anything that could not be read. Settings are kept in `~/.config/quvyta/desktop.conf`, beside the other applications of the family, and only what you chose is ever written.
+- **A Settings screen.** The language, theme and glyph mode every Quvyta application shares, and the family's update notice; how a window is dragged and how many frames a second are drawn; how many lines a terminal window remembers; and the folders entries are read from, with anything that could not be read. Settings are kept in `~/.config/quvyta/desktop.conf`, beside the other applications of the family, and only what you chose is ever written.
 - **Notifications.** What the desktop says in the corner is also written down. The dock counts what has not been read and opens the list; choosing a notice brings the window it came from forward. The list is this sitting's only and is never written to disk.
 - **The whole desktop from the keyboard.** `ctrl+alt+space` takes the keys out of the window and gives them to the desktop; the same keys give them back. While the desktop has them, the arrows pick a window, `m` and the arrows move it, `r` and the arrows size it, `z` fills the desktop, `n` takes the window to the dock, `x` closes it, `t` tiles them all, `b` opens the notifications, `space` opens the launcher and Esc steps back out. `f1` (and `?`) lists every one of these keys, and `ctrl+q` leaves qdesk — counting the programs still running and asking first.
 - **Your programs are your data.** A window whose program is still running does not close without asking, and quitting qdesk counts them and asks.
@@ -83,6 +83,16 @@ tmux new -A -s desktop qdesk
 ```
 
 Reconnect and run the same command: the desktop and every program in it are where you left them.
+
+## No telemetry, and what goes over the network
+
+qdesk collects no statistics and sends nothing about you, your machine or your work anywhere.
+
+It asks one question of its own accord: whether a newer qdesk is out. When qdesk starts, at most once a day, it reads the list of published versions of `quvyta-desktop` from crates.io, the same file `cargo install` reads: one HTTPS `GET` of `https://index.crates.io/qu/vy/quvyta-desktop`. The request carries no cookie and no identifier; its headers are `User-Agent: quvyta-desktop/<the version you run>`, `Accept: */*` and `Accept-Encoding: gzip`. crates.io sees, as with any connection, the address it comes from. When a newer version is out, a notice in the corner says which one and how to update. When there is no network, or crates.io does not answer within ten seconds, nothing is said and the next day asks again. The time of the last question is kept in `~/.local/state/quvyta/desktop/update-check` on Linux.
+
+To turn it off, switch off **Say when an update is out** in **Settings**. The switch belongs to the whole Quvyta family: it is `update-notice = false` in `~/.config/quvyta/quvyta.conf`, and turning it off stops the question in every Quvyta application. While it is off, qdesk asks nothing at all.
+
+Apart from that question, qdesk itself connects to nothing. The programs you run in its windows are your programs and do whatever they do: a shell, `ssh` or a browser in a window reaches the network as it would in any other terminal.
 
 ## What 0.1 does not have
 

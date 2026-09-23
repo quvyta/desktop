@@ -107,68 +107,6 @@ impl Grip {
     pub fn holds_bottom(self) -> bool {
         matches!(self, Self::Bottom | Self::BottomLeft | Self::BottomRight)
     }
-
-    /// The grip a drag started at the cell `(x, y)` of `rect` holds.
-    ///
-    /// The rectangle is read as nine zones: a point in the outer third of an axis holds that
-    /// edge, one in the middle third holds neither, and the two answers together name an edge or
-    /// a corner. A point in the middle of both axes holds the corner it is nearest, so a drag
-    /// from anywhere in the window resizes it — the body has no free spot that does nothing.
-    #[must_use]
-    pub fn nearest(rect: Rect, x: i32, y: i32) -> Self {
-        let horizontal = third(x, rect.x, rect.width);
-        let vertical = third(y, rect.y, rect.height);
-        match (horizontal, vertical) {
-            (Third::Low, Third::Low) => Self::TopLeft,
-            (Third::Low, Third::High) => Self::BottomLeft,
-            (Third::High, Third::Low) => Self::TopRight,
-            (Third::High, Third::High) => Self::BottomRight,
-            (Third::Low, Third::Middle) => Self::Left,
-            (Third::High, Third::Middle) => Self::Right,
-            (Third::Middle, Third::Low) => Self::Top,
-            (Third::Middle, Third::High) => Self::Bottom,
-            (Third::Middle, Third::Middle) => Self::corner_of(rect, x, y),
-        }
-    }
-
-    /// The corner of `rect` nearest `(x, y)`.
-    fn corner_of(rect: Rect, x: i32, y: i32) -> Self {
-        let left = x - rect.x <= rect.right() - 1 - x;
-        let top = y - rect.y <= rect.bottom() - 1 - y;
-        match (left, top) {
-            (true, true) => Self::TopLeft,
-            (true, false) => Self::BottomLeft,
-            (false, true) => Self::TopRight,
-            (false, false) => Self::BottomRight,
-        }
-    }
-}
-
-/// Which third of a span a coordinate falls in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Third {
-    /// The near third.
-    Low,
-    /// The middle third.
-    Middle,
-    /// The far third.
-    High,
-}
-
-/// Which third of the span that starts at `start` and is `length` cells long holds `value`.
-///
-/// A span of one or two cells has no middle: every cell is an edge, the nearer one.
-fn third(value: i32, start: i32, length: u16) -> Third {
-    let length = i32::from(length);
-    let offset = (value - start).clamp(0, (length - 1).max(0));
-    let edge = (length / 3).max(1);
-    if offset < edge {
-        Third::Low
-    } else if offset >= length - edge {
-        Third::High
-    } else {
-        Third::Middle
-    }
 }
 
 /// `rect` with the edge or corner `grip` moved by `dx` columns and `dy` rows.
@@ -265,30 +203,5 @@ mod tests {
         let rect = Rect::new(10, 5, 30, 10);
         assert_eq!(resized(rect, Grip::Left, -100, 0, area()), Rect::new(0, 5, 40, 10));
         assert_eq!(resized(rect, Grip::BottomRight, 100, 100, area()), Rect::new(10, 5, 70, 18));
-    }
-
-    #[test]
-    fn a_grip_is_the_edge_or_corner_the_drag_started_nearest() {
-        let rect = Rect::new(10, 5, 30, 12);
-        assert_eq!(Grip::nearest(rect, 11, 6), Grip::TopLeft);
-        assert_eq!(Grip::nearest(rect, 38, 15), Grip::BottomRight);
-        assert_eq!(Grip::nearest(rect, 25, 6), Grip::Top);
-        assert_eq!(Grip::nearest(rect, 11, 10), Grip::Left);
-        assert_eq!(Grip::nearest(rect, 38, 10), Grip::Right);
-        assert_eq!(Grip::nearest(rect, 25, 15), Grip::Bottom);
-    }
-
-    #[test]
-    fn the_middle_of_a_window_holds_the_nearest_corner() {
-        let rect = Rect::new(0, 0, 30, 12);
-        assert_eq!(Grip::nearest(rect, 14, 5), Grip::TopLeft);
-        assert_eq!(Grip::nearest(rect, 16, 7), Grip::BottomRight);
-    }
-
-    #[test]
-    fn the_smallest_window_has_no_middle_to_hold() {
-        let rect = Rect::new(0, 0, 2, 2);
-        assert_eq!(Grip::nearest(rect, 0, 0), Grip::TopLeft);
-        assert_eq!(Grip::nearest(rect, 1, 1), Grip::BottomRight);
     }
 }

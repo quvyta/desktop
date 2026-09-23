@@ -2,6 +2,16 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.1.2 - 2026-09-23
+
+### Added
+
+- qdesk says when a newer version of itself is out. When it starts, at most once a day, it reads the list of published versions of `quvyta-desktop` from crates.io, one HTTPS request with no cookie and no identifier, and a notice in the corner names the new version. No network means no notice. This is on by default and belongs to the whole family: **Say when an update is out** on the Settings screen turns it off in every Quvyta application. The README's "No telemetry, and what goes over the network" section says exactly what is sent.
+
+### Changed
+
+- Sizing a window with alt and the right button is tested from each of its four edges and four corners, and over a program that reads the mouse. qdesk no longer keeps its own copy of the nearest-edge rule; the framework's window decides it, the same everywhere.
+
 ## 0.1.1 - 2026-09-23
 
 ### Added

@@ -120,6 +120,32 @@ fn alt_drags_move_and_size_the_window_from_anywhere_in_its_body() {
 }
 
 #[test]
+fn alt_and_the_right_button_size_the_window_from_whichever_edge_or_corner_is_nearest() {
+    // The window read as nine zones: a press in each outer third holds that edge, and the two
+    // axes together name a corner. Each drag goes three columns left and two rows up.
+    let (left, top) = (FIRST.x + 2, FIRST.y + 2);
+    let (right, bottom) = (FIRST.right() - 3, FIRST.bottom() - 3);
+    let (middle_x, middle_y) = (FIRST.x + i32::from(FIRST.width) / 2, FIRST.y + i32::from(FIRST.height) / 2 - 1);
+    let (x, y, w, h) = (FIRST.x, FIRST.y, FIRST.width, FIRST.height);
+    let cases = [
+        ("left", (left, middle_y), Rect::new(x - 3, y, w + 3, h)),
+        ("right", (right, middle_y), Rect::new(x, y, w - 3, h)),
+        ("top", (middle_x, top), Rect::new(x, y - 2, w, h + 2)),
+        ("bottom", (middle_x, bottom), Rect::new(x, y, w, h - 2)),
+        ("top left", (left, top), Rect::new(x - 3, y - 2, w + 3, h + 2)),
+        ("top right", (right, top), Rect::new(x, y - 2, w - 3, h + 2)),
+        ("bottom left", (left, bottom), Rect::new(x - 3, y, w + 3, h - 2)),
+        ("bottom right", (right, bottom), Rect::new(x, y, w - 3, h - 2)),
+    ];
+    for (zone, at, expected) in cases {
+        let mut harness = with_settings(80, 24);
+        assert_eq!(rect(&harness), FIRST);
+        alt_drag(&mut harness, MouseButton::Right, at, (-3, -2));
+        assert_eq!(rect(&harness), expected, "a press in the {zone} zone:\n{}", harness.screen());
+    }
+}
+
+#[test]
 fn a_window_dragged_against_the_left_edge_shows_where_it_would_land_and_takes_that_half() {
     let mut harness = with_settings(80, 24);
     let title = (FIRST.x + 4, FIRST.y);

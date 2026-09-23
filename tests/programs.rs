@@ -955,3 +955,41 @@ fn leaving_qdesk_over_ssh_still_asks_about_a_running_program() {
     assert!(!harness.quit_requested(), "it waits for an answer over SSH too:\n{screen}");
     assert!(screen.contains("1 program is still running"), "the question counts them over SSH too:\n{screen}");
 }
+
+#[test]
+fn alt_and_the_right_button_size_the_window_of_a_program_that_reads_the_mouse() {
+    // The program asks for every click, as `htop` or `vim` with the mouse on do. A plain right
+    // drag in its body is the program's; with alt it is the window's, from the nearest corner.
+    let reader = entry("okuyan", "Okuyan", &["/bin/sh", "-c", "printf '\\033[?1000h\\033[?1006hhazir\\n'; exec cat"]);
+    let mut harness = desk(vec![reader.clone()], 100, 30);
+    open(&mut harness, &reader);
+    until_screen(&mut harness, "hazir");
+    let before = front(&harness).rect();
+    let near_top_left = (before.x + 2, before.y + 2);
+    let mouse = |alt: bool, kind, (x, y): (i32, i32)| {
+        Event::Mouse(qframe::event::MouseEvent {
+            kind,
+            x,
+            y,
+            mods: qframe::keymap::Modifiers { alt, ..qframe::keymap::Modifiers::default() },
+        })
+    };
+    let to = (near_top_left.0 + 3, near_top_left.1 + 2);
+    for alt in [false, true] {
+        harness.events(&[
+            mouse(alt, MouseKind::Down(MouseButton::Right), near_top_left),
+            mouse(alt, MouseKind::Drag(MouseButton::Right), to),
+            mouse(alt, MouseKind::Up(MouseButton::Right), to),
+        ]);
+        if !alt {
+            assert_eq!(front(&harness).rect(), before, "a plain right drag is the program's");
+        }
+    }
+    let after = front(&harness).rect();
+    assert_eq!(
+        after,
+        Rect::new(before.x + 3, before.y + 2, before.width - 3, before.height - 2),
+        "the top left corner followed the pointer:\n{}",
+        harness.screen()
+    );
+}

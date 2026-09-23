@@ -10,8 +10,8 @@ use qframe::date::{DateTime, local_offset};
 use qframe::env::{AssetDirs, Env};
 use qframe::keymap::Scope;
 use qframe::prelude::*;
-use qframe::runtime::{ClipboardEvent, Confirm, FrameLimit, Task};
-use qframe::storage::{FolderChanges, FolderWatch, Settings, machine_name};
+use qframe::runtime::{ClipboardEvent, Confirm, FrameLimit, Task, Update, UpdateCheck};
+use qframe::storage::{Family, FolderChanges, FolderWatch, Settings, machine_name};
 use qframe::widgets::{ContextItem, ContextMenu, EmptyState, HelpLayer, KeyHints, Panel, Toast, Tooltip};
 
 use crate::apps::{Catalog, Diagnostic, Entry, Environment, Launch, Screen};
@@ -21,7 +21,7 @@ use crate::inbox::{Inbox, Notice};
 use crate::launcher::{self, Launcher, Shelf, Way};
 use crate::notice;
 use crate::session::{self, Change, Sessions, Start, Subtitle};
-use crate::settings::{self, DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, Prefs};
+use crate::settings::{self, DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, Prefs, UpdateFolders};
 use crate::wm::{self, Exit, Grip, TooSmall, Window, WindowId, Windows, layout};
 
 /// Below this many columns the desktop cannot be drawn and the screen says so.
@@ -65,7 +65,8 @@ pub fn run() -> io::Result<()> {
         .config(path)
         .settings(chosen.settings, chosen.prefs, chosen.diagnostics)
         .remote(remote_link())
-        .notices(notices);
+        .notices(notices)
+        .update_notice(UpdateFolders::here());
     let mut runtime = Runtime::new(app);
     for &(file, text) in crate::locales() {
         runtime = runtime.locale_source(file, text);
@@ -207,6 +208,8 @@ pub enum Msg {
     /// Text was pasted where nothing could take it, and the window in front is one whose program
     /// has ended: the desktop says so instead of letting it vanish.
     PastedNowhere,
+    /// A newer version of qdesk is out.
+    NewVersion(Update),
     /// Something arrived for an application that is no longer there.
     Ignore,
 }
@@ -288,6 +291,8 @@ pub struct Desk {
     /// How long one wait for a program's next word may last; `None` is the unbounded wait the
     /// running desktop makes on a thread of its own. See [`Desk::watch_within`].
     patience: Option<Duration>,
+    /// Where the family's update notice is kept, or `None` where qdesk asks for no newer version.
+    updates: Option<UpdateFolders>,
 }
 
 /// Why a window holds no program: the program that was to be started and what the system said.
@@ -342,6 +347,7 @@ impl Desk {
             help: false,
             leaving: false,
             patience: None,
+            updates: None,
         }
     }
 
@@ -364,7 +370,8 @@ impl Desk {
     pub fn settings(mut self, stored: Settings, prefs: Prefs, problems: Vec<Diagnostic>) -> Self {
         self.stored = stored;
         self.prefs = prefs;
-        self.screen = settings::Screen::new(problems);
+        // The switch of the update notice is kept, in whichever order the two were given.
+        self.screen = settings::Screen::new(problems).with_update_notice(self.screen.update_notice());
         self.programs.set_prefs(self.prefs, self.remote);
         self
     }
@@ -411,6 +418,17 @@ impl Desk {
     #[must_use]
     pub fn config(mut self, config: Option<PathBuf>) -> Self {
         self.config = config;
+        self
+    }
+
+    /// The same desktop, asking at start whether a newer version is out while the family's update
+    /// notice in `folders` is on, and showing that switch on the Settings screen. `None` asks
+    /// nothing and shows no switch, which is every test that has not said otherwise.
+    #[must_use]
+    pub fn update_notice(mut self, folders: Option<UpdateFolders>) -> Self {
+        let on = folders.as_ref().map(|folders| Family::QUVYTA.update_notice_in(&folders.config));
+        self.screen = std::mem::take(&mut self.screen).with_update_notice(on);
+        self.updates = folders;
         self
     }
 
@@ -1179,9 +1197,40 @@ impl Desk {
                 self.share(&shared);
                 self.store()
             }
+            Some(settings::Request::UpdateNotice(on)) => self.store_update_notice(on),
             None => Command::none(),
         };
         Command::batch([applied, stored])
+    }
+
+    /// The question for a newer version of qdesk, when the family's update notice is on.
+    ///
+    /// The switch is read here, not only where the question is sent: a family that turned it off
+    /// asks nothing at all, whoever runs the question.
+    fn ask_for_update(&self) -> Command<Msg> {
+        let Some(folders) = &self.updates else { return Command::none() };
+        if !Family::QUVYTA.update_notice_in(&folders.config) {
+            return Command::none();
+        }
+        let check = UpdateCheck::new(
+            Family::QUVYTA,
+            settings::APP,
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION"),
+            Msg::NewVersion,
+        )
+        .in_folders(folders.config.clone(), folders.state.clone());
+        Command::check_for_update(check)
+    }
+
+    /// Turns the family's update notice on or off in its shared file, off the render path.
+    fn store_update_notice(&self, on: bool) -> Command<Msg> {
+        let Some(folders) = &self.updates else { return Command::none() };
+        let folder = folders.config.clone();
+        Command::perform(move || {
+            let stored = Family::QUVYTA.set_update_notice_in(&folder, on).map_err(|error| error.to_string());
+            Msg::Settings(settings::Msg::Stored(stored))
+        })
     }
 
     /// Writes the settings on a background thread, so a slow disk never holds up drawing.
@@ -1243,6 +1292,7 @@ impl Desk {
             // It is said in the corner and nowhere else: this is the answer to something the
             // person just did, not an event of the desktop worth keeping in the list.
             Msg::PastedNowhere => Command::toast(Toast::info(t!("notice.paste-nowhere"))),
+            Msg::NewVersion(update) => Command::toast(update.toast()),
             Msg::Floor(action) => self.on_floor(action),
             Msg::OpenLauncher => {
                 self.launcher = Some(Launcher::default());
@@ -1907,7 +1957,8 @@ impl App for Desk {
         let problems = self.notices.clone();
         let notices: Vec<Command<Msg>> = problems.iter().map(|problem| self.told(problem)).collect();
         let watching = self.watch();
-        Command::batch([self.next_minute(), watching, Command::focus(FLOOR)].into_iter().chain(notices))
+        let asked = self.ask_for_update();
+        Command::batch([self.next_minute(), watching, Command::focus(FLOOR), asked].into_iter().chain(notices))
     }
 
     fn resized(&self, size: Size) -> Option<Msg> {

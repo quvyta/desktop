@@ -33,13 +33,37 @@ use std::path::{Path, PathBuf};
 use qframe::runtime::FrameLimit;
 use qframe::storage::{Family, Schema, Setting, SettingKind, Settings};
 
-pub use screen::{Applications, LIST, Msg, Request, Screen, Shared, update, view};
+pub use screen::{Applications, LIST, Msg, Request, Screen, Shared, UPDATE_NOTICE, update, view};
 
 use crate::apps::{Diagnostic, DiagnosticKind, Position};
 
 /// The desktop's id in the Quvyta family: its settings are `desktop.conf` and its other
 /// configuration files are under `desktop/`.
 pub const APP: &str = "desktop";
+
+/// Where the family's update notice is kept and where qdesk remembers when it last asked for a
+/// newer version of itself.
+///
+/// The switch is the family's, one for every Quvyta application, so it is read from the family's
+/// shared file rather than from `desktop.conf`. A test gives folders of its own, so nothing it
+/// does reads or turns off the person's own switch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateFolders {
+    /// The family's configuration folder, whose shared file holds the switch.
+    pub config: PathBuf,
+    /// qdesk's state folder, which remembers when the question was last asked.
+    pub state: PathBuf,
+}
+
+impl UpdateFolders {
+    /// This machine's folders, or `None` without a home folder, where nothing could remember the
+    /// switch or the last question and so nothing is asked.
+    #[must_use]
+    pub fn here() -> Option<Self> {
+        let family = Family::QUVYTA;
+        family.config_dir().zip(family.state_dir(APP)).map(|(config, state)| Self { config, state })
+    }
+}
 
 /// The key of the dock's side: `top` or `bottom`.
 pub const DOCK_POSITION: &str = "dock-position";

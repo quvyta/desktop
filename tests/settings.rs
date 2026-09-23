@@ -27,7 +27,7 @@ impl App for SettingsApp {
         let (command, request) = settings::update(&mut self.screen, &self.prefs, msg);
         match request {
             Some(settings::Request::Prefs(prefs)) => self.prefs = prefs,
-            Some(settings::Request::Shared(_)) | None => {}
+            Some(settings::Request::Shared(_) | settings::Request::UpdateNotice(_)) | None => {}
         }
         command
     }
