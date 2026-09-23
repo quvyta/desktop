@@ -26,7 +26,7 @@ pub const LIST: &str = "settings-list";
 /// The widget id of the field that holds a chosen frame cap.
 pub const FRAME_CAP_FIELD: &str = "settings-frame-cap";
 
-/// The widget id of the switch of the family's update notice.
+/// The widget id of the switch of the ecosystem's update notice.
 pub const UPDATE_NOTICE: &str = "settings-update-notice";
 
 /// Width of the drop-downs: enough for the longest theme, language and glyph mode name.
@@ -66,7 +66,7 @@ pub enum Msg {
     FrameCap(Option<u16>),
     /// A number of scrollback lines was set.
     Scrollback(u16),
-    /// The family's update notice was switched on (`true`) or off.
+    /// The ecosystem's update notice was switched on (`true`) or off.
     UpdateNotice(bool),
     /// What the settings file could not be read as was read and can go.
     ReadProblems,
@@ -82,7 +82,7 @@ pub enum Request {
     Shared(Shared),
     /// Use and store these preferences.
     Prefs(Prefs),
-    /// Turn the family's update notice on (`true`) or off in the family's shared file.
+    /// Turn the ecosystem's update notice on (`true`) or off in the ecosystem's shared file.
     UpdateNotice(bool),
 }
 
@@ -96,14 +96,14 @@ pub struct Applications<'a> {
 }
 
 /// The state of the screen: what the settings file itself could not be read as, until it is
-/// read, why the last write failed, until one succeeds, and the family's update notice where the
+/// read, why the last write failed, until one succeeds, and the ecosystem's update notice where the
 /// desktop asks for its updates.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Screen {
     problems: Vec<Diagnostic>,
     problems_read: bool,
     failure: Option<String>,
-    /// The family's update notice as the screen shows it, or `None` for a desktop that asks for no
+    /// The ecosystem's update notice as the screen shows it, or `None` for a desktop that asks for no
     /// newer version and so shows no switch that would do nothing.
     update_notice: Option<bool>,
 }
@@ -116,7 +116,7 @@ impl Screen {
         Self { problems, problems_read: false, failure: None, update_notice: None }
     }
 
-    /// The same screen showing the family's update notice as `on`, or showing no switch at all
+    /// The same screen showing the ecosystem's update notice as `on`, or showing no switch at all
     /// with `None`.
     #[must_use]
     pub fn with_update_notice(mut self, on: Option<bool>) -> Self {
@@ -124,7 +124,7 @@ impl Screen {
         self
     }
 
-    /// The family's update notice as the screen shows it; `None` when it shows no switch.
+    /// The ecosystem's update notice as the screen shows it; `None` when it shows no switch.
     #[must_use]
     pub fn update_notice(&self) -> Option<bool> {
         self.update_notice
@@ -235,7 +235,7 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
                     )
                     .width(Length::Cells(CONTROL_WIDTH));
                 });
-                // The family's own words, the same in every application of it that asks.
+                // The ecosystem's own words, the same in every Quvyta application that asks.
                 if let Some(on) = screen.update_notice {
                     let about = t!("quvyta.appearance.updates-text", family = Family::QUVYTA.title());
                     list.row(SettingRow::new(t!("quvyta.appearance.updates")).description(about), |ui| {

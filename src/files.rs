@@ -1,4 +1,4 @@
-//! The Files window: the family's shared file manager, in a window of the desktop.
+//! The Files window: Quvyta's shared file manager, in a window of the desktop.
 //!
 //! The manager itself is the framework's [`FileManager`](qframe::widgets::FileManager): it reads
 //! the folders, draws them and does every file operation. qdesk writes none of that and copies

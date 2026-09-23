@@ -27,13 +27,14 @@ use crate::apps::{Category, Entry};
 pub use grid::{CELL_HEIGHT, CELL_WIDTH, Grid, Step};
 pub use order::Desktop;
 
-/// The icon of the family, on the launcher button. The framework's own icon set holds it; the
+/// The Quvyta icon, on the launcher button. The framework's own icon set holds it; the
 /// name is looked up every frame rather than resolved once, so a set that does not (an older
-/// framework, or a set of the person's own) shows [`FAMILY_FALLBACK`] instead of an empty cell.
-pub const FAMILY_ICON: &str = "family";
+/// framework, or a set of the person's own) shows [`QUVYTA_FALLBACK`] instead of an empty cell.
+/// The framework still names the key after the ecosystem's old name.
+pub const QUVYTA_ICON: &str = "family";
 
-/// What stands in for [`FAMILY_ICON`] in an icon set without that key.
-pub const FAMILY_FALLBACK: &str = "project";
+/// What stands in for [`QUVYTA_ICON`] in an icon set without that key.
+pub const QUVYTA_FALLBACK: &str = "project";
 
 /// Two clicks on the same icon closer together than this open it.
 pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
@@ -71,10 +72,10 @@ pub enum Action {
     },
 }
 
-/// The key of the icon a button shows for the family: the one the icon set holds.
+/// The key of the icon a button shows for Quvyta: the one the icon set holds.
 #[must_use]
-pub fn family_icon(icons: &Icons) -> &'static str {
-    if icons.contains(FAMILY_ICON) { FAMILY_ICON } else { FAMILY_FALLBACK }
+pub fn quvyta_icon(icons: &Icons) -> &'static str {
+    if icons.contains(QUVYTA_ICON) { QUVYTA_ICON } else { QUVYTA_FALLBACK }
 }
 
 /// The glyph an entry is drawn with: the framework icon it names, the single character it gives,
@@ -116,7 +117,7 @@ fn category_icon(category: Category, icons: &Icons) -> &'static str {
         Category::Network => "dot-outline",
         Category::Office => "file",
         Category::Media => "dot",
-        Category::Family => family_icon(icons),
+        Category::Quvyta => quvyta_icon(icons),
         Category::Other => "bullet",
     }
 }

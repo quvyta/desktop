@@ -38,7 +38,7 @@ files = "Archivos"
 network = "Red"
 office = "Oficina"
 media = "Multimedia"
-family = "Familia"
+quvyta = "Quvyta"
 other = "Otros"
 
 [launcher]

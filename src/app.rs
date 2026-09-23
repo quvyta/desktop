@@ -309,7 +309,7 @@ pub struct Desk {
     /// How long one wait for a program's next word may last; `None` is the unbounded wait the
     /// running desktop makes on a thread of its own. See [`Desk::watch_within`].
     patience: Option<Duration>,
-    /// Where the family's update notice is kept, or `None` where qdesk asks for no newer version.
+    /// Where the ecosystem's update notice is kept, or `None` where qdesk asks for no newer version.
     updates: Option<UpdateFolders>,
 }
 
@@ -440,7 +440,7 @@ impl Desk {
         self
     }
 
-    /// The same desktop, asking at start whether a newer version is out while the family's update
+    /// The same desktop, asking at start whether a newer version is out while the ecosystem's update
     /// notice in `folders` is on, and showing that switch on the Settings screen. `None` asks
     /// nothing and shows no switch, which is every test that has not said otherwise.
     #[must_use]
@@ -1357,9 +1357,9 @@ impl Desk {
         Command::batch([applied, stored])
     }
 
-    /// The question for a newer version of qdesk, when the family's update notice is on.
+    /// The question for a newer version of qdesk, when the ecosystem's update notice is on.
     ///
-    /// The switch is read here, not only where the question is sent: a family that turned it off
+    /// The switch is read here, not only where the question is sent: a person who turned it off
     /// asks nothing at all, whoever runs the question.
     fn ask_for_update(&self) -> Command<Msg> {
         let Some(folders) = &self.updates else { return Command::none() };
@@ -1377,7 +1377,7 @@ impl Desk {
         Command::check_for_update(check)
     }
 
-    /// Turns the family's update notice on or off in its shared file, off the render path.
+    /// Turns the ecosystem's update notice on or off in its shared file, off the render path.
     fn store_update_notice(&self, on: bool) -> Command<Msg> {
         let Some(folders) = &self.updates else { return Command::none() };
         let folder = folders.config.clone();
@@ -2040,7 +2040,7 @@ impl Desk {
     /// one names only the dock's button, so nothing is cut half way.
     fn narrow_hint(ui: &View<'_, Msg>) -> String {
         let icons = ui.env().icons();
-        let launcher = icons.glyph(desktop::family_icon(icons)).into_owned();
+        let launcher = icons.glyph(desktop::quvyta_icon(icons)).into_owned();
         let whole = t!("floor.narrow-hint", icon = launcher.as_str());
         // A cell of floor on either side keeps the line off the screen's edges.
         if qframe::text::width(&whole) + 2 <= ui.size().width {
@@ -2123,7 +2123,7 @@ impl Desk {
 
     /// The welcome line, shown once and never again once it is closed.
     fn welcome_view(ui: &mut View<'_, Msg>) {
-        let launcher = ui.env().icons().glyph(desktop::family_icon(ui.env().icons())).into_owned();
+        let launcher = ui.env().icons().glyph(desktop::quvyta_icon(ui.env().icons())).into_owned();
         ui.column(|ui| {
             ui.spacer();
             ui.row(|ui| {

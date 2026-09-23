@@ -2,7 +2,7 @@ name = "qpac"
 comment = { en = "Install and remove packages", tr = "Paket kur ve kaldır" }
 icon = "◈"
 command = ["qpac"]
-category = "family"
+category = "quvyta"
 keywords = ["quvyta", "packages", "install", "paket", "kur"]
 
 [install]

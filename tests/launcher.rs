@@ -23,7 +23,7 @@ fn the_button_at_the_left_of_the_dock_opens_the_launcher_with_the_search_ready()
     let screen = harness.screen();
     assert!(screen.contains("Search"), "the search field:\n{screen}");
     // The shelves on the left, the applications on the right.
-    for shelf in ["All", "System", "Development", "Files", "Family", "Installable"] {
+    for shelf in ["All", "System", "Development", "Files", "Quvyta", "Installable"] {
         assert!(screen.contains(shelf), "the {shelf} shelf is missing:\n{screen}");
     }
     for app in ["Terminal", "Settings", "Vim", "qcode"] {
@@ -120,7 +120,7 @@ fn installing_tells_the_person_the_command_that_does_it() {
 }
 
 #[test]
-fn a_family_member_is_installed_through_quvyta_with_the_command_that_shows_it() {
+fn a_quvyta_application_is_installed_through_quvyta_with_the_command_that_shows_it() {
     let mut harness = desk(80, 24);
     harness.press("space");
     harness.click_text("Installable");
@@ -197,7 +197,7 @@ fn every_glyph_mode_and_colour_depth_draws_the_launcher_without_decoration() {
             assert!(screen.contains("Search") && screen.contains("Terminal"), "{mode:?} {depth:?}:\n{screen}");
             assert_eq!(decoration(&screen), None, "{mode:?} {depth:?}:\n{screen}");
             // An ASCII screen is not all ASCII here: an entry may give a character of its own as
-            // its icon (the family's entries do), and the framework cuts text with `…`.
+            // its icon (Quvyta's own entries do), and the framework cuts text with `…`.
         }
     }
 }

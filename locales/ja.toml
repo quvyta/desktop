@@ -38,7 +38,7 @@ files = "ファイル"
 network = "ネットワーク"
 office = "オフィス"
 media = "メディア"
-family = "ファミリー"
+quvyta = "Quvyta"
 other = "その他"
 
 [launcher]

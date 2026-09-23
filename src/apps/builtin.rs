@@ -1,4 +1,4 @@
-//! The entries that come with qdesk: its own screens and the other members of the family.
+//! The entries that come with qdesk: its own screens and the other Quvyta applications.
 //!
 //! They are written in the same format as the user's entries and read by the same parser, so a
 //! user entry of the same id replaces one exactly as it would replace a system entry.
@@ -60,9 +60,9 @@ mod tests {
     }
 
     #[test]
-    fn family_members_run_their_command_and_install_with_quvyta() {
+    fn quvyta_applications_run_their_command_and_install_with_quvyta() {
         let entries = built_in();
-        let member = |id: &str| entries.iter().find(|entry| entry.id == id).expect("a family member");
+        let member = |id: &str| entries.iter().find(|entry| entry.id == id).expect("a Quvyta application");
         for (id, package) in [
             ("qcode", "quvyta-code"),
             ("qfocus", "quvyta-focus"),
@@ -70,7 +70,7 @@ mod tests {
             ("qtools", "quvyta-tools"),
         ] {
             let entry = member(id);
-            assert_eq!(entry.category, Category::Family, "{id}");
+            assert_eq!(entry.category, Category::Quvyta, "{id}");
             assert_eq!(entry.launch.program(), Some(id), "{id}");
             assert_eq!(entry.install.quvyta.as_deref(), Some(package), "{id}");
         }

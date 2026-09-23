@@ -38,7 +38,7 @@ files = "文件"
 network = "网络"
 office = "办公"
 media = "媒体"
-family = "家庭"
+quvyta = "Quvyta"
 other = "其他"
 
 [launcher]

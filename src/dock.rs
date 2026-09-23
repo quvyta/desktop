@@ -9,7 +9,7 @@ use qframe::prelude::*;
 use qframe::text;
 use qframe::widgets::{ContextItem, ContextMenu, IconButton};
 
-use crate::desktop::family_icon;
+use crate::desktop::quvyta_icon;
 use crate::wm::WindowId;
 
 /// Rows the dock takes at its edge of the screen. It is always there, so the desktop has this
@@ -216,7 +216,7 @@ pub fn view<Msg: Clone + 'static>(
     presses: &Presses<'_, Msg>,
     ui: &mut View<'_, Msg>,
 ) {
-    let icon = family_icon(ui.env().icons());
+    let icon = quvyta_icon(ui.env().icons());
     ui.row(|ui| {
         ui.add(IconButton::new(icon).on_press(presses.launcher.clone()).tooltip(t!("dock.launcher")));
         // The gaps are spacers of their own and not a gap of the row: a row gap would also stand
@@ -263,7 +263,7 @@ mod tests {
 
     const CLOCK: &str = "14:32";
 
-    /// The button padding of the family's themes.
+    /// The button padding of the Quvyta themes.
     const PAD: u16 = 2;
 
     /// The narrowest row the launcher button and both ends fit in.

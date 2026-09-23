@@ -9,7 +9,7 @@
 # whatever is on screen, so a letter typed in a window stays the window's.
 
 # The framework binds the help layer to `?`. The design asks for `f1` (10.1), so both open it: a
-# key with a name on it is what a person reaches for, and `?` is the family's own.
+# key with a name on it is what a person reaches for, and `?` is the one every Quvyta application uses.
 [global]
 help = ["f1", "?"]
 

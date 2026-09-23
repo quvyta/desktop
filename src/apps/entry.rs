@@ -28,7 +28,7 @@ pub enum Screen {
     Terminal,
     /// qdesk's settings.
     Settings,
-    /// A folder and the files in it, through the family's shared file manager.
+    /// A folder and the files in it, through Quvyta's shared file manager.
     Files,
 }
 
@@ -80,7 +80,7 @@ pub struct WindowPrefs {
 pub struct Install {
     /// The package qpac installs.
     pub qpac: Option<String>,
-    /// The family member quvyta installs.
+    /// The Quvyta application quvyta installs.
     pub quvyta: Option<String>,
 }
 
@@ -734,6 +734,15 @@ quvyta = "quvyta-code"
         );
         assert_eq!(load("name = \"x\"\ncommand = [\"x\"]\ncategory = \"games\"\n").category, Category::Other);
         assert_eq!(load("name = \"x\"\ncommand = [\"x\"]\n").category, Category::Other);
+    }
+
+    #[test]
+    fn the_quvyta_category_is_read_by_its_old_name_too() {
+        // Entries written before the category took the ecosystem's name still land in it, and
+        // say nothing about it: they are not wrong.
+        assert_eq!(load("name = \"x\"\ncommand = [\"x\"]\ncategory = \"quvyta\"\n").category, Category::Quvyta);
+        assert_eq!(load("name = \"x\"\ncommand = [\"x\"]\ncategory = \"family\"\n").category, Category::Quvyta);
+        assert!(kinds("name = \"x\"\ncommand = [\"x\"]\ncategory = \"family\"\n").is_empty());
     }
 
     #[test]

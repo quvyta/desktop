@@ -1,5 +1,5 @@
 name = "quvyta"
-comment = { en = "Install, open and update the Quvyta family", tr = "Quvyta ailesini kur, aç ve güncelle" }
+comment = { en = "Install, open and update Quvyta applications", tr = "Quvyta uygulamalarını kur, aç ve güncelle" }
 command = ["quvyta"]
-category = "family"
-keywords = ["family", "aile", "install", "update", "kur", "güncelle"]
+category = "quvyta"
+keywords = ["ecosystem", "ekosistem", "install", "update", "kur", "güncelle"]

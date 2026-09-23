@@ -38,7 +38,7 @@ files = "Fichiers"
 network = "Réseau"
 office = "Bureau"
 media = "Médias"
-family = "Famille"
+quvyta = "Quvyta"
 other = "Autre"
 
 [launcher]

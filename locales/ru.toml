@@ -38,7 +38,7 @@ files = "Файлы"
 network = "Сеть"
 office = "Офис"
 media = "Медиа"
-family = "Семья"
+quvyta = "Quvyta"
 other = "Другое"
 
 [launcher]

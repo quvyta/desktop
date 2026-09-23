@@ -33,7 +33,7 @@ files = "Dosyalar"
 network = "Ağ"
 office = "Ofis"
 media = "Ortam"
-family = "Aile"
+quvyta = "Quvyta"
 other = "Diğer"
 
 [launcher]

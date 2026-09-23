@@ -2,6 +2,12 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.1.4 - 2026-09-23
+
+### Changed
+
+- qdesk speaks of the Quvyta ecosystem instead of a family. The launcher's shelf of Quvyta's own applications is called **Quvyta** in every language, and the settings, the README and the entries of Quvyta's applications say "Quvyta applications" or "the Quvyta ecosystem". An entry file that still says `category = "family"` lands on the Quvyta shelf as before, without a warning; new entries write `category = "quvyta"`.
+
 ## 0.1.3 - 2026-09-23
 
 ### Added

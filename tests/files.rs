@@ -1,4 +1,4 @@
-//! The Files window: the family's shared file manager in a window of the desktop.
+//! The Files window: Quvyta's shared file manager in a window of the desktop.
 //!
 //! Every test starts where a person starts — two clicks on the Files icon of the floor, a click on
 //! a row, a right click on the window's item on the dock — and every folder it shows is one the

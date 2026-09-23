@@ -93,7 +93,7 @@ impl Catalog {
     }
 
     /// The installed entries by category, in the launcher's order. Empty categories are left
-    /// out; the family has its own group.
+    /// out; Quvyta's own applications have their own group.
     #[must_use]
     pub fn groups(&self, language: &str) -> Vec<Group<'_>> {
         let all = self.installed(language);
@@ -302,7 +302,7 @@ mod tests {
             Launch::Screen(Screen::Settings),
             Category::System,
         );
-        let mut qfocus = command("qfocus", "qfocus", Category::Family);
+        let mut qfocus = command("qfocus", "qfocus", Category::Quvyta);
         qfocus.install.quvyta = Some("quvyta-focus".into());
         let entries = vec![
             htop,
@@ -310,7 +310,7 @@ mod tests {
             vim,
             settings,
             qfocus,
-            command("qcode", "qcode", Category::Family),
+            command("qcode", "qcode", Category::Quvyta),
             command("thtml", "Thtml viewer", Category::Other),
             command("mc", "Midnight Commander", Category::Files),
             entry("logs", Localized::plain("Logs"), Launch::Open(PathBuf::from("/var/log")), Category::System),
@@ -339,7 +339,7 @@ mod tests {
                 (Category::System, vec!["htop".into(), "logs".into(), "settings".into()]),
                 (Category::Development, vec!["vim".into()]),
                 (Category::Files, vec!["mc".into()]),
-                (Category::Family, vec!["qcode".into()]),
+                (Category::Quvyta, vec!["qcode".into()]),
             ]
         );
     }

@@ -39,7 +39,7 @@ fn f1_opens_the_help_and_esc_closes_it() {
 }
 
 #[test]
-fn the_family_s_own_question_mark_opens_the_same_help() {
+fn the_ecosystem_s_own_question_mark_opens_the_same_help() {
     let mut harness = desk(100, 30);
     harness.press("?");
     assert!(harness.screen().contains(TITLE), "? opens it too:\n{}", harness.screen());

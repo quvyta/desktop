@@ -84,13 +84,13 @@ impl Shelf {
 pub enum Way {
     /// qpac installs this package.
     Qpac(String),
-    /// quvyta installs this member of the family.
+    /// quvyta installs this Quvyta application.
     Quvyta(String),
 }
 
 impl Way {
-    /// How an entry says it is installed; family members first, since a family member installed
-    /// through the system's packages would still be the family's to update.
+    /// How an entry says it is installed; Quvyta's own applications first, since one installed
+    /// through the system's packages would still be quvyta's to update.
     #[must_use]
     pub fn of(entry: &Entry) -> Option<Self> {
         entry.install.quvyta.clone().map(Self::Quvyta).or_else(|| entry.install.qpac.clone().map(Self::Qpac))

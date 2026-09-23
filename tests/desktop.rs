@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use qdesk::app::{Desk, MIN_HEIGHT, MIN_WIDTH};
-use qdesk::desktop::{Desktop, family_icon};
+use qdesk::desktop::{Desktop, quvyta_icon};
 use qframe::color::ColorDepth;
 use qframe::env::{AssetDirs, Env};
 use qframe::icons::GlyphMode;
@@ -70,7 +70,7 @@ fn rows(harness: &Harness<Desk>) -> Vec<String> {
 /// The dock row as a terminal of `width` columns shows it: the launcher button at the left end,
 /// the parts at the right one, one free cell after them.
 fn dock_line(harness: &Harness<Desk>, width: u16, parts: &str) -> String {
-    let glyph = harness.env().icons().glyph(family_icon(harness.env().icons())).into_owned();
+    let glyph = harness.env().icons().glyph(quvyta_icon(harness.env().icons())).into_owned();
     let left = format!("  {glyph} ");
     let used = qframe::text::width(&left) + qframe::text::width(parts) + 1;
     format!("{left}{}{parts}", " ".repeat(usize::from(width) - usize::from(used)))

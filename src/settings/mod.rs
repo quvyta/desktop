@@ -6,8 +6,8 @@
 //! say where the dock sits, how a window follows the mouse while it is dragged, how often the
 //! screen may be drawn and how many lines a terminal window remembers.
 //!
-//! The file is `desktop.conf` in the Quvyta family's folder, `~/.config/quvyta` on Linux, next
-//! to the files of the other applications of the family; the desktop's other configuration files
+//! The file is `desktop.conf` in the Quvyta ecosystem's folder, `~/.config/quvyta` on Linux, next
+//! to the files of the other Quvyta applications; the desktop's other configuration files
 //! live in the `desktop/` folder beside it. It is read and written through the framework's
 //! settings storage, so a write is atomic and a value that is the default is never written: the
 //! file holds only what was chosen.
@@ -37,19 +37,19 @@ pub use screen::{Applications, LIST, Msg, Request, Screen, Shared, UPDATE_NOTICE
 
 use crate::apps::{Diagnostic, DiagnosticKind, Position};
 
-/// The desktop's id in the Quvyta family: its settings are `desktop.conf` and its other
+/// The desktop's id in the Quvyta ecosystem: its settings are `desktop.conf` and its other
 /// configuration files are under `desktop/`.
 pub const APP: &str = "desktop";
 
-/// Where the family's update notice is kept and where qdesk remembers when it last asked for a
+/// Where the ecosystem's update notice is kept and where qdesk remembers when it last asked for a
 /// newer version of itself.
 ///
-/// The switch is the family's, one for every Quvyta application, so it is read from the family's
+/// The switch is the ecosystem's, one for every Quvyta application, so it is read from the ecosystem's
 /// shared file rather than from `desktop.conf`. A test gives folders of its own, so nothing it
 /// does reads or turns off the person's own switch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateFolders {
-    /// The family's configuration folder, whose shared file holds the switch.
+    /// The ecosystem's configuration folder, whose shared file holds the switch.
     pub config: PathBuf,
     /// qdesk's state folder, which remembers when the question was last asked.
     pub state: PathBuf,
@@ -60,8 +60,8 @@ impl UpdateFolders {
     /// switch or the last question and so nothing is asked.
     #[must_use]
     pub fn here() -> Option<Self> {
-        let family = Family::QUVYTA;
-        family.config_dir().zip(family.state_dir(APP)).map(|(config, state)| Self { config, state })
+        let ecosystem = Family::QUVYTA;
+        ecosystem.config_dir().zip(ecosystem.state_dir(APP)).map(|(config, state)| Self { config, state })
     }
 }
 
@@ -271,7 +271,7 @@ pub struct Loaded {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-/// Reads the settings from the family's folder on this machine. Without a home folder to write
+/// Reads the settings from the ecosystem's folder on this machine. Without a home folder to write
 /// in, the settings stay in memory and changing one does nothing more than apply it.
 #[must_use]
 pub fn load() -> Loaded {
@@ -281,7 +281,7 @@ pub fn load() -> Loaded {
     }
 }
 
-/// [`load`] with `config_dir` as the family's folder, so a test or a demo never touches the
+/// [`load`] with `config_dir` as the ecosystem's folder, so a test or a demo never touches the
 /// person's own settings.
 #[must_use]
 pub fn load_in(config_dir: &Path) -> Loaded {

@@ -46,8 +46,8 @@ pub enum Category {
     Office,
     /// Music, video, pictures.
     Media,
-    /// The Quvyta family of applications.
-    Family,
+    /// The Quvyta ecosystem's own applications.
+    Quvyta,
     /// Everything else.
     Other,
 }
@@ -61,7 +61,7 @@ impl Category {
         Self::Network,
         Self::Office,
         Self::Media,
-        Self::Family,
+        Self::Quvyta,
         Self::Other,
     ];
 
@@ -75,14 +75,20 @@ impl Category {
             Self::Network => "network",
             Self::Office => "office",
             Self::Media => "media",
-            Self::Family => "family",
+            Self::Quvyta => "quvyta",
             Self::Other => "other",
         }
     }
 
     /// The category an entry names, if it is one of ours.
+    ///
+    /// `family` is what the Quvyta category was called before it took the ecosystem's name;
+    /// entries written then still land in it.
     #[must_use]
     pub fn from_name(name: &str) -> Option<Self> {
+        if name == "family" {
+            return Some(Self::Quvyta);
+        }
         Self::ALL.into_iter().find(|category| category.name() == name)
     }
 }

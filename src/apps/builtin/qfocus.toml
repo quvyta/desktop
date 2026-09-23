@@ -2,7 +2,7 @@ name = "qfocus"
 comment = { en = "Focus timers, records and charts", tr = "Odak sayaçları, kayıtlar ve grafikler" }
 icon = "○"
 command = ["qfocus"]
-category = "family"
+category = "quvyta"
 keywords = ["quvyta", "focus", "timer", "odak", "sayaç"]
 
 [install]

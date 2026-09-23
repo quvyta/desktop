@@ -1,7 +1,7 @@
 name = "qtools"
 comment = { en = "Recommended system settings, with a preview and an undo", tr = "Önerilen sistem ayarları, önizleme ve geri almayla" }
 command = ["qtools"]
-category = "family"
+category = "quvyta"
 keywords = ["quvyta", "tools", "tweaks", "araçlar"]
 
 [install]
