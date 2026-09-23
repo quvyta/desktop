@@ -93,7 +93,23 @@ pub fn glyph_of(entry: &Entry, icons: &Icons) -> String {
             return named.clone();
         }
     }
-    let key = match entry.category {
+    icons.glyph(category_icon(entry.category, icons)).into_owned()
+}
+
+/// The name of the icon set's icon an entry is drawn with, for a place that takes a name rather
+/// than a glyph: the icon it names when the set has it, else its category's. An entry drawn with a
+/// character of its own has no name, and its category's stands in.
+#[must_use]
+pub fn icon_name<'a>(entry: &'a Entry, icons: &Icons) -> &'a str {
+    match &entry.icon {
+        Some(named) if icons.contains(named) => named,
+        _ => category_icon(entry.category, icons),
+    }
+}
+
+/// The icon of a category, by name.
+fn category_icon(category: Category, icons: &Icons) -> &'static str {
+    match category {
         Category::System => "settings",
         Category::Development => "project",
         Category::Files => "folder",
@@ -102,8 +118,7 @@ pub fn glyph_of(entry: &Entry, icons: &Icons) -> String {
         Category::Media => "dot",
         Category::Family => family_icon(icons),
         Category::Other => "bullet",
-    };
-    icons.glyph(key).into_owned()
+    }
 }
 
 /// One icon: the glyph, the name under it, and how it stands.

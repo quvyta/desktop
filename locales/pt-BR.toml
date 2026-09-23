@@ -249,3 +249,10 @@ folders = "As entradas são lidas destas pastas."
 problems = "Estas não puderam ser lidas e não são exibidas:"
 no-problems = "Todas as entradas foram lidas"
 no-problems-text = "Nada nestas pastas ficou de fora."
+
+[files]
+view-list = "Mostrar como lista"
+view-tree = "Mostrar como árvore"
+view-icons = "Mostrar como ícones"
+open-new-window = "Abrir em uma nova janela"
+not-text = "Não foi possível abrir {name}: o nome não é texto que um programa possa receber"

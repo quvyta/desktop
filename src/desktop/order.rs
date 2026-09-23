@@ -25,9 +25,9 @@ use crate::apps::{Diagnostic, DiagnosticKind, Expected, Position};
 /// The name of the file inside the desktop's configuration folder.
 pub const FILE: &str = "desktop.toml";
 
-/// The icons a desktop nobody has changed shows. The Files application joins them when it exists
-/// (0.2); until then the entry for it does not exist either, so an id is not written here for it.
-pub const DEFAULT_ICONS: [&str; 2] = ["terminal", "settings"];
+/// The icons a desktop nobody has changed shows (design 3.7): the shell, the folders and the
+/// settings, the three things a person reaches for first on a machine they have just opened.
+pub const DEFAULT_ICONS: [&str; 3] = ["terminal", "files", "settings"];
 
 /// How many applications the launcher remembers as recent.
 pub const RECENTS: usize = 8;
@@ -228,9 +228,9 @@ mod tests {
     }
 
     #[test]
-    fn a_desktop_nobody_changed_shows_the_terminal_and_the_settings() {
+    fn a_desktop_nobody_changed_shows_the_terminal_the_files_and_the_settings() {
         let desktop = Desktop::default();
-        assert_eq!(desktop.icons, ids(&["terminal", "settings"]));
+        assert_eq!(desktop.icons, ids(&["terminal", "files", "settings"]));
         assert!(desktop.recents.is_empty());
         assert!(!desktop.welcome_seen);
     }
@@ -333,10 +333,10 @@ mod tests {
         let mut desktop = Desktop::default();
         assert!(desktop.add_icon("htop"));
         assert!(!desktop.add_icon("htop"));
-        assert_eq!(desktop.icons, ids(&["terminal", "settings", "htop"]));
+        assert_eq!(desktop.icons, ids(&["terminal", "files", "settings", "htop"]));
         assert!(desktop.remove_icon("settings"));
         assert!(!desktop.remove_icon("settings"));
-        assert_eq!(desktop.icons, ids(&["terminal", "htop"]));
+        assert_eq!(desktop.icons, ids(&["terminal", "files", "htop"]));
         desktop.set_icons(ids(&["htop", "terminal"]));
         assert_eq!(desktop.icons, ids(&["htop", "terminal"]));
     }

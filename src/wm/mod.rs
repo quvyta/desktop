@@ -177,7 +177,7 @@ impl Windows {
             // A Terminal window runs a program as much as a command entry does: the shell. Only
             // the screens qdesk draws itself and the files it shows in a viewer hold none.
             Launch::Command(_) | Launch::Screen(Screen::Terminal) => Body::Program(Run::Waiting),
-            Launch::Screen(Screen::Settings) | Launch::Open(_) => Body::Screen,
+            Launch::Screen(Screen::Settings | Screen::Files) | Launch::Open(_) => Body::Screen,
         };
         let id = self.next;
         self.next = id.next();

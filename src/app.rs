@@ -12,11 +12,17 @@ use qframe::keymap::Scope;
 use qframe::prelude::*;
 use qframe::runtime::{ClipboardEvent, Confirm, FrameLimit, Task, Update, UpdateCheck};
 use qframe::storage::{Family, FolderChanges, FolderWatch, Settings, machine_name};
-use qframe::widgets::{ContextItem, ContextMenu, EmptyState, HelpLayer, KeyHints, Panel, Toast, Tooltip};
+use qframe::widgets::{
+    ContextItem, ContextMenu, EmptyState, FileManager, FileManagerMsg, FileView, HelpLayer, KeyHints, Panel, RowMark,
+    Toast, Tooltip,
+};
 
-use crate::apps::{Catalog, Diagnostic, Entry, Environment, Launch, Screen};
+use crate::apps::{
+    Catalog, Category, Diagnostic, Entry, Environment, Install, Launch, Localized, Screen, Source, WindowPrefs,
+};
 use crate::desktop::{self, Desktop, Floor, IconCell, grid};
 use crate::dock;
+use crate::files::{self, FilesWindow};
 use crate::inbox::{Inbox, Notice};
 use crate::launcher::{self, Launcher, Shelf, Way};
 use crate::notice;
@@ -122,7 +128,7 @@ impl Target {
                 Launch::Command(words) => Some(words.join(" ")),
                 Launch::Open(path) => Some(path.display().to_string()),
                 Launch::Screen(Screen::Terminal) => Some(t!("target.shell")),
-                Launch::Screen(Screen::Settings) => None,
+                Launch::Screen(Screen::Settings | Screen::Files) => None,
             },
             way: Way::of(entry),
             file: entry.file.clone(),
@@ -131,7 +137,7 @@ impl Target {
 }
 
 /// What reaches the desktop.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Msg {
     /// The wall clock reached a new minute.
     Minute,
@@ -187,6 +193,16 @@ pub enum Msg {
     Tile,
     /// Something happened on the Settings screen of a window.
     Settings(settings::Msg),
+    /// Something happened in the file manager of a Files window.
+    Files(WindowId, FileManagerMsg),
+    /// A Files window draws its folder in another shape, from the window's menu.
+    FilesView(WindowId, FileView),
+    /// A file chosen in a Files window, to open in a terminal window of its own.
+    OpenFile(PathBuf),
+    /// "Open a terminal here" on a folder of a Files window.
+    TerminalHere(PathBuf),
+    /// "Open in a new window" on a folder of a Files window.
+    FilesHere(PathBuf),
     /// A window's program said something, or ended.
     Program(session::Report),
     /// A window's program said nothing before the bound of its watch was up, so the watch is
@@ -275,6 +291,8 @@ pub struct Desk {
     attention: BTreeSet<WindowId>,
     /// Why the program of a window never started, for the window that stayed open to say so.
     failures: BTreeMap<WindowId, Failure>,
+    /// The file manager of every Files window, gone with its window.
+    files: BTreeMap<WindowId, FilesWindow>,
     dragging: Option<wm::Dragging>,
     keys: Option<Keys>,
     more: bool,
@@ -339,6 +357,7 @@ impl Desk {
             programs: Sessions::new(&Environment::default(), Prefs::default(), false),
             attention: BTreeSet::new(),
             failures: BTreeMap::new(),
+            files: BTreeMap::new(),
             dragging: None,
             keys: None,
             more: false,
@@ -478,6 +497,13 @@ impl Desk {
         &self.windows
     }
 
+    /// What the Files window `id` holds: its manager and the shape it draws its folder in; `None`
+    /// for a window that is not a Files window, or is gone.
+    #[must_use]
+    pub fn files(&self, id: WindowId) -> Option<&FilesWindow> {
+        self.files.get(&id)
+    }
+
     /// What the arrow keys do, while the desktop and not a window has them.
     #[must_use]
     pub fn keys(&self) -> Option<Keys> {
@@ -532,6 +558,12 @@ impl Desk {
     /// Starts watching the entry folders, so an application installed while the desktop is open
     /// appears by itself.
     fn watch(&mut self) -> Command<Msg> {
+        if self.patience.is_some() {
+            // A screen test runs a command's wait where it stands, and a folder watch waits with no
+            // bound: a desktop given a data folder would never finish starting. A test's desktop
+            // reads its entries once, as a Files window of a test does not follow its folder.
+            return Command::none();
+        }
         let folders = self.apps.folders().watched();
         if folders.is_empty() {
             // Nothing to watch: an environment that names no entry folder at all. Waiting on a
@@ -672,13 +704,23 @@ impl Desk {
         let Some(entry) = self.catalog.get(&target.id).cloned() else {
             return Command::batch([closing, saved]);
         };
-        if matches!(entry.launch, Launch::Open(_)) {
+        let opened = match &entry.launch {
+            // A folder is what the Files window is for, so an entry that names one opens it there.
+            Launch::Open(path) if path.is_dir() => self.open_files(&entry, path.clone(), fresh),
             // A file waits for the viewers; opening a window that could show nothing would be
             // worse than saying so.
-            let toast = Toast::info(t!("notice.no-viewer", name = target.name.as_str()));
-            return Command::batch([closing, saved, Command::toast(toast)]);
-        }
-        let opened = self.open_entry(&entry, fresh);
+            Launch::Open(_) => {
+                let toast = Toast::info(t!("notice.no-viewer", name = target.name.as_str()));
+                return Command::batch([closing, saved, Command::toast(toast)]);
+            }
+            Launch::Screen(Screen::Files) => {
+                // The home folder is where a person's own files are; a machine that names none
+                // still has its root to look through.
+                let home = self.apps.home.clone().unwrap_or_else(|| PathBuf::from("/"));
+                self.open_files(&entry, home, fresh)
+            }
+            Launch::Command(_) | Launch::Screen(Screen::Terminal | Screen::Settings) => self.open_entry(&entry, fresh),
+        };
         Command::batch([closing, saved, opened, self.body_focus()])
     }
 
@@ -700,6 +742,107 @@ impl Desk {
             self.windows.raise(id);
         }
         Command::none()
+    }
+
+    /// Opens a Files window for `entry` onto the folder `root` and starts reading it, or brings the
+    /// entry's window forward when it opens only once and no window of its own was asked for.
+    ///
+    /// Each window has a manager of its own, kept under the window's id and let go with it. The
+    /// folders on screen are followed while the desktop runs; a screen test's desktop does not
+    /// follow them, because the framework's watch waits with no bound and a test runs that wait
+    /// where it stands (the same reason [`watch_within`](Self::watch_within) exists).
+    fn open_files(&mut self, entry: &Entry, root: PathBuf, fresh: bool) -> Command<Msg> {
+        self.keys = None;
+        if entry.single
+            && !fresh
+            && let Some(id) = self.windows.of_entry(&entry.id)
+        {
+            if self.windows.get(id).is_some_and(Window::is_minimized) {
+                self.windows.restore(id);
+            } else {
+                self.windows.raise(id);
+            }
+            return Command::none();
+        }
+        let id = self.windows.open(entry);
+        let mut window = FilesWindow::new(root, self.apps.data_home.as_deref(), self.patience.is_none());
+        let read = window.manager.load(move |message| Msg::Files(id, message));
+        self.files.insert(id, window);
+        read
+    }
+
+    /// Opens `file`, chosen in a Files window, in a terminal window of its own: in the person's
+    /// editor, else in [`files::READER`], started in the file's folder.
+    ///
+    /// Every terminal program is an application, and an editor is one; the window is the same as
+    /// any command's, and stays when the program ends, so what it said last can be read. A file
+    /// whose name is not text is not opened under a guessed name: the corner says why.
+    fn open_file(&mut self, file: &Path) -> Command<Msg> {
+        let name =
+            file.file_name().map_or_else(|| file.display().to_string(), |name| name.to_string_lossy().into_owned());
+        let Some(words) = files::opener(self.apps.editor.as_deref(), file) else {
+            return Command::toast(Toast::info(t!("files.not-text", name = name.as_str())));
+        };
+        let mut entry = Self::made_entry("files.open", &name, "file", Category::Files, Launch::Command(words));
+        entry.folder = file.parent().map(Path::to_path_buf);
+        let opened = self.open_entry(&entry, true);
+        Command::batch([opened, self.body_focus()])
+    }
+
+    /// A Terminal window started in `folder`: the Terminal entry as the person has it, with the
+    /// folder in place of the home folder.
+    fn terminal_here(&mut self, folder: PathBuf) -> Command<Msg> {
+        let mut entry = self.screen_entry("terminal", Screen::Terminal);
+        entry.folder = Some(folder);
+        let opened = self.open_entry(&entry, true);
+        Command::batch([opened, self.body_focus()])
+    }
+
+    /// The entry of the screen `screen`: the one of id `id` in the catalog, which a person may have
+    /// changed, else one made here — a person may hide a built-in entry from the launcher, and a
+    /// folder's "Open a terminal here" still has to open a terminal.
+    fn screen_entry(&self, id: &str, screen: Screen) -> Entry {
+        match self.catalog.get(id) {
+            Some(entry) if entry.launch == Launch::Screen(screen) => entry.clone(),
+            _ => {
+                let (name, icon, category) = match screen {
+                    Screen::Terminal => ("Terminal", "prompt", Category::System),
+                    Screen::Files => ("Files", "folder", Category::Files),
+                    Screen::Settings => ("Settings", "settings", Category::System),
+                };
+                Self::made_entry(id, name, icon, category, Launch::Screen(screen))
+            }
+        }
+    }
+
+    /// An entry the desktop makes for a window of its own, read from no file.
+    fn made_entry(id: &str, name: &str, icon: &str, category: Category, launch: Launch) -> Entry {
+        Entry {
+            id: id.to_owned(),
+            name: Localized::plain(name),
+            comment: None,
+            icon: Some(icon.to_owned()),
+            launch,
+            folder: None,
+            env: Vec::new(),
+            category,
+            keywords: Vec::new(),
+            single: false,
+            close_on_exit: false,
+            window: WindowPrefs::default(),
+            install: Install::default(),
+            try_exec: None,
+            source: Source::Builtin,
+            file: None,
+        }
+    }
+
+    /// What the file manager of the Files window `id` said: the manager takes it and answers with
+    /// the reading and the file work it asks for. A message for a window that has closed since is
+    /// dropped, as a late word of a closed window's program is.
+    fn on_files(&mut self, id: WindowId, message: FileManagerMsg) -> Command<Msg> {
+        let Some(window) = self.files.get_mut(&id) else { return Command::none() };
+        window.manager.update(message, move |message| Msg::Files(id, message))
     }
 
     /// Starts the program of `entry` for the window `id`, on a screen the size of that window's
@@ -879,6 +1022,12 @@ impl Desk {
         match self.programs.subtitle(id) {
             Some(Subtitle::Title(title)) => Some(title.to_owned()),
             Some(Subtitle::Folder(folder)) => Some(wm::view::folder_text(folder, self.apps.home.as_deref())),
+            // A Files window says which folder it shows, as a Terminal window says which folder
+            // its shell is in.
+            None if self.files.contains_key(&id) => self.files.get(&id).map(|window| {
+                let shown = window.manager.path(window.manager.folder());
+                wm::view::folder_text(&shown, self.apps.home.as_deref())
+            }),
             None => self.windows.get(id).and_then(Window::title).map(str::to_owned),
         }
     }
@@ -894,7 +1043,7 @@ impl Desk {
                 None => return String::new(),
             },
             Launch::Screen(Screen::Terminal) => shell.as_path(),
-            Launch::Screen(Screen::Settings) | Launch::Open(_) => return String::new(),
+            Launch::Screen(Screen::Settings | Screen::Files) | Launch::Open(_) => return String::new(),
         };
         program.file_name().map_or_else(|| program.display().to_string(), |name| name.to_string_lossy().into_owned())
     }
@@ -920,6 +1069,8 @@ impl Desk {
     fn forget(&mut self, id: WindowId) {
         self.attention.remove(&id);
         self.failures.remove(&id);
+        // A closed Files window's manager goes with it, and its folder watch with the manager.
+        self.files.remove(&id);
         // What its program said is still worth reading; what is gone is the window to go back to.
         self.inbox.closed(id);
     }
@@ -938,9 +1089,12 @@ impl Desk {
         if self.programs.is_running(window.id()) {
             return Command::focus(wm::view::body_id(window.id()));
         }
+        if self.files.contains_key(&window.id()) {
+            return Command::focus(wm::view::body_id(window.id()));
+        }
         match window.screen() {
             Some(Screen::Settings) => Command::focus(settings::LIST),
-            Some(Screen::Terminal) | None => Command::focus(FLOOR),
+            Some(Screen::Terminal | Screen::Files) | None => Command::focus(FLOOR),
         }
     }
 
@@ -1349,6 +1503,20 @@ impl Desk {
             Msg::Arrow(arrow, far) => self.on_arrow(arrow, far),
             Msg::Tile => self.tile(),
             Msg::Settings(message) => self.on_settings(message),
+            Msg::Files(id, message) => self.on_files(id, message),
+            Msg::OpenFile(file) => self.open_file(&file),
+            Msg::TerminalHere(folder) => self.terminal_here(folder),
+            Msg::FilesHere(folder) => {
+                let entry = self.screen_entry("files", Screen::Files);
+                let opened = self.open_files(&entry, folder, true);
+                Command::batch([opened, self.body_focus()])
+            }
+            Msg::FilesView(id, view) => {
+                if let Some(window) = self.files.get_mut(&id) {
+                    window.view = view;
+                }
+                Command::none()
+            }
             Msg::Launcher(message) => self.on_launcher(message),
             Msg::Open(target) => self.open(&target, false),
             Msg::OpenNew(target) => self.open(&target, true),
@@ -1446,7 +1614,7 @@ impl Desk {
                     more: Msg::MoreWindows,
                     notices: Msg::Notices,
                     press: &|item: &dock::Item| Msg::Dock(item.id),
-                    menu: &|item: &dock::Item| Self::window_menu(item.id),
+                    menu: &|item: &dock::Item| self.window_menu(item.id),
                 };
                 dock::view(&plan, &clock, &count, &items, &presses, ui);
             }
@@ -1537,6 +1705,8 @@ impl Desk {
             wm::Body::Screen => {
                 if window.screen() == Some(Screen::Settings) {
                     self.settings_body(ui);
+                } else if let Some(files) = self.files.get(&window.id()) {
+                    self.files_body(window.id(), files, ui);
                 }
             }
             wm::Body::Program(run) => self.program_body(window.id(), run, ui),
@@ -1586,6 +1756,39 @@ impl Desk {
         settings::view(&self.screen, &self.prefs, self.remote, &apps, ui);
     }
 
+    /// The folder of a Files window, drawn by the framework's file manager in the window's shape.
+    ///
+    /// A file is opened in a terminal window, a folder's menu opens it in a new Files window or a
+    /// terminal there, and the rows of folders another window's program stands in carry that
+    /// window's icon.
+    fn files_body(&self, id: WindowId, files: &FilesWindow, ui: &mut View<'_, Msg>) {
+        let icons = ui.env().icons();
+        let standing = self.programs.folders().filter_map(|(window, folder)| {
+            self.windows.get(window).map(|window| (folder, desktop::icon_name(window.entry(), icons)))
+        });
+        let marks = files::row_marks(files.manager.root(), standing);
+        // The menu is built when it opens, long after this frame, so it takes the folders along.
+        let folders = files.manager.folder_keys();
+        let root = files.manager.root().to_path_buf();
+        FileManager::new(&files.manager, move |message| Msg::Files(id, message))
+            .view(files.view)
+            .on_open(|file| Msg::OpenFile(file.to_path_buf()))
+            .on_open_terminal(|folder| Msg::TerminalHere(folder.to_path_buf()))
+            .menu_items(move |key, _| {
+                if key.is_empty() || folders.contains(key) {
+                    let folder =
+                        key.split('/').filter(|part| !part.is_empty()).fold(root.clone(), |at, part| at.join(part));
+                    vec![ContextItem::new(t!("files.open-new-window"), Msg::FilesHere(folder))]
+                } else {
+                    Vec::new()
+                }
+            })
+            .row_mark(move |key| marks.get(key).cloned().unwrap_or_else(RowMark::new))
+            .show(ui)
+            .id(wm::view::body_id(id))
+            .fill();
+    }
+
     /// The line a window shows when its program has ended: what it ended with, and the two ways on.
     /// It does not close by itself, so an error message is read before it goes.
     fn ended_body(code: Option<i32>, id: WindowId, ui: &mut View<'_, Msg>) {
@@ -1622,14 +1825,29 @@ impl Desk {
     }
 
     /// The rows of a window's menu, on the dock and in desktop mode.
-    fn window_menu(id: WindowId) -> Vec<ContextItem<Msg>> {
-        vec![
+    ///
+    /// A Files window adds the shapes its folder can be drawn in, the one in use marked with a
+    /// sign rather than a colour alone.
+    fn window_menu(&self, id: WindowId) -> Vec<ContextItem<Msg>> {
+        let mut items = vec![
             ContextItem::new(t!("window.minimize"), Msg::Ask(Ask::Minimize, id)),
             ContextItem::new(t!("window.maximize"), Msg::Ask(Ask::Maximize, id)),
             ContextItem::new(t!("window.tile"), Msg::Tile),
-            ContextItem::gap(),
-            ContextItem::new(t!("window.close"), Msg::Ask(Ask::Close, id)),
-        ]
+        ];
+        if let Some(files) = self.files.get(&id) {
+            items.push(ContextItem::gap());
+            for (view, label) in [
+                (FileView::List, t!("files.view-list")),
+                (FileView::Tree, t!("files.view-tree")),
+                (FileView::Icons, t!("files.view-icons")),
+            ] {
+                let item = ContextItem::new(label, Msg::FilesView(id, view));
+                items.push(if files.view == view { item.icon("check") } else { item });
+            }
+        }
+        items.push(ContextItem::gap());
+        items.push(ContextItem::new(t!("window.close"), Msg::Ask(Ask::Close, id)));
+        items
     }
 
     /// The windows that do not fit on the dock, listed against its row.

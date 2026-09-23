@@ -249,3 +249,10 @@ folders = "これらのフォルダーから項目を読み込みます。"
 problems = "以下は読み込めなかったため表示していません："
 no-problems = "すべての項目を読み込みました"
 no-problems-text = "これらのフォルダーで除外されたものはありません。"
+
+[files]
+view-list = "リストで表示"
+view-tree = "ツリーで表示"
+view-icons = "アイコンで表示"
+open-new-window = "新しいウィンドウで開く"
+not-text = "{name} を開けません: この名前はプログラムに渡せる文字ではありません"

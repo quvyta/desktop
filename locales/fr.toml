@@ -249,3 +249,10 @@ folders = "Les entrées sont lues dans ces dossiers."
 problems = "Ces éléments n'ont pas pu être lus et ne sont pas affichés :"
 no-problems = "Toutes les entrées ont été lues"
 no-problems-text = "Rien dans ces dossiers n'a été omis."
+
+[files]
+view-list = "Afficher en liste"
+view-tree = "Afficher en arborescence"
+view-icons = "Afficher en icônes"
+open-new-window = "Ouvrir dans une nouvelle fenêtre"
+not-text = "{name} ne peut pas être ouvert : son nom n'est pas un texte qu'on puisse donner à un programme"

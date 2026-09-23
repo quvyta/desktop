@@ -2,6 +2,23 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.1.3 - 2026-09-23
+
+### Added
+
+- A Files window: the Quvyta family's shared file manager, in a window of the desktop. It opens on your home folder as a list with sizes, dates and permissions; the window's menu on the dock turns it into a tree or icons. Each Files window keeps its own folder and view, and deleting moves things to the trash. Files is on the desktop from the first start.
+- A click on a file opens it in your editor, in a terminal window of its own: `$VISUAL`, else `$EDITOR`, else `less`. A folder's menu opens it in a new Files window or starts a terminal there.
+- A folder where a window's program is working carries that window's icon in the accent colour, and loses it when the window closes.
+- A desktop entry that opens a folder (`open = "/var/log"`) now opens a Files window there. An entry that opens a file still says there is no viewer yet.
+
+### Fixed
+
+- The README lists the headers the update question really sends: `Host`, `User-Agent` and `Accept`. It named an `Accept-Encoding` header that is never sent.
+
+### Changed
+
+- Built on quvyta-framework 0.1.19.
+
 ## 0.1.2 - 2026-09-23
 
 ### Added

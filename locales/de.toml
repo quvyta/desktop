@@ -249,3 +249,10 @@ folders = "Einträge werden aus diesen Ordnern gelesen."
 problems = "Diese konnten nicht gelesen werden und werden nicht angezeigt:"
 no-problems = "Jeder Eintrag wurde gelesen"
 no-problems-text = "Aus diesen Ordnern wurde nichts ausgelassen."
+
+[files]
+view-list = "Als Liste anzeigen"
+view-tree = "Als Baum anzeigen"
+view-icons = "Als Symbole anzeigen"
+open-new-window = "In einem neuen Fenster öffnen"
+not-text = "{name} kann nicht geöffnet werden: der Name ist kein Text, den man einem Programm übergeben kann"

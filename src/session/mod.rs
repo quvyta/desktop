@@ -394,7 +394,7 @@ impl Sessions {
                 None => return Start::Failed(io::Error::from(io::ErrorKind::InvalidInput)),
             },
             Launch::Screen(Screen::Terminal) => (OsString::from(&self.shell), Vec::new()),
-            Launch::Screen(Screen::Settings) | Launch::Open(_) => return Start::Screen,
+            Launch::Screen(Screen::Settings | Screen::Files) | Launch::Open(_) => return Start::Screen,
         };
         let started_in = self.folder_for(entry);
         let mut builder = TerminalSession::builder(program)
@@ -476,6 +476,13 @@ impl Sessions {
         self.programs
             .get(&window)
             .map(|program| subtitle(program.title.as_deref(), program.folder.as_deref(), &program.started_in))
+    }
+
+    /// The folder each window's program is in, window by window: the one its shell last said, else
+    /// the one it started in. A window whose program has ended keeps the folder it ended in, since
+    /// the window still stands there until it is closed.
+    pub fn folders(&self) -> impl Iterator<Item = (WindowId, &Path)> {
+        self.programs.iter().map(|(id, program)| (*id, program.folder.as_deref().unwrap_or(&program.started_in)))
     }
 
     /// The process id of the program of `window`, for the dialog about a program that will not

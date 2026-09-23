@@ -1,0 +1,6 @@
+name = { en = "Files", tr = "Dosyalar" }
+comment = { en = "Folders and files, to look through and tidy", tr = "Klasörler ve dosyalar; gezmek ve düzenlemek için" }
+icon = "folder"
+screen = "files"
+category = "files"
+keywords = ["folders", "file manager", "explorer", "dosya", "klasör", "dosya yöneticisi"]

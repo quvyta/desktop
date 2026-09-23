@@ -249,3 +249,10 @@ folders = "条目从这些文件夹读取。"
 problems = "以下内容无法读取，未予显示："
 no-problems = "所有条目均已读取"
 no-problems-text = "这些文件夹中的内容都没有遗漏。"
+
+[files]
+view-list = "以列表显示"
+view-tree = "以树状显示"
+view-icons = "以图标显示"
+open-new-window = "在新窗口中打开"
+not-text = "{name} 无法打开：它的名称不是可以传给程序的文本"

@@ -235,3 +235,9 @@ problems = "Bunlar okunamadı, bu yüzden görünmüyor:"
 no-problems = "Bütün girdiler okundu"
 no-problems-text = "Bu klasörlerde dışarıda kalan bir şey yok."
 
+[files]
+view-list = "Liste olarak göster"
+view-tree = "Ağaç olarak göster"
+view-icons = "Simge olarak göster"
+open-new-window = "Yeni pencerede aç"
+not-text = "{name} açılamıyor: adı bir programa verilebilecek bir metin değil"

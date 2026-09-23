@@ -26,6 +26,9 @@ pub struct Environment {
     pub path: Option<OsString>,
     /// The user's shell, from `SHELL`.
     pub shell: Option<PathBuf>,
+    /// The program the person opens a file with: `VISUAL`, else `EDITOR`, as a command line that
+    /// may carry arguments of its own (`emacs -nw`).
+    pub editor: Option<String>,
 }
 
 impl Environment {
@@ -58,6 +61,10 @@ impl Environment {
             data_dirs,
             path: lookup("PATH").filter(|path| !path.is_empty()),
             shell: lookup("SHELL").filter(|shell| !shell.is_empty()).map(PathBuf::from),
+            editor: ["VISUAL", "EDITOR"]
+                .into_iter()
+                .filter_map(|name| lookup(name)?.into_string().ok())
+                .find(|editor| !editor.trim().is_empty()),
         }
     }
 
@@ -250,6 +257,7 @@ mod tests {
             data_dirs: vec![scratch.0.join("usr/local/share"), scratch.0.join("usr/share")],
             path: Some(scratch.0.join("bin").into_os_string()),
             shell: None,
+            editor: None,
         }
     }
 
@@ -286,6 +294,13 @@ mod tests {
             ]
         );
         assert_eq!(folders.watched().len(), 6);
+    }
+
+    #[test]
+    fn the_editor_is_visual_else_editor_and_never_an_empty_one() {
+        assert_eq!(vars(&[("VISUAL", "nvim"), ("EDITOR", "nano")]).editor.as_deref(), Some("nvim"));
+        assert_eq!(vars(&[("VISUAL", " "), ("EDITOR", "emacs -nw")]).editor.as_deref(), Some("emacs -nw"));
+        assert_eq!(vars(&[]).editor, None);
     }
 
     #[test]

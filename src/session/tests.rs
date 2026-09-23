@@ -77,6 +77,7 @@ fn environment(home: &Path) -> Environment {
         data_dirs: Vec::new(),
         path: None,
         shell: Some(PathBuf::from("/bin/sh")),
+        editor: None,
     }
 }
 

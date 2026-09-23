@@ -248,3 +248,9 @@ problems = "These could not be read and are not shown:"
 no-problems = "Every entry was read"
 no-problems-text = "Nothing in these folders was left out."
 
+[files]
+view-list = "Show as a list"
+view-tree = "Show as a tree"
+view-icons = "Show as icons"
+open-new-window = "Open in a new window"
+not-text = "{name} cannot be opened: its name is not text a program can be given"

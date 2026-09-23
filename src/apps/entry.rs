@@ -28,6 +28,8 @@ pub enum Screen {
     Terminal,
     /// qdesk's settings.
     Settings,
+    /// A folder and the files in it, through the family's shared file manager.
+    Files,
 }
 
 impl Screen {
@@ -36,6 +38,7 @@ impl Screen {
         match name {
             "terminal" => Some(Self::Terminal),
             "settings" => Some(Self::Settings),
+            "files" => Some(Self::Files),
             _ => None,
         }
     }
@@ -157,7 +160,8 @@ const FIELDS: [&str; 14] = [
 /// Reads the entry file `bytes` of id `id`, read from `file`.
 ///
 /// `home` replaces a leading `~` in `open` and `folder`. Built-in entries may also name a screen
-/// of qdesk with `screen = "terminal"` or `"settings"`; in other files that field is unknown.
+/// of qdesk with `screen = "terminal"`, `"settings"` or `"files"`; in other files that field is
+/// unknown.
 ///
 /// Returns what the file declares, or `None` when it is broken, with every problem found. A file
 /// with only warnings still declares its entry.

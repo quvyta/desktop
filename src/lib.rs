@@ -5,6 +5,7 @@ pub mod apps;
 pub mod cli;
 pub mod desktop;
 pub mod dock;
+pub mod files;
 pub mod inbox;
 pub mod launcher;
 pub mod notice;

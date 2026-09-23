@@ -249,3 +249,10 @@ folders = "Las entradas se leen de estas carpetas."
 problems = "Estas no se pudieron leer y no se muestran:"
 no-problems = "Todas las entradas se leyeron"
 no-problems-text = "No se omitió nada de estas carpetas."
+
+[files]
+view-list = "Mostrar como lista"
+view-tree = "Mostrar como árbol"
+view-icons = "Mostrar como iconos"
+open-new-window = "Abrir en una ventana nueva"
+not-text = "{name} no se puede abrir: su nombre no es texto que se pueda pasar a un programa"

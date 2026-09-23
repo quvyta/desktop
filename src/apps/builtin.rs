@@ -4,8 +4,9 @@
 //! user entry of the same id replaces one exactly as it would replace a system entry.
 
 /// Each built-in entry as its id and its file.
-pub(super) const ENTRIES: [(&str, &str); 7] = [
+pub(super) const ENTRIES: [(&str, &str); 8] = [
     ("terminal", include_str!("builtin/terminal.toml")),
+    ("files", include_str!("builtin/files.toml")),
     ("settings", include_str!("builtin/settings.toml")),
     ("qcode", include_str!("builtin/qcode.toml")),
     ("qfocus", include_str!("builtin/qfocus.toml")),
@@ -41,11 +42,21 @@ mod tests {
     }
 
     #[test]
-    fn terminal_and_settings_are_screens() {
+    fn terminal_files_and_settings_are_screens() {
         let entries = built_in();
         let launch = |id: &str| entries.iter().find(|entry| entry.id == id).map(|entry| entry.launch.clone());
         assert_eq!(launch("terminal"), Some(Launch::Screen(Screen::Terminal)));
+        assert_eq!(launch("files"), Some(Launch::Screen(Screen::Files)));
         assert_eq!(launch("settings"), Some(Launch::Screen(Screen::Settings)));
+    }
+
+    #[test]
+    fn files_opens_as_many_windows_as_are_asked_for() {
+        // Two folders side by side is the ordinary way to move things between them.
+        let files = built_in().into_iter().find(|entry| entry.id == "files").expect("Files is built in");
+        assert!(!files.single);
+        assert_eq!(files.category, Category::Files);
+        assert_eq!(files.name.get("tr"), "Dosyalar");
     }
 
     #[test]
