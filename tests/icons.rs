@@ -206,6 +206,39 @@ fn the_icons_are_hidden_on_a_screen_too_narrow_for_them() {
     assert_eq!(kept.find("Terminal"), Some((1, 1)));
 }
 
+/// The rows of `harness`'s screen that say where the applications went.
+fn hint_rows(harness: &Harness<qdesk::app::Desk>) -> Vec<String> {
+    screen(harness).into_iter().filter(|row| row.contains("Applications:")).collect()
+}
+
+#[test]
+fn a_screen_too_narrow_for_icons_says_in_one_line_where_the_applications_are() {
+    let harness = desk(59, 20);
+    let said = hint_rows(&harness);
+    assert_eq!(said.len(), 1, "one line, no more:\n{}", harness.screen());
+    assert!(said[0].contains("ctrl alt space"), "the keys are named where they fit: {:?}", said[0]);
+    // The line stands in the middle of the floor, not against an edge.
+    let (x, y) = harness.find("Applications:").expect("the line is drawn");
+    assert!(x > 0 && y > 2 && y < 17, "centred, not at an edge: ({x}, {y})");
+
+    // The smallest desktop has no room for the keys, so the line keeps only the button.
+    let smallest = desk(40, 10);
+    let said = hint_rows(&smallest);
+    assert_eq!(said.len(), 1, "the short form is still one line:\n{}", smallest.screen());
+    assert!(!said[0].contains("ctrl"), "nothing is cut half way: {:?}", said[0]);
+    assert!(!said[0].contains('…'), "the short form fits whole: {:?}", said[0]);
+
+    // A screen with room for the icons shows the icons, not the line.
+    assert!(hint_rows(&desk(60, 16)).is_empty());
+}
+
+#[test]
+fn the_welcome_line_on_a_narrow_screen_is_not_said_twice() {
+    let harness = support::untouched(59, 20);
+    assert!(harness.screen().contains("The applications are behind"), "the welcome is there:\n{}", harness.screen());
+    assert!(hint_rows(&harness).is_empty(), "the welcome stands over the line:\n{}", harness.screen());
+}
+
 #[test]
 fn icons_fill_one_column_before_another_one_starts() {
     let floor = ["terminal", "settings", "mc", "vim", "lf", "qcode"];

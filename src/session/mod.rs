@@ -196,12 +196,6 @@ impl std::fmt::Debug for Watch {
 }
 
 impl Watch {
-    /// The window whose program is watched.
-    #[must_use]
-    pub fn window(&self) -> WindowId {
-        self.window
-    }
-
     /// Waits for the program's next change and reports it. **This is the wait qdesk runs.**
     ///
     /// It blocks until the program says something, so it belongs inside

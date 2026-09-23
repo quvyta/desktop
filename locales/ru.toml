@@ -1,0 +1,251 @@
+# Русский
+
+[meta]
+name = "Русский"
+code = "ru"
+fallback = "en"
+
+[cli]
+usage = """
+qdesk                 открыть рабочий стол
+  -h, --help          этот текст
+  -V, --version       показать версию
+На рабочем столе ctrl+q завершает работу."""
+unknown-argument = "qdesk: неизвестный аргумент {argument}; см. qdesk --help"
+
+[dock]
+# The clock when the local time zone is unknown: the time shown is UTC and says so.
+clock-utc = "{time} UTC"
+# Stands in for the machine name when the system gives none.
+unknown-machine = "этот компьютер"
+launcher = "Приложения"
+# The control at the end of the dock that holds the windows that do not fit.
+more = "Остальные окна"
+
+[screen]
+too-small = "Терминал слишком мал"
+too-small-hint = "Для рабочего стола нужно не меньше {columns} столбцов и {rows} строк."
+
+[welcome]
+# Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
+line = "Приложения — за {icon}, либо ctrl alt space, а затем space."
+close = "Понятно"
+
+[category]
+system = "Система"
+development = "Разработка"
+files = "Файлы"
+network = "Сеть"
+office = "Офис"
+media = "Медиа"
+family = "Семья"
+other = "Другое"
+
+[launcher]
+search = "Поиск"
+close = "Закрыть меню запуска"
+recents = "Недавние"
+all = "Все"
+installable = "Можно установить"
+empty = "Приложений пока нет"
+empty-hint = "Записи находятся в ~/.local/share/quvyta/desktop/apps; установка программы добавляет новую."
+no-hits = "Ничего не найдено по запросу {query}"
+no-hits-hint = "Поиск идёт по названиям, описаниям и командам."
+# The second line of a card whose program is not on this machine.
+with-qpac = "установить через qpac"
+with-quvyta = "установить через quvyta"
+install-quvyta = "Выполните это, чтобы установить {name}: {command}"
+install-qpac = "Откройте qpac и установите {package}; {name} появится здесь сразу после установки."
+menu-open = "Открыть {name}"
+menu-install-qpac = "Установить {name} через qpac"
+menu-install-quvyta = "Установить {name} через quvyta"
+menu-add-icon = "Положить {name} на рабочий стол"
+menu-remove-icon = "Убрать {name} с рабочего стола"
+hint-open = "открыть"
+hint-add = "на рабочий стол"
+hint-close = "закрыть"
+
+[icon]
+open = "Открыть"
+open-new = "Открыть в новом окне"
+remove = "Убрать с рабочего стола"
+properties = "Свойства"
+
+[floor]
+new-terminal = "Новый терминал"
+add-application = "Добавить приложение"
+arrange = "Упорядочить значки"
+settings = "Настройки"
+# One line in place of the icons on a screen too narrow for them; {icon} is the launcher
+# button's own glyph. The short form is used where the whole one does not fit.
+narrow-hint = "Приложения: {icon} или ctrl alt space, затем space"
+narrow-hint-short = "Приложения: {icon}"
+
+[target]
+# What the Terminal screen runs, where a command would be named.
+shell = "ваша оболочка"
+
+[properties]
+built-in = "внутри qdesk"
+no-command = "экран qdesk"
+body = "{id} — {file} — {command}"
+
+[notice]
+# An entry that opens a file: the viewers are not built yet, so nothing pretends to show it.
+no-viewer = "{name} открывает файл, а просмотрщика для него в qdesk пока нет"
+# A program that could not be started at all: it is not there, or no pseudo-terminal was free.
+start-failed = "Не удалось запустить {program}"
+# The whole sentence: the system's words with the program they belong to.
+start-failed-why = "Не удалось запустить {program}: {reason}"
+install = "Установка {name}"
+install-unknown = "Не указано, как установить {name}"
+unsaved = "Не удалось сохранить рабочий стол"
+# The list the dock's count opens. It holds this run's notifications and nothing older: it is
+# forgotten when qdesk closes.
+list = "Уведомления"
+list-empty = "Пока ничего не было"
+list-empty-hint = "Сюда попадают программы, завершившиеся, пока вы были в другом месте, звонок и предупреждения самой qdesk."
+# One row of it: what was said above, and the notification itself.
+list-line = "{heading} — {body}"
+# A notification a program sent with a title of its own: the title and then its words.
+list-said = "{title}: {body}"
+# A window rang the bell: it has no words of its own, so the list says what happened.
+bell = "раздался звонок"
+# A paste that had nowhere to go: the window in front holds a program that has ended, and its last
+# screen is there to be read, not typed into.
+paste-nowhere = "Программа этого окна завершилась, поэтому вставленный текст ушёл в никуда"
+
+[window]
+minimize = "Свернуть"
+maximize = "Развернуть"
+tile = "Расставить окна"
+close = "Закрыть"
+restart = "Перезапустить"
+# The line a window shows once its program has ended.
+ended = "Программа завершилась, код выхода {code}."
+ended-signal = "Программа была прервана, не завершившись."
+# Closing a window whose program is still running.
+close-title = "Закрыть {name}?"
+close-running = "{name} ещё работает. Если закрыть окно, программа завершится."
+# Leaving qdesk while programs are running.
+quit-title = "Выйти из qdesk?"
+quit-running = { one = "{n} программа ещё работает. При выходе она будет завершена.", few = "{n} программы ещё работают. При выходе они будут завершены.", many = "{n} программ ещё работают. При выходе они будут завершены.", other = "{n} программ ещё работают. При выходе они будут завершены." }
+quit = "Выйти"
+tile-narrow = "Экран слишком узкий, чтобы расставить окна рядом."
+tile-short = "На экране помещается {fits} окон плиткой — не больше."
+
+[mode]
+# The dock's row while the keys are the desktop's.
+pick = "окно"
+move = "сдвиг"
+resize = "размер"
+maximize = "во весь"
+minimize = "док"
+close = "закрыть"
+tile = "плитка"
+launcher = "программы"
+notices = "уведомления"
+leave = "назад"
+back = "назад"
+release = "отпустить"
+far = "{cells} за раз"
+
+# The help layer names every key of qdesk by its action. The keys of desktop mode say so: they
+# answer only while the desktop has them, and a line that did not say it would be a promise the
+# key does not keep.
+[keys]
+launcher = "Открыть лаунчер"
+close = "Закрыть открытое: лаунчер, список, затем режим рабочего стола"
+desktop-mode = "Вывести клавиши из окна на рабочий стол и обратно"
+notices = "Режим рабочего стола: последние уведомления"
+window-move = "Режим рабочего стола: стрелки перемещают окно"
+window-resize = "Режим рабочего стола: стрелки меняют размер окна"
+window-release = "Режим рабочего стола: отпустить; стрелки снова выбирают окна"
+window-maximize = "Режим рабочего стола: развернуть на весь рабочий стол или вернуть размер"
+window-minimize = "Режим рабочего стола: свернуть окно в док"
+window-close = "Режим рабочего стола: закрыть окно"
+window-tile = "Режим рабочего стола: разложить все окна сразу"
+window-left = "Режим рабочего стола: выбрать, переместить или изменить размер влево"
+window-right = "Режим рабочего стола: выбрать, переместить или изменить размер вправо"
+window-up = "Режим рабочего стола: выбрать, переместить или изменить размер вверх"
+window-down = "Режим рабочего стола: выбрать, переместить или изменить размер вниз"
+window-left-far = "Режим рабочего стола: на пять ячеек влево"
+window-right-far = "Режим рабочего стола: на пять ячеек вправо"
+window-up-far = "Режим рабочего стола: на пять ячеек вверх"
+window-down-far = "Режим рабочего стола: на пять ячеек вниз"
+
+# Keys of the floor itself, which are in no keymap: the help layer lists them under this screen.
+[help]
+icons-move = "Переходить между значками"
+icons-open = "Открыть значок"
+icons-clear = "Отпустить значки"
+icons-jump = "буква"
+icons-jump-label = "Перейти к следующему значку, начинающемуся с этой буквы"
+
+[expected]
+string = "строка"
+boolean = "true или false"
+table = "таблица"
+text = "строка или таблица строк по языкам"
+string-list = "список строк"
+size = "два целых числа: столбцы и строки"
+
+[diagnostic]
+title-warning = "У записи есть предупреждение"
+title-error = "Запись не удалось прочитать"
+at = "{place} — {what}"
+unreadable = "Не удалось прочитать этот файл."
+not-utf8 = "Этот файл записан не в UTF-8."
+syntax = "Этот файл не является корректным TOML."
+wrong-type = "В {key} ожидается {expected}."
+invalid-value = "{key} содержит непригодное значение."
+missing-name = "У этой записи нет имени."
+missing-launch = "У этой записи нет ни команды, ни объекта для открытия."
+conflicting-launch = "Эта запись несколькими способами указывает, что открывать."
+unknown-category = "Категории {value} нет; запись попала в раздел «Другое»."
+unknown-field = "{key} — поле, неизвестное qdesk; запись используется без него."
+no-home = "{key} начинается с ~, но домашней папки здесь нет."
+malformed-line = "Строку не удалось прочитать, и она была пропущена."
+missing-group = "В этом файле нет группы [Desktop Entry]."
+missing-key = "В этом файле нет строки {key}."
+bad-exec = "Не удалось прочитать строку Exec: не закрыта кавычка или недопустимая escape-последовательность."
+[settings]
+store-failed = "Не удалось записать настройки: {reason}"
+file-problems = "Часть файла настроек не удалось прочитать; записанное там оставлено как есть, и рабочий стол использует всё, что применимо без него."
+read = "Понятно"
+
+appearance = "Внешний вид"
+language = "Язык"
+theme = "Тема"
+glyphs = "Символы"
+glyphs-text = "Все приложения Quvyta рисуют этими символами."
+glyphs-auto = "Автоматически"
+glyphs-nerd = "Nerd Font"
+glyphs-unicode = "Unicode"
+glyphs-ascii = "Простой ASCII"
+
+desktop = "Рабочий стол"
+dock = "Док"
+dock-text = "На какой кромке размещается ряд открытых окон."
+dock-top = "Вверху"
+dock-bottom = "Внизу"
+
+connection = "Соединение"
+drag = "Перетаскивание окна"
+drag-live = "Живое"
+drag-ghost = "Призрак"
+drag-in-force-live = "Здесь за мышью следует само окно."
+drag-in-force-ghost = "Здесь за мышью следует затенённая область, а окно перескакивает в неё; по SSH это заметно меньше данных для передачи."
+frame-cap = "Кадров в секунду"
+frame-cap-automatic = "Автоматически"
+frame-cap-chosen = "Число"
+frame-cap-frames = "Кадры"
+frame-cap-in-force = "Здесь экран рисуется не чаще {frames} раз в секунду. Набор текста этого не ждёт."
+scrollback = "Хранимые строки"
+scrollback-text = "Сколько строк окно терминала хранит выше своей верхней кромки. Много окон, полных строк, — это много мегабайтов."
+
+applications = "Приложения"
+folders = "Записи считываются из этих папок."
+problems = "Эти не удалось прочитать, они не показаны:"
+no-problems = "Все записи прочитаны"
+no-problems-text = "Ничего из этих папок не пропущено."

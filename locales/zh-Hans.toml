@@ -1,0 +1,251 @@
+# 简体中文
+
+[meta]
+name = "简体中文"
+code = "zh-Hans"
+fallback = "en"
+
+[cli]
+usage = """
+qdesk                 打开桌面
+  -h, --help          显示此帮助
+  -V, --version       打印版本号
+在桌面上，ctrl+q 退出。"""
+unknown-argument = "qdesk: 未知参数 {argument}；请查看 qdesk --help"
+
+[dock]
+# The clock when the local time zone is unknown: the time shown is UTC and says so.
+clock-utc = "{time} UTC"
+# Stands in for the machine name when the system gives none.
+unknown-machine = "本机"
+launcher = "应用程序"
+# The control at the end of the dock that holds the windows that do not fit.
+more = "更多窗口"
+
+[screen]
+too-small = "终端窗口太小"
+too-small-hint = "桌面至少需要 {columns} 列 × {rows} 行。"
+
+[welcome]
+# Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
+line = "应用程序在 {icon} 后面，也可按 ctrl alt space 然后按 space。"
+close = "知道了"
+
+[category]
+system = "系统"
+development = "开发"
+files = "文件"
+network = "网络"
+office = "办公"
+media = "媒体"
+family = "家庭"
+other = "其他"
+
+[launcher]
+search = "搜索"
+close = "关闭启动器"
+recents = "最近"
+all = "全部"
+installable = "可安装"
+empty = "还没有应用程序"
+empty-hint = "条目存放在 ~/.local/share/quvyta/desktop/apps；安装程序会自动添加一个。"
+no-hits = "没有匹配 {query} 的结果"
+no-hits-hint = "搜索会查找名称、描述和命令。"
+# The second line of a card whose program is not on this machine.
+with-qpac = "使用 qpac 安装"
+with-quvyta = "使用 quvyta 安装"
+install-quvyta = "运行此命令安装 {name}：{command}"
+install-qpac = "打开 qpac 并安装 {package}；装好后 {name} 就会出现在这里。"
+menu-open = "打开 {name}"
+menu-install-qpac = "用 qpac 安装 {name}"
+menu-install-quvyta = "用 quvyta 安装 {name}"
+menu-add-icon = "把 {name} 放到桌面"
+menu-remove-icon = "把 {name} 从桌面移除"
+hint-open = "打开"
+hint-add = "到桌面"
+hint-close = "关闭"
+
+[icon]
+open = "打开"
+open-new = "在新窗口中打开"
+remove = "从桌面移除"
+properties = "属性"
+
+[floor]
+new-terminal = "新建终端"
+add-application = "添加应用"
+arrange = "排列图标"
+settings = "设置"
+# One line in place of the icons on a screen too narrow for them; {icon} is the launcher
+# button's own glyph. The short form is used where the whole one does not fit.
+narrow-hint = "应用程序：{icon}，或 ctrl alt space 再按 space"
+narrow-hint-short = "应用程序：{icon}"
+
+[target]
+# What the Terminal screen runs, where a command would be named.
+shell = "你的 shell"
+
+[properties]
+built-in = "qdesk 内置"
+no-command = "qdesk 的一个界面"
+body = "{id} — {file} — {command}"
+
+[notice]
+# An entry that opens a file: the viewers are not built yet, so nothing pretends to show it.
+no-viewer = "{name} 会打开一个文件，但 qdesk 还没有查看器"
+# A program that could not be started at all: it is not there, or no pseudo-terminal was free.
+start-failed = "{program} 无法启动"
+# The whole sentence: the system's words with the program they belong to.
+start-failed-why = "{program} 无法启动：{reason}"
+install = "正在安装 {name}"
+install-unknown = "{name} 没有说明如何安装"
+unsaved = "无法保存桌面"
+# The list the dock's count opens. It holds this run's notifications and nothing older: it is
+# forgotten when qdesk closes.
+list = "通知"
+list-empty = "还没有任何消息"
+list-empty-hint = "程序在你切换到别处时结束、响铃，以及 qdesk 自身的警告，都会出现在这里。"
+# One row of it: what was said above, and the notification itself.
+list-line = "{heading} — {body}"
+# A notification a program sent with a title of its own: the title and then its words.
+list-said = "{title}：{body}"
+# A window rang the bell: it has no words of its own, so the list says what happened.
+bell = "响了铃"
+# A paste that had nowhere to go: the window in front holds a program that has ended, and its last
+# screen is there to be read, not typed into.
+paste-nowhere = "此窗口的程序已结束，粘贴的文本无处可去"
+
+[window]
+minimize = "最小化"
+maximize = "最大化"
+tile = "平铺窗口"
+close = "关闭"
+restart = "重启"
+# The line a window shows once its program has ended.
+ended = "程序已结束，退出码 {code}。"
+ended-signal = "程序未能结束便被终止。"
+# Closing a window whose program is still running.
+close-title = "关闭 {name}？"
+close-running = "{name} 仍在运行。关闭窗口将结束它。"
+# Leaving qdesk while programs are running.
+quit-title = "退出 qdesk？"
+quit-running = { other = "{n} 个程序仍在运行。退出将结束它们。" }
+quit = "退出"
+tile-narrow = "桌面太窄，无法并排平铺窗口。"
+tile-short = "桌面最多只能并排平铺 {fits} 个窗口。"
+
+[mode]
+# The dock's row while the keys are the desktop's.
+pick = "窗口"
+move = "移动"
+resize = "大小"
+maximize = "填满"
+minimize = "收起"
+close = "关闭"
+tile = "平铺"
+launcher = "应用"
+notices = "通知"
+leave = "返回"
+back = "返回"
+release = "松开"
+far = "每次 {cells} 格"
+
+# The help layer names every key of qdesk by its action. The keys of desktop mode say so: they
+# answer only while the desktop has them, and a line that did not say it would be a promise the
+# key does not keep.
+[keys]
+launcher = "打开启动器"
+close = "关闭已打开的：启动器、列表，然后是桌面模式"
+desktop-mode = "把按键从窗口切到桌面，再切回来"
+notices = "桌面模式：最近的通知"
+window-move = "桌面模式：方向键移动窗口"
+window-resize = "桌面模式：方向键调整窗口大小"
+window-release = "桌面模式：松开；方向键重新选择窗口"
+window-maximize = "桌面模式：铺满桌面，或恢复原来的大小"
+window-minimize = "桌面模式：把窗口收到程序坞"
+window-close = "桌面模式：关闭窗口"
+window-tile = "桌面模式：一次排列所有窗口"
+window-left = "桌面模式：向左选择、移动或调整大小"
+window-right = "桌面模式：向右选择、移动或调整大小"
+window-up = "桌面模式：向上选择、移动或调整大小"
+window-down = "桌面模式：向下选择、移动或调整大小"
+window-left-far = "桌面模式：向左五格"
+window-right-far = "桌面模式：向右五格"
+window-up-far = "桌面模式：向上五格"
+window-down-far = "桌面模式：向下五格"
+
+# Keys of the floor itself, which are in no keymap: the help layer lists them under this screen.
+[help]
+icons-move = "在图标之间移动"
+icons-open = "打开图标"
+icons-clear = "松开图标"
+icons-jump = "一个字母"
+icons-jump-label = "跳到下一个以它开头的图标"
+
+[expected]
+string = "一个字符串"
+boolean = "true 或 false"
+table = "一个表"
+text = "一个字符串，或按语言组织的字符串表"
+string-list = "一个字符串列表"
+size = "两个整数，列数和行数"
+
+[diagnostic]
+title-warning = "某条目有警告"
+title-error = "某条目无法读取"
+at = "{place} — {what}"
+unreadable = "无法读取此文件。"
+not-utf8 = "此文件不是以 UTF-8 编写的。"
+syntax = "此文件不是有效的 TOML。"
+wrong-type = "{key} 应包含 {expected}。"
+invalid-value = "{key} 中的值无法使用。"
+missing-name = "此条目没有名称。"
+missing-launch = "此条目既没有命令，也没有要打开的内容。"
+conflicting-launch = "此条目以多种方式指定了要打开的内容。"
+unknown-category = "没有名为 {value} 的分类；该条目已归入其他。"
+unknown-field = "{key} 是 qdesk 不认识的字段；该条目将在忽略它的情况下使用。"
+no-home = "{key} 以 ~ 开头，但这里没有主文件夹。"
+malformed-line = "有一行无法读取，已跳过。"
+missing-group = "此文件没有 [Desktop Entry] 分组。"
+missing-key = "此文件没有 {key} 行。"
+bad-exec = "无法读取 Exec 行：引号未闭合或使用了不允许的转义符。"
+[settings]
+store-failed = "无法写入设置：{reason}"
+file-problems = "设置文件的部分内容无法读取；其中的内容保持原样，桌面将使用不受其影响的设置。"
+read = "已读取"
+
+appearance = "外观"
+language = "语言"
+theme = "主题"
+glyphs = "字符集"
+glyphs-text = "每个 Quvyta 应用都使用这些字符绘制界面。"
+glyphs-auto = "自动"
+glyphs-nerd = "Nerd Font"
+glyphs-unicode = "Unicode"
+glyphs-ascii = "纯 ASCII"
+
+desktop = "桌面"
+dock = "停靠栏"
+dock-text = "打开的窗口一排停靠在哪条边上。"
+dock-top = "顶部"
+dock-bottom = "底部"
+
+connection = "连接"
+drag = "拖动窗口"
+drag-live = "实时"
+drag-ghost = "幻影"
+drag-in-force-live = "这里窗口本身跟随鼠标。"
+drag-in-force-ghost = "这里一块阴影区域跟随鼠标，窗口跳到该处；通过 SSH 传输的数据量小得多。"
+frame-cap = "每秒帧数"
+frame-cap-automatic = "自动"
+frame-cap-chosen = "固定数值"
+frame-cap-frames = "帧"
+frame-cap-in-force = "这里屏幕每秒最多绘制 {frames} 次。输入永远不会因此等待。"
+scrollback = "保留行数"
+scrollback-text = "终端窗口在顶部之上保留多少行。许多满是行的窗口就是好几兆字节。"
+
+applications = "应用程序"
+folders = "条目从这些文件夹读取。"
+problems = "以下内容无法读取，未予显示："
+no-problems = "所有条目均已读取"
+no-problems-text = "这些文件夹中的内容都没有遗漏。"

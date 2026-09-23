@@ -291,8 +291,9 @@ fn the_subtitle_takes_the_title_then_the_reported_folder_then_the_one_it_started
 }
 
 /// How often the same chatty program asked for a frame under a cap of `frames` a second, and how
-/// long it ran.
-fn chatter(frames: u16) -> (usize, Duration) {
+/// long it ran. `late` gives the cap the way a running desktop gets it: after the programs were
+/// set up, as the settings file is read and as the Settings screen changes it.
+fn chatter(frames: u16, late: bool) -> (usize, Duration) {
     let scratch = Scratch::new("chatter");
     let home = Scratch::new("home");
     // Two thousand lines of eighty characters: a quarter of a megabyte, dozens of reads of the
@@ -304,7 +305,10 @@ fn chatter(frames: u16) -> (usize, Duration) {
         &[],
     );
     let prefs = Prefs { frame_cap: Some(frames), ..Prefs::default() };
-    let (mut sessions, window) = desk(&entry, &home.0, prefs, false);
+    let (mut sessions, window) = desk(&entry, &home.0, if late { Prefs::default() } else { prefs }, false);
+    if late {
+        sessions.set_prefs(prefs, false);
+    }
     let started = Instant::now();
     assert!(matches!(sessions.start(window, &entry, BODY), Start::Running));
     let changes = until_ended(&mut sessions, window);
@@ -313,13 +317,22 @@ fn chatter(frames: u16) -> (usize, Duration) {
 
 #[test]
 fn output_flowing_fast_asks_for_a_frame_at_the_frame_cap_not_at_every_read() {
-    let (capped, elapsed) = chatter(1);
-    let (loose, _) = chatter(240);
+    let (capped, elapsed) = chatter(1, false);
+    let (loose, _) = chatter(240, false);
     // One frame a second: a run of a second or two reports its output that many times, never once
     // per read of the pseudo-terminal.
     let allowed = 2 + usize::try_from(elapsed.as_millis() / 1000).unwrap_or(usize::MAX);
     assert!(capped <= allowed, "a cap of one frame a second reported {capped} times in {elapsed:?}");
     assert!(loose > capped, "the same program with a loose cap reports more often: {loose} against {capped}");
+}
+
+#[test]
+fn a_frame_cap_given_after_the_programs_were_set_up_is_the_one_the_next_program_reports_at() {
+    // The running desktop sets its programs up before it reads the settings file, and the
+    // Settings screen changes the cap long after: both reach the programs this way.
+    let (capped, elapsed) = chatter(1, true);
+    let allowed = 2 + usize::try_from(elapsed.as_millis() / 1000).unwrap_or(usize::MAX);
+    assert!(capped <= allowed, "a cap of one frame a second, given late, reported {capped} times in {elapsed:?}");
 }
 
 /// A desktop of one window, drawn the way the view draws the body of a window.

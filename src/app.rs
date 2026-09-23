@@ -1544,12 +1544,13 @@ impl Desk {
             None => t!("window.ended-signal"),
         };
         // The line stands at the foot of the body, where the design puts it under the last screen,
-        // so the window keeps its shape and the screen can come back above it unchanged.
-        ui.spacer().fill();
+        // so the window keeps its shape and the screen can come back above it unchanged. The
+        // screen above keeps every other row: its last lines are where an error message is.
         ui.row(|ui| {
             // The sentence is what yields on a narrow window: the two ways on must not be the
-            // things a row drops from its end.
-            ui.add(Text::new(said).role("secondary")).width(Length::Fill(1));
+            // things a row drops from its end. It is cut rather than wrapped, so the line stays one
+            // row and takes no more of the last screen than that.
+            ui.add(Text::new(said).role("secondary").no_wrap()).width(Length::Fill(1));
             ui.add(Button::new(t!("window.restart")).on_press(Msg::Restart(id)));
             ui.add(Button::new(t!("window.close")).on_press(Msg::Ask(Ask::Close, id)));
         })
@@ -1724,11 +1725,13 @@ impl Desk {
         let keys = self.launcher.is_none() && self.keys.is_none();
         let opening = targets.clone();
         let hidden = Self::narrow(ui.size());
+        let hint = hidden.then(|| Self::narrow_hint(ui));
         ui.add_with(ContextMenu::new(self.floor_items(&language)), |ui| {
-            if hidden {
+            if let Some(line) = hint {
                 // A narrow screen keeps its room for the windows; the launcher still reaches
-                // every application.
-                ui.spacer().fill();
+                // every application, and one line says how. The welcome, while it is up,
+                // stands over that line and says the same.
+                Self::narrow_hint_view(line, ui);
                 return;
             }
             let floor = Floor::new(names.clone(), move |action| match action {
@@ -1760,6 +1763,31 @@ impl Desk {
             })
             .id(FLOOR)
             .fill();
+        })
+        .fill();
+    }
+
+    /// The one line a floor too narrow for icons shows in their place (3.7): where the
+    /// applications went. The whole line names the keys too; where it does not fit, the shorter
+    /// one names only the dock's button, so nothing is cut half way.
+    fn narrow_hint(ui: &View<'_, Msg>) -> String {
+        let icons = ui.env().icons();
+        let launcher = icons.glyph(desktop::family_icon(icons)).into_owned();
+        let whole = t!("floor.narrow-hint", icon = launcher.as_str());
+        // A cell of floor on either side keeps the line off the screen's edges.
+        if qframe::text::width(&whole) + 2 <= ui.size().width {
+            whole
+        } else {
+            t!("floor.narrow-hint-short", icon = launcher.as_str())
+        }
+    }
+
+    /// The narrow floor's line, quiet and in the middle of the floor.
+    fn narrow_hint_view(line: String, ui: &mut View<'_, Msg>) {
+        ui.column(|ui| {
+            ui.spacer();
+            ui.add(Text::new(line).role("secondary").align(Align::Center).no_wrap()).fill_width();
+            ui.spacer();
         })
         .fill();
     }

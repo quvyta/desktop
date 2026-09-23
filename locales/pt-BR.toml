@@ -1,0 +1,251 @@
+# Português (Brasil)
+
+[meta]
+name = "Português (Brasil)"
+code = "pt-BR"
+fallback = "en"
+
+[cli]
+usage = """
+qdesk                 abre a área de trabalho
+  -h, --help          este texto
+  -V, --version       mostra a versão
+Na área de trabalho, ctrl+q sai."""
+unknown-argument = "qdesk: argumento desconhecido {argument}; veja qdesk --help"
+
+[dock]
+# The clock when the local time zone is unknown: the time shown is UTC and says so.
+clock-utc = "{time} UTC"
+# Stands in for the machine name when the system gives none.
+unknown-machine = "esta máquina"
+launcher = "Aplicativos"
+# The control at the end of the dock that holds the windows that do not fit.
+more = "Mais janelas"
+
+[screen]
+too-small = "Terminal pequeno demais"
+too-small-hint = "A área de trabalho precisa de pelo menos {columns} colunas e {rows} linhas."
+
+[welcome]
+# Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
+line = "Os aplicativos estão atrás de {icon}, ou ctrl alt space e depois space."
+close = "Entendi"
+
+[category]
+system = "Sistema"
+development = "Desenvolvimento"
+files = "Arquivos"
+network = "Rede"
+office = "Escritório"
+media = "Mídia"
+family = "Família"
+other = "Outros"
+
+[launcher]
+search = "Buscar"
+close = "Fechar o lançador"
+recents = "Recentes"
+all = "Todos"
+installable = "Instaláveis"
+empty = "Nenhum aplicativo ainda"
+empty-hint = "As entradas ficam em ~/.local/share/quvyta/desktop/apps; instalar um programa adiciona uma."
+no-hits = "Nada corresponde a {query}"
+no-hits-hint = "A busca considera nomes, descrições e comandos."
+# The second line of a card whose program is not on this machine.
+with-qpac = "instale com qpac"
+with-quvyta = "instale com quvyta"
+install-quvyta = "Execute isto para instalar {name}: {command}"
+install-qpac = "Abra o qpac e instale {package}; {name} aparece aqui assim que estiver instalado."
+menu-open = "Abrir {name}"
+menu-install-qpac = "Instalar {name} com o qpac"
+menu-install-quvyta = "Instalar {name} com o quvyta"
+menu-add-icon = "Colocar {name} na área de trabalho"
+menu-remove-icon = "Remover {name} da área de trabalho"
+hint-open = "abrir"
+hint-add = "para a área de trabalho"
+hint-close = "fechar"
+
+[icon]
+open = "Abrir"
+open-new = "Abrir em uma nova janela"
+remove = "Remover da área de trabalho"
+properties = "Propriedades"
+
+[floor]
+new-terminal = "Novo terminal"
+add-application = "Adicionar um aplicativo"
+arrange = "Organizar ícones"
+settings = "Configurações"
+# One line in place of the icons on a screen too narrow for them; {icon} is the launcher
+# button's own glyph. The short form is used where the whole one does not fit.
+narrow-hint = "Aplicativos: {icon}, ou ctrl alt space e depois space"
+narrow-hint-short = "Aplicativos: {icon}"
+
+[target]
+# What the Terminal screen runs, where a command would be named.
+shell = "seu shell"
+
+[properties]
+built-in = "dentro do qdesk"
+no-command = "uma tela do qdesk"
+body = "{id} — {file} — {command}"
+
+[notice]
+# An entry that opens a file: the viewers are not built yet, so nothing pretends to show it.
+no-viewer = "{name} abre um arquivo, e o qdesk ainda não tem visualizador para ele"
+# A program that could not be started at all: it is not there, or no pseudo-terminal was free.
+start-failed = "Não foi possível iniciar {program}"
+# The whole sentence: the system's words with the program they belong to.
+start-failed-why = "Não foi possível iniciar {program}: {reason}"
+install = "Instalando {name}"
+install-unknown = "{name} não informa como é instalado"
+unsaved = "Não foi possível salvar a área de trabalho"
+# The list the dock's count opens. It holds this run's notifications and nothing older: it is
+# forgotten when qdesk closes.
+list = "Notificações"
+list-empty = "Nada foi dito ainda"
+list-empty-hint = "Um programa que termina enquanto você está em outro lugar, uma campainha e um aviso do próprio qdesk aparecem aqui."
+# One row of it: what was said above, and the notification itself.
+list-line = "{heading} — {body}"
+# A notification a program sent with a title of its own: the title and then its words.
+list-said = "{title}: {body}"
+# A window rang the bell: it has no words of its own, so the list says what happened.
+bell = "tocou a campainha"
+# A paste that had nowhere to go: the window in front holds a program that has ended, and its last
+# screen is there to be read, not typed into.
+paste-nowhere = "O programa desta janela terminou, então o texto colado foi para lugar nenhum"
+
+[window]
+minimize = "Minimizar"
+maximize = "Maximizar"
+tile = "Janelas lado a lado"
+close = "Fechar"
+restart = "Reiniciar"
+# The line a window shows once its program has ended.
+ended = "O programa terminou, código de saída {code}."
+ended-signal = "O programa foi interrompido antes de terminar."
+# Closing a window whose program is still running.
+close-title = "Fechar {name}?"
+close-running = "{name} ainda está em execução. Fechar a janela encerra o programa."
+# Leaving qdesk while programs are running.
+quit-title = "Sair do qdesk?"
+quit-running = { one = "{n} programa ainda está em execução. Sair encerra o programa.", other = "{n} programas ainda estão em execução. Sair os encerra." }
+quit = "Sair"
+tile-narrow = "A área de trabalho é estreita demais para colocar janelas lado a lado."
+tile-short = "A área de trabalho tem espaço para {fits} janelas lado a lado, nada mais."
+
+[mode]
+# The dock's row while the keys are the desktop's.
+pick = "janela"
+move = "move"
+resize = "tamanho"
+maximize = "cheia"
+minimize = "dock"
+close = "fechar"
+tile = "mosaico"
+launcher = "apps"
+notices = "avisos"
+leave = "volta"
+back = "voltar"
+release = "soltar"
+far = "{cells} de cada vez"
+
+# The help layer names every key of qdesk by its action. The keys of desktop mode say so: they
+# answer only while the desktop has them, and a line that did not say it would be a promise the
+# key does not keep.
+[keys]
+launcher = "Abrir o lançador"
+close = "Fechar o que está aberto: o lançador, uma lista, depois o modo desktop"
+desktop-mode = "Tirar as teclas da janela para a área de trabalho e voltar"
+notices = "Modo desktop: as notificações recentes"
+window-move = "Modo desktop: as setas movem a janela"
+window-resize = "Modo desktop: as setas redimensionam a janela"
+window-release = "Modo desktop: soltar; as setas escolhem janelas de novo"
+window-maximize = "Modo desktop: preencher a área de trabalho ou voltar ao tamanho"
+window-minimize = "Modo desktop: levar a janela para a doca"
+window-close = "Modo desktop: fechar a janela"
+window-tile = "Modo desktop: dispor todas as janelas de uma vez"
+window-left = "Modo desktop: escolher, mover ou redimensionar para a esquerda"
+window-right = "Modo desktop: escolher, mover ou redimensionar para a direita"
+window-up = "Modo desktop: escolher, mover ou redimensionar para cima"
+window-down = "Modo desktop: escolher, mover ou redimensionar para baixo"
+window-left-far = "Modo desktop: cinco células para a esquerda"
+window-right-far = "Modo desktop: cinco células para a direita"
+window-up-far = "Modo desktop: cinco células para cima"
+window-down-far = "Modo desktop: cinco células para baixo"
+
+# Keys of the floor itself, which are in no keymap: the help layer lists them under this screen.
+[help]
+icons-move = "Mover entre os ícones"
+icons-open = "Abrir o ícone"
+icons-clear = "Soltar os ícones"
+icons-jump = "uma letra"
+icons-jump-label = "Pular para o próximo ícone que começa com ela"
+
+[expected]
+string = "uma string"
+boolean = "true ou false"
+table = "uma tabela"
+text = "uma string, ou uma tabela de strings por idioma"
+string-list = "uma lista de strings"
+size = "dois números inteiros, colunas e linhas"
+
+[diagnostic]
+title-warning = "Uma entrada tem um aviso"
+title-error = "Não foi possível ler uma entrada"
+at = "{place} — {what}"
+unreadable = "Não foi possível ler este arquivo."
+not-utf8 = "Este arquivo não está escrito em UTF-8."
+syntax = "Este arquivo não é um TOML válido."
+wrong-type = "{key} deve conter {expected}."
+invalid-value = "{key} contém um valor que não pode ser usado."
+missing-name = "Esta entrada não tem nome."
+missing-launch = "Esta entrada não tem nem um comando nem algo para abrir."
+conflicting-launch = "Esta entrada indica de mais de uma forma o que abrir."
+unknown-category = "Não existe uma categoria chamada {value}; a entrada foi para Outros."
+unknown-field = "{key} é um campo que o qdesk não conhece; a entrada é usada sem ele."
+no-home = "{key} começa com ~ e não há uma pasta pessoal aqui."
+malformed-line = "Não foi possível ler uma linha, e ela foi ignorada."
+missing-group = "Este arquivo não tem o grupo [Desktop Entry]."
+missing-key = "Este arquivo não tem a linha {key}."
+bad-exec = "Não foi possível ler a linha Exec: uma aspas não foi fechada ou um escape não é permitido."
+[settings]
+store-failed = "Não foi possível salvar as configurações: {reason}"
+file-problems = "Parte do arquivo de configurações não pôde ser lida; o que está lá é mantido como está e a área de trabalho usa o que se aplica sem isso."
+read = "Entendido"
+
+appearance = "Aparência"
+language = "Idioma"
+theme = "Tema"
+glyphs = "Glifos"
+glyphs-text = "Todos os aplicativos Quvyta desenham com estes glifos."
+glyphs-auto = "Automático"
+glyphs-nerd = "Nerd Font"
+glyphs-unicode = "Unicode"
+glyphs-ascii = "ASCII puro"
+
+desktop = "Área de trabalho"
+dock = "Dock"
+dock-text = "Em qual borda fica a fileira de janelas abertas."
+dock-top = "Superior"
+dock-bottom = "Inferior"
+
+connection = "Conexão"
+drag = "Arrastar uma janela"
+drag-live = "Ao vivo"
+drag-ghost = "Fantasma"
+drag-in-force-live = "Aqui a própria janela segue o mouse."
+drag-in-force-ghost = "Aqui uma área sombreada segue o mouse e a janela salta até ela; pelo SSH, isso é muito menos coisa para enviar."
+frame-cap = "Quadros por segundo"
+frame-cap-automatic = "Automático"
+frame-cap-chosen = "Um número"
+frame-cap-frames = "Quadros"
+frame-cap-in-force = "Aqui a tela é desenhada no máximo {frames} vezes por segundo. Digitar nunca espera por isso."
+scrollback = "Linhas lembradas"
+scrollback-text = "Quantas linhas uma janela de terminal guarda acima da sua borda superior. Muitas janelas cheias de linhas são muitos megabytes."
+
+applications = "Aplicativos"
+folders = "As entradas são lidas destas pastas."
+problems = "Estas não puderam ser lidas e não são exibidas:"
+no-problems = "Todas as entradas foram lidas"
+no-problems-text = "Nada nestas pastas ficou de fora."

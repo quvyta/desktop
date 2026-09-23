@@ -255,9 +255,13 @@ fn opening_an_icon_of_a_program_opens_a_window_running_it_with_its_own_title_in_
     harness.click(3, 1);
     harness.click(3, 1);
     assert_eq!(harness.app().windows().len(), 1, "the icon opened a window:\n{}", harness.screen());
+    // The program's word travels through the pty first: it is waited for, bounded, not assumed
+    // to have come within the first frame.
+    until(&mut harness, "the title the program gave itself", |harness| {
+        strip(harness, front(harness).rect()).contains("derleniyor")
+    });
     let title = strip(&harness, front(&harness).rect());
     assert!(title.contains("Deneme"), "the strip names the application: {title}");
-    assert!(title.contains("derleniyor"), "and carries the title the program gave itself: {title}");
     assert_eq!(decoration(&harness.screen()), None, "no lines, no boxes:\n{}", harness.screen());
 }
 
@@ -637,6 +641,69 @@ fn the_screen_of_an_ended_program_is_still_scrolled_back_through() {
         }
     }
     panic!("scrolling back never reached the start:\n{}", harness.screen());
+}
+
+#[test]
+fn the_lines_set_in_settings_are_as_far_back_as_the_next_window_scrolls() {
+    // Sixty numbered lines, one to a row, and then the end: the window's own screen holds the
+    // last of them and whatever it remembers holds the ones above.
+    let counted = entry(
+        "sayan",
+        "Sayan",
+        &["/bin/sh", "-c", "i=1; while [ $i -le 60 ]; do printf 'satir %s\\n' $i; i=$((i+1)); done"],
+    );
+    let mut harness = desk(vec![counted.clone()], 120, 40);
+    open(&mut harness, &builtin("settings"));
+    // The field of the remembered lines, as the person reaches it: a click into the number it
+    // shows, all of it chosen, and two typed over it.
+    let (_, y) =
+        harness.find("Remembered lines").unwrap_or_else(|| panic!("the setting is on screen:\n{}", harness.screen()));
+    let row = rows(&harness)[usize::try_from(y).expect("a row on screen")].clone();
+    let field = row.chars().position(|glyph| glyph == '❯').unwrap_or_else(|| panic!("the row holds a field: {row}"));
+    harness.click(i32::try_from(field).expect("a column on screen") + 2, y).press("ctrl+a").type_text("2");
+    assert_eq!(harness.app().prefs().scrollback, 2, "the field set the number:\n{}", harness.screen());
+    open(&mut harness, &counted);
+    until_ended(&mut harness);
+    // The wheel goes over a line the program itself wrote.
+    let (x, y) =
+        harness.find("satir ").unwrap_or_else(|| panic!("a line of the program on screen:\n{}", harness.screen()));
+    // The top row of the window's screen, as the number of the line on it.
+    let top = |harness: &Harness<Desk>| -> u32 {
+        let rows = rows(harness);
+        let first = rows
+            .iter()
+            .find_map(|row| {
+                row.split("satir ").nth(1).map(|rest| rest.split_whitespace().next().unwrap_or_default().to_owned())
+            })
+            .unwrap_or_else(|| panic!("a line of the program on screen:\n{}", harness.screen()));
+        first.parse().unwrap_or_else(|_| panic!("a number, not {first:?}"))
+    };
+    let live = top(&harness);
+    // Far more wheel steps than the window could ever give back.
+    for _ in 0..40 {
+        harness.mouse(MouseKind::ScrollUp, x, y);
+    }
+    assert_eq!(top(&harness), live - 2, "two lines remembered, two lines further back:\n{}", harness.screen());
+}
+
+#[test]
+fn the_last_lines_of_an_ended_program_stay_in_sight_above_its_line() {
+    // Sixty numbered lines and then the end. The last of them are where an error message would
+    // be, the very reason the window stays open, so the line that says the program ended goes
+    // under them and never over them.
+    let counted = entry(
+        "sayan",
+        "Sayan",
+        &["/bin/sh", "-c", "i=1; while [ $i -le 60 ]; do printf 'satir %s\\n' $i; i=$((i+1)); done"],
+    );
+    let mut harness = desk(vec![counted.clone()], 80, 24);
+    open(&mut harness, &counted);
+    until_ended(&mut harness);
+    until_screen(&mut harness, "satir 60");
+    let screen = harness.screen();
+    let (_, last) = harness.find("satir 60").unwrap_or_else(|| panic!("the last line is in sight:\n{screen}"));
+    let (_, ended) = harness.find("Restart").unwrap_or_else(|| panic!("the ended line is there:\n{screen}"));
+    assert!(last < ended, "the last line stands above the ended line:\n{screen}");
 }
 
 #[test]

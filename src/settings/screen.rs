@@ -28,8 +28,9 @@ pub const FRAME_CAP_FIELD: &str = "settings-frame-cap";
 /// Width of the drop-downs: enough for the longest theme, language and glyph mode name.
 const CONTROL_WIDTH: u16 = 18;
 
-/// Cells a number field takes: five digits and its two steppers.
-const NUMBER_WIDTH: u16 = 16;
+/// Cells a number field takes: five digits, the room the cursor needs after them, and the two
+/// steppers. Two fewer cut the largest scrollback to its last three digits.
+const NUMBER_WIDTH: u16 = 18;
 
 /// How far the frame cap moves with one step of its field.
 const FRAME_CAP_STEP: f64 = 5.0;
@@ -101,18 +102,6 @@ impl Screen {
     #[must_use]
     pub fn new(problems: Vec<Diagnostic>) -> Self {
         Self { problems, problems_read: false, failure: None }
-    }
-
-    /// What the settings file could not be read as, while it is still shown.
-    #[must_use]
-    pub fn problems(&self) -> &[Diagnostic] {
-        if self.problems_read { &[] } else { &self.problems }
-    }
-
-    /// Why the last write failed, if it did.
-    #[must_use]
-    pub fn failure(&self) -> Option<&str> {
-        self.failure.as_deref()
     }
 }
 

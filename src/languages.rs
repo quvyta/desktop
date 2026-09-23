@@ -168,6 +168,43 @@ fn the_checks_catch_what_they_are_for() {
     assert_eq!(language("zh-Hans"), "zh");
 }
 
+/// The share of `messages`' plain texts that read exactly as their English ones, in hundredths.
+///
+/// A handful are the same on purpose — `Nerd Font`, `Unicode`, `{time} UTC`, a name — so the
+/// share is small in a translated file and near a hundred in one that was never translated.
+fn untranslated(english: &BTreeMap<String, Text>, messages: &BTreeMap<String, Text>) -> usize {
+    let mut same = 0;
+    let mut plain = 0;
+    for (key, text) in messages {
+        let (Text::Plain(text), Some(Text::Plain(original))) = (text, english.get(key)) else { continue };
+        plain += 1;
+        if text == original {
+            same += 1;
+        }
+    }
+    same * 100 / plain.max(1)
+}
+
+/// The most of a translation's texts that may read as the English ones.
+const MOST_UNTRANSLATED: usize = 15;
+
+#[test]
+fn every_translation_is_written_in_its_own_language() {
+    // Every key being there says nothing about the words: a file of English under another name
+    // passes every check above. This one reads the words.
+    let (english_file, english_text) = locales()[0];
+    let (_, english) = messages(english_file, english_text);
+    for (file, text) in &locales()[1..] {
+        let (_, messages) = messages(file, text);
+        let share = untranslated(&english, &messages);
+        assert!(share <= MOST_UNTRANSLATED, "{file}: {share}% of it is still English");
+    }
+    // And the check is one: English under a German name is refused.
+    let fake = english_text.replace("code = \"en\"", "code = \"de\"");
+    let (_, fake) = messages("de.toml", &fake);
+    assert!(untranslated(&english, &fake) > MOST_UNTRANSLATED, "an English file named German is caught");
+}
+
 #[test]
 fn the_command_line_help_fits_a_standard_terminal_in_every_language() {
     for (file, text) in locales() {

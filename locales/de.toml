@@ -1,0 +1,251 @@
+# Deutsch
+
+[meta]
+name = "Deutsch"
+code = "de"
+fallback = "en"
+
+[cli]
+usage = """
+qdesk                 Desktop öffnen
+  -h, --help          dieser Text
+  -V, --version       Version ausgeben
+Auf dem Desktop beendet ctrl+q."""
+unknown-argument = "qdesk: unbekanntes Argument {argument}; siehe qdesk --help"
+
+[dock]
+# The clock when the local time zone is unknown: the time shown is UTC and says so.
+clock-utc = "{time} UTC"
+# Stands in for the machine name when the system gives none.
+unknown-machine = "dieser Rechner"
+launcher = "Anwendungen"
+# The control at the end of the dock that holds the windows that do not fit.
+more = "Weitere Fenster"
+
+[screen]
+too-small = "Terminal zu klein"
+too-small-hint = "Der Desktop braucht mindestens {columns} Spalten und {rows} Zeilen."
+
+[welcome]
+# Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
+line = "Die Anwendungen sind hinter {icon}, oder ctrl alt space und dann space."
+close = "Verstanden"
+
+[category]
+system = "System"
+development = "Entwicklung"
+files = "Dateien"
+network = "Netzwerk"
+office = "Büro"
+media = "Medien"
+family = "Familie"
+other = "Sonstiges"
+
+[launcher]
+search = "Suchen"
+close = "Launcher schließen"
+recents = "Zuletzt"
+all = "Alle"
+installable = "Installierbar"
+empty = "Noch keine Anwendungen"
+empty-hint = "Einträge liegen in ~/.local/share/quvyta/desktop/apps; beim Installieren eines Programms wird einer angelegt."
+no-hits = "Nichts passt zu {query}"
+no-hits-hint = "Die Suche prüft Namen, Beschreibungen und Befehle."
+# The second line of a card whose program is not on this machine.
+with-qpac = "mit qpac installieren"
+with-quvyta = "mit quvyta installieren"
+install-quvyta = "Führe das aus, um {name} zu installieren: {command}"
+install-qpac = "Öffne qpac und installiere {package}; {name} erscheint hier, sobald es da ist."
+menu-open = "{name} öffnen"
+menu-install-qpac = "{name} mit qpac installieren"
+menu-install-quvyta = "{name} mit quvyta installieren"
+menu-add-icon = "{name} auf den Desktop legen"
+menu-remove-icon = "{name} vom Desktop entfernen"
+hint-open = "öffnen"
+hint-add = "zum Desktop"
+hint-close = "schließen"
+
+[icon]
+open = "Öffnen"
+open-new = "In neuem Fenster öffnen"
+remove = "Vom Desktop entfernen"
+properties = "Eigenschaften"
+
+[floor]
+new-terminal = "Neues Terminal"
+add-application = "Anwendung hinzufügen"
+arrange = "Symbole anordnen"
+settings = "Einstellungen"
+# One line in place of the icons on a screen too narrow for them; {icon} is the launcher
+# button's own glyph. The short form is used where the whole one does not fit.
+narrow-hint = "Anwendungen: {icon} oder ctrl alt space, dann space"
+narrow-hint-short = "Anwendungen: {icon}"
+
+[target]
+# What the Terminal screen runs, where a command would be named.
+shell = "deine Shell"
+
+[properties]
+built-in = "in qdesk enthalten"
+no-command = "eine Ansicht von qdesk"
+body = "{id} — {file} — {command}"
+
+[notice]
+# An entry that opens a file: the viewers are not built yet, so nothing pretends to show it.
+no-viewer = "{name} öffnet eine Datei, und qdesk hat dafür noch keine Ansicht"
+# A program that could not be started at all: it is not there, or no pseudo-terminal was free.
+start-failed = "{program} konnte nicht gestartet werden"
+# The whole sentence: the system's words with the program they belong to.
+start-failed-why = "{program} konnte nicht gestartet werden: {reason}"
+install = "{name} wird installiert"
+install-unknown = "{name} gibt nicht an, wie es installiert wird"
+unsaved = "Der Desktop konnte nicht gespeichert werden"
+# The list the dock's count opens. It holds this run's notifications and nothing older: it is
+# forgotten when qdesk closes.
+list = "Benachrichtigungen"
+list-empty = "Es wurde noch nichts gemeldet"
+list-empty-hint = "Ein Programm, das endet, während du woanders bist, eine Glocke und eine Warnung von qdesk selbst landen hier."
+# One row of it: what was said above, and the notification itself.
+list-line = "{heading} — {body}"
+# A notification a program sent with a title of its own: the title and then its words.
+list-said = "{title}: {body}"
+# A window rang the bell: it has no words of its own, so the list says what happened.
+bell = "hat die Glocke geläutet"
+# A paste that had nowhere to go: the window in front holds a program that has ended, and its last
+# screen is there to be read, not typed into.
+paste-nowhere = "Das Programm dieses Fensters ist beendet, der eingefügte Text ging also ins Leere"
+
+[window]
+minimize = "Minimieren"
+maximize = "Maximieren"
+tile = "Fenster anordnen"
+close = "Schließen"
+restart = "Neu starten"
+# The line a window shows once its program has ended.
+ended = "Das Programm ist beendet, Exit-Code {code}."
+ended-signal = "Das Programm wurde gestoppt, bevor es enden konnte."
+# Closing a window whose program is still running.
+close-title = "{name} schließen?"
+close-running = "{name} läuft noch. Beim Schließen des Fensters wird es beendet."
+# Leaving qdesk while programs are running.
+quit-title = "qdesk beenden?"
+quit-running = { one = "{n} Programm läuft noch. Beim Beenden wird es gestoppt.", other = "{n} Programme laufen noch. Beim Beenden werden sie gestoppt." }
+quit = "Beenden"
+tile-narrow = "Der Desktop ist zu schmal, um Fenster nebeneinander anzuordnen."
+tile-short = "Auf dem Desktop ist Platz für {fits} angeordnete Fenster, mehr nicht."
+
+[mode]
+# The dock's row while the keys are the desktop's.
+pick = "Fenster"
+move = "verschieben"
+resize = "Größe"
+maximize = "füllen"
+minimize = "Dock"
+close = "schließen"
+tile = "anordnen"
+launcher = "Apps"
+notices = "Meldungen"
+leave = "zurück"
+back = "zurück"
+release = "loslassen"
+far = "{cells} auf einmal"
+
+# The help layer names every key of qdesk by its action. The keys of desktop mode say so: they
+# answer only while the desktop has them, and a line that did not say it would be a promise the
+# key does not keep.
+[keys]
+launcher = "Den Starter öffnen"
+close = "Das Offene schließen: den Starter, eine Liste, dann den Desktop-Modus"
+desktop-mode = "Die Tasten aus dem Fenster auf den Desktop holen und zurück"
+notices = "Desktop-Modus: die letzten Benachrichtigungen"
+window-move = "Desktop-Modus: die Pfeile bewegen das Fenster"
+window-resize = "Desktop-Modus: die Pfeile ändern die Fenstergröße"
+window-release = "Desktop-Modus: loslassen; die Pfeile wählen wieder Fenster"
+window-maximize = "Desktop-Modus: den Desktop füllen oder die alte Größe zurückgeben"
+window-minimize = "Desktop-Modus: das Fenster unten in die Dock-Leiste legen"
+window-close = "Desktop-Modus: das Fenster schließen"
+window-tile = "Desktop-Modus: alle Fenster auf einmal anordnen"
+window-left = "Desktop-Modus: nach links wählen, bewegen oder in der Größe ändern"
+window-right = "Desktop-Modus: nach rechts wählen, bewegen oder in der Größe ändern"
+window-up = "Desktop-Modus: nach oben wählen, bewegen oder in der Größe ändern"
+window-down = "Desktop-Modus: nach unten wählen, bewegen oder in der Größe ändern"
+window-left-far = "Desktop-Modus: fünf Zellen nach links"
+window-right-far = "Desktop-Modus: fünf Zellen nach rechts"
+window-up-far = "Desktop-Modus: fünf Zellen nach oben"
+window-down-far = "Desktop-Modus: fünf Zellen nach unten"
+
+# Keys of the floor itself, which are in no keymap: the help layer lists them under this screen.
+[help]
+icons-move = "Zwischen den Symbolen wechseln"
+icons-open = "Das Symbol öffnen"
+icons-clear = "Die Symbole loslassen"
+icons-jump = "ein Buchstabe"
+icons-jump-label = "Zum nächsten Symbol springen, das damit beginnt"
+
+[expected]
+string = "eine Zeichenkette"
+boolean = "true oder false"
+table = "eine Tabelle"
+text = "eine Zeichenkette oder eine Tabelle aus Zeichenketten nach Sprache"
+string-list = "eine Liste von Zeichenketten"
+size = "zwei ganze Zahlen: Spalten und Zeilen"
+
+[diagnostic]
+title-warning = "Ein Eintrag hat eine Warnung"
+title-error = "Ein Eintrag konnte nicht gelesen werden"
+at = "{place} — {what}"
+unreadable = "Diese Datei konnte nicht gelesen werden."
+not-utf8 = "Diese Datei ist nicht in UTF-8 geschrieben."
+syntax = "Diese Datei ist kein gültiges TOML."
+wrong-type = "{key} sollte {expected} enthalten."
+invalid-value = "{key} enthält einen Wert, der nicht verwendet werden kann."
+missing-name = "Dieser Eintrag hat keinen Namen."
+missing-launch = "Dieser Eintrag hat weder einen Befehl noch etwas zum Öffnen."
+conflicting-launch = "Dieser Eintrag sagt auf mehr als eine Weise, was geöffnet werden soll."
+unknown-category = "Es gibt keine Kategorie namens {value}; der Eintrag ist in Sonstiges gelandet."
+unknown-field = "{key} ist ein Feld, das qdesk nicht kennt; der Eintrag wird ohne es verwendet."
+no-home = "{key} beginnt mit ~ und es gibt hier keinen Home-Ordner."
+malformed-line = "Eine Zeile konnte nicht gelesen werden und wurde übersprungen."
+missing-group = "Diese Datei hat keine [Desktop Entry]-Gruppe."
+missing-key = "Diese Datei hat keine {key}-Zeile."
+bad-exec = "Die Exec-Zeile kann nicht gelesen werden: Ein Anführungszeichen ist nicht geschlossen oder ein Escape ist nicht erlaubt."
+[settings]
+store-failed = "Die Einstellungen konnten nicht geschrieben werden: {reason}"
+file-problems = "Ein Teil der Einstellungsdatei konnte nicht gelesen werden; was dort steht, bleibt wie es ist, und der Desktop nutzt das, was ohne es gilt."
+read = "Verstanden"
+
+appearance = "Erscheinungsbild"
+language = "Sprache"
+theme = "Farbschema"
+glyphs = "Zeichen"
+glyphs-text = "Jede Quvyta-Anwendung zeichnet mit diesen Zeichen."
+glyphs-auto = "Automatisch"
+glyphs-nerd = "Nerd Font"
+glyphs-unicode = "Unicode"
+glyphs-ascii = "Reines ASCII"
+
+desktop = "Desktop"
+dock = "Dock"
+dock-text = "An welchem Rand die Reihe offener Fenster sitzt."
+dock-top = "Oben"
+dock-bottom = "Unten"
+
+connection = "Verbindung"
+drag = "Fenster ziehen"
+drag-live = "Live"
+drag-ghost = "Ghost"
+drag-in-force-live = "Hier folgt das Fenster selbst der Maus."
+drag-in-force-ghost = "Hier folgt ein schattierter Bereich der Maus und das Fenster springt dorthin; über SSH ist das deutlich weniger zu übertragen."
+frame-cap = "Bilder pro Sekunde"
+frame-cap-automatic = "Automatisch"
+frame-cap-chosen = "Eine Zahl"
+frame-cap-frames = "Bilder"
+frame-cap-in-force = "Hier wird der Bildschirm höchstens {frames} Mal pro Sekunde gezeichnet. Tippen wartet nie darauf."
+scrollback = "Aufbewahrte Zeilen"
+scrollback-text = "Wie viele Zeilen ein Terminalfenster über seiner oberen Kante behält. Viele fenstervolle Zeilen sind viele Megabyte."
+
+applications = "Anwendungen"
+folders = "Einträge werden aus diesen Ordnern gelesen."
+problems = "Diese konnten nicht gelesen werden und werden nicht angezeigt:"
+no-problems = "Jeder Eintrag wurde gelesen"
+no-problems-text = "Aus diesen Ordnern wurde nichts ausgelassen."

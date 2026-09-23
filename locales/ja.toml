@@ -1,0 +1,251 @@
+# 日本語
+
+[meta]
+name = "日本語"
+code = "ja"
+fallback = "en"
+
+[cli]
+usage = """
+qdesk                 デスクトップを開く
+  -h, --help          このヘルプを表示
+  -V, --version       バージョンを表示
+デスクトップ上で ctrl+q で終了します。"""
+unknown-argument = "qdesk: 不明な引数 {argument} です。qdesk --help を参照してください"
+
+[dock]
+# The clock when the local time zone is unknown: the time shown is UTC and says so.
+clock-utc = "{time} UTC"
+# Stands in for the machine name when the system gives none.
+unknown-machine = "このマシン"
+launcher = "アプリケーション"
+# The control at the end of the dock that holds the windows that do not fit.
+more = "その他のウィンドウ"
+
+[screen]
+too-small = "ターミナルが小さすぎます"
+too-small-hint = "デスクトップには最低 {columns} 列 × {rows} 行が必要です。"
+
+[welcome]
+# Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
+line = "アプリケーションは {icon} の中にあります。ctrl alt space を押してから space でも開けます。"
+close = "わかりました"
+
+[category]
+system = "システム"
+development = "開発"
+files = "ファイル"
+network = "ネットワーク"
+office = "オフィス"
+media = "メディア"
+family = "ファミリー"
+other = "その他"
+
+[launcher]
+search = "検索"
+close = "ランチャーを閉じる"
+recents = "最近"
+all = "すべて"
+installable = "インストール可能"
+empty = "まだアプリケーションがありません"
+empty-hint = "エントリは ~/.local/share/quvyta/desktop/apps にあります。プログラムをインストールすると追加されます。"
+no-hits = "{query} に一致するものはありません"
+no-hits-hint = "名前、説明、コマンドを検索します。"
+# The second line of a card whose program is not on this machine.
+with-qpac = "qpac でインストール"
+with-quvyta = "quvyta でインストール"
+install-quvyta = "これを実行すると {name} がインストールされます: {command}"
+install-qpac = "qpac を開いて {package} をインストールしてください。完了すれば {name} がここに表示されます。"
+menu-open = "{name} を開く"
+menu-install-qpac = "qpac で {name} をインストール"
+menu-install-quvyta = "quvyta で {name} をインストール"
+menu-add-icon = "{name} をデスクトップに置く"
+menu-remove-icon = "{name} をデスクトップから外す"
+hint-open = "開く"
+hint-add = "デスクトップへ"
+hint-close = "閉じる"
+
+[icon]
+open = "開く"
+open-new = "新しいウィンドウで開く"
+remove = "デスクトップから外す"
+properties = "プロパティ"
+
+[floor]
+new-terminal = "新しいターミナル"
+add-application = "アプリケーションを追加"
+arrange = "アイコンを並べる"
+settings = "設定"
+# One line in place of the icons on a screen too narrow for them; {icon} is the launcher
+# button's own glyph. The short form is used where the whole one does not fit.
+narrow-hint = "アプリケーション: {icon}、または ctrl alt space の後に space"
+narrow-hint-short = "アプリケーション: {icon}"
+
+[target]
+# What the Terminal screen runs, where a command would be named.
+shell = "お使いのシェル"
+
+[properties]
+built-in = "qdesk 内蔵"
+no-command = "qdesk の画面"
+body = "{id} — {file} — {command}"
+
+[notice]
+# An entry that opens a file: the viewers are not built yet, so nothing pretends to show it.
+no-viewer = "{name} はファイルを開きますが、qdesk にはまだ対応するビューアがありません"
+# A program that could not be started at all: it is not there, or no pseudo-terminal was free.
+start-failed = "{program} を起動できませんでした"
+# The whole sentence: the system's words with the program they belong to.
+start-failed-why = "{program} を起動できませんでした：{reason}"
+install = "{name} をインストールしています"
+install-unknown = "{name} はインストール方法を指定していません"
+unsaved = "デスクトップを保存できませんでした"
+# The list the dock's count opens. It holds this run's notifications and nothing older: it is
+# forgotten when qdesk closes.
+list = "通知"
+list-empty = "まだ何も通知されていません"
+list-empty-hint = "他のウィンドウにいる間に終了したプログラムの通知、ベル、qdesk 自身の警告がここに届きます。"
+# One row of it: what was said above, and the notification itself.
+list-line = "{heading} — {body}"
+# A notification a program sent with a title of its own: the title and then its words.
+list-said = "{title}：{body}"
+# A window rang the bell: it has no words of its own, so the list says what happened.
+bell = "ベルを鳴らしました"
+# A paste that had nowhere to go: the window in front holds a program that has ended, and its last
+# screen is there to be read, not typed into.
+paste-nowhere = "このウィンドウのプログラムは終了しているため、貼り付けたテキストは行き場がありませんでした"
+
+[window]
+minimize = "最小化"
+maximize = "最大化"
+tile = "ウィンドウを並べる"
+close = "閉じる"
+restart = "再起動"
+# The line a window shows once its program has ended.
+ended = "プログラムは終了しました。終了コード {code}。"
+ended-signal = "プログラムは終了する前に停止させられました。"
+# Closing a window whose program is still running.
+close-title = "{name} を閉じますか？"
+close-running = "{name} は実行中です。ウィンドウを閉じると終了します。"
+# Leaving qdesk while programs are running.
+quit-title = "qdesk を終了しますか？"
+quit-running = { other = "{n} 個のプログラムが実行中です。終了するとそれらも終了します。" }
+quit = "終了"
+tile-narrow = "デスクトップが狭すぎて、ウィンドウを横に並べられません。"
+tile-short = "デスクトップに並べられるウィンドウは {fits} 個までです。"
+
+[mode]
+# The dock's row while the keys are the desktop's.
+pick = "ウィンドウ"
+move = "移動"
+resize = "サイズ"
+maximize = "全画面"
+minimize = "格納"
+close = "閉じる"
+tile = "並べる"
+launcher = "アプリ"
+notices = "通知"
+leave = "戻る"
+back = "もどる"
+release = "はなす"
+far = "{cells} ずつ"
+
+# The help layer names every key of qdesk by its action. The keys of desktop mode say so: they
+# answer only while the desktop has them, and a line that did not say it would be a promise the
+# key does not keep.
+[keys]
+launcher = "ランチャーを開く"
+close = "開いているものを閉じる: ランチャー、一覧、続いてデスクトップモード"
+desktop-mode = "キーをウィンドウからデスクトップへ、そして戻す"
+notices = "デスクトップモード: 最近の通知"
+window-move = "デスクトップモード: 矢印でウィンドウを移動"
+window-resize = "デスクトップモード: 矢印でウィンドウの大きさを変更"
+window-release = "デスクトップモード: はなす; 矢印でふたたびウィンドウを選ぶ"
+window-maximize = "デスクトップモード: デスクトップ全体に広げる、または元の大きさに戻す"
+window-minimize = "デスクトップモード: ウィンドウをドックにしまう"
+window-close = "デスクトップモード: ウィンドウを閉じる"
+window-tile = "デスクトップモード: すべてのウィンドウを並べる"
+window-left = "デスクトップモード: 左へ選ぶ・移動・サイズ変更"
+window-right = "デスクトップモード: 右へ選ぶ・移動・サイズ変更"
+window-up = "デスクトップモード: 上へ選ぶ・移動・サイズ変更"
+window-down = "デスクトップモード: 下へ選ぶ・移動・サイズ変更"
+window-left-far = "デスクトップモード: 左へ5マス"
+window-right-far = "デスクトップモード: 右へ5マス"
+window-up-far = "デスクトップモード: 上へ5マス"
+window-down-far = "デスクトップモード: 下へ5マス"
+
+# Keys of the floor itself, which are in no keymap: the help layer lists them under this screen.
+[help]
+icons-move = "アイコンの間を移動"
+icons-open = "アイコンを開く"
+icons-clear = "アイコンをはなす"
+icons-jump = "1文字"
+icons-jump-label = "その文字ではじまる次のアイコンへ移動"
+
+[expected]
+string = "文字列"
+boolean = "true または false"
+table = "テーブル"
+text = "文字列、または言語ごとの文字列の表"
+string-list = "文字列のリスト"
+size = "2つの整数（列と行）"
+
+[diagnostic]
+title-warning = "エントリに警告があります"
+title-error = "エントリを読み込めませんでした"
+at = "{place} — {what}"
+unreadable = "このファイルは読み込めませんでした。"
+not-utf8 = "このファイルは UTF-8 で書かれていません。"
+syntax = "このファイルは有効な TOML ではありません。"
+wrong-type = "{key} には {expected} が入る必要があります。"
+invalid-value = "{key} の値は使用できません。"
+missing-name = "このエントリには名前がありません。"
+missing-launch = "このエントリにはコマンドも開く対象もありません。"
+conflicting-launch = "このエントリは開く対象を複数の方法で指定しています。"
+unknown-category = "{value} というカテゴリはありません。「その他」に分類されました。"
+unknown-field = "{key} は qdesk が認識しない項目です。これを除いて使用されます。"
+no-home = "{key} は ~ で始まりますが、ここにはホームフォルダがありません。"
+malformed-line = "読み取れない行があったためスキップしました。"
+missing-group = "このファイルには [Desktop Entry] グループがありません。"
+missing-key = "このファイルには {key} の行がありません。"
+bad-exec = "Exec 行を読み取れません。引用符が閉じていないか、エスケープが不正です。"
+[settings]
+store-failed = "設定を書き込めませんでした: {reason}"
+file-problems = "設定ファイルの一部を読み取れませんでした。その部分はそのままにし、デスクトップはそれ以外で有効な設定を使用します。"
+read = "了解"
+
+appearance = "外観"
+language = "言語"
+theme = "テーマ"
+glyphs = "グリフ"
+glyphs-text = "Quvyta のすべてのアプリケーションは、これらのグリフで描画します。"
+glyphs-auto = "自動"
+glyphs-nerd = "Nerd Font"
+glyphs-unicode = "Unicode"
+glyphs-ascii = "ASCII のみ"
+
+desktop = "デスクトップ"
+dock = "ドック"
+dock-text = "開いているウィンドウの列をどの端に置くかを決めます。"
+dock-top = "上"
+dock-bottom = "下"
+
+connection = "接続"
+drag = "ウィンドウのドラッグ"
+drag-live = "リアルタイム"
+drag-ghost = "ゴースト"
+drag-in-force-live = "ここではウィンドウ自体がマウスに追従します。"
+drag-in-force-ghost = "ここでは網掛けの領域がマウスに追従し、ウィンドウはそこに移動します。SSH 経由では送るデータがずっと少なくて済みます。"
+frame-cap = "毎秒のフレーム数"
+frame-cap-automatic = "自動"
+frame-cap-chosen = "数値"
+frame-cap-frames = "フレーム数"
+frame-cap-in-force = "ここでは画面の描画は毎秒最大 {frames} 回です。入力が待たされることはありません。"
+scrollback = "保持する行数"
+scrollback-text = "端末ウィンドウが上端より上に保持する行数です。行でいっぱいのウィンドウが多数あると、メガバイト単位になります。"
+
+applications = "アプリケーション"
+folders = "これらのフォルダーから項目を読み込みます。"
+problems = "以下は読み込めなかったため表示していません："
+no-problems = "すべての項目を読み込みました"
+no-problems-text = "これらのフォルダーで除外されたものはありません。"

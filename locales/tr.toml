@@ -17,8 +17,6 @@ unknown-machine = "bu makine"
 launcher = "Uygulamalar"
 # Dock'a sığmayan pencereleri tutan öğe.
 more = "Öteki pencereler"
-# Sağ uçtaki okunmamış bildirim sayısı ve ona basınca açılan liste.
-notices = "Bildirimler"
 
 [screen]
 too-small = "Terminal çok küçük"
@@ -72,6 +70,8 @@ new-terminal = "Yeni terminal"
 add-application = "Uygulama ekle"
 arrange = "Simgeleri diz"
 settings = "Ayarlar"
+narrow-hint = "Uygulamalar: {icon} ya da ctrl alt space, sonra space"
+narrow-hint-short = "Uygulamalar: {icon}"
 
 [target]
 shell = "kabuğun"

@@ -19,8 +19,6 @@ unknown-machine = "this machine"
 launcher = "Applications"
 # The control at the end of the dock that holds the windows that do not fit.
 more = "More windows"
-# The count of unread notifications at the right end, and what a press on it opens.
-notices = "Notifications"
 
 [screen]
 too-small = "Terminal too small"
@@ -76,6 +74,10 @@ new-terminal = "New terminal"
 add-application = "Add an application"
 arrange = "Arrange icons"
 settings = "Settings"
+# One line in place of the icons on a screen too narrow for them; {icon} is the launcher
+# button's own glyph. The short form is used where the whole one does not fit.
+narrow-hint = "Applications: {icon}, or ctrl alt space then space"
+narrow-hint-short = "Applications: {icon}"
 
 [target]
 # What the Terminal screen runs, where a command would be named.

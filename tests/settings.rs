@@ -145,6 +145,28 @@ fn the_screen_speaks_turkish_when_the_language_does() {
 }
 
 #[test]
+fn the_screen_speaks_every_language_qdesk_carries() {
+    // The word for the connection section, as each file has it: a file the runtime did not load
+    // would show the English word instead.
+    let words = [
+        ("de", "Verbindung"),
+        ("es", "Conexión"),
+        ("fr", "Connexion"),
+        ("ja", "接続"),
+        ("pt-BR", "Conexão"),
+        ("ru", "Соединение"),
+        ("zh-Hans", "连接"),
+    ];
+    for (code, word) in words {
+        let mut harness = screen(100, 30);
+        harness.set_locale(code).render();
+        let shown = harness.screen();
+        assert!(shown.contains(word), "{code}: no `{word}`:\n{shown}");
+        assert!(!shown.contains("Connection"), "{code}: English is left:\n{shown}");
+    }
+}
+
+#[test]
 fn a_changed_drag_style_is_shown_at_once_with_what_it_comes_to_here() {
     let mut harness = screen(80, 24);
     let before = harness.screen();
@@ -290,4 +312,15 @@ fn the_numbers_in_force_are_readable_in_their_fields() {
     let shown = harness.screen();
     assert!(shown.contains("500"), "the scrollback field shows its number:\n{shown}");
     assert!(shown.contains("45"), "the frame cap field shows its number:\n{shown}");
+}
+
+#[test]
+fn the_largest_numbers_are_whole_in_their_fields() {
+    // The widest numbers the fields take: nothing of them is cut away behind the steppers.
+    let prefs = Prefs { frame_cap: Some(60), scrollback: 10_000, ..Prefs::default() };
+    let harness = screen_of(prefs, false, Vec::new(), 100, 30);
+    let shown = harness.screen();
+    assert!(shown.contains("10000"), "the scrollback field shows all five digits:\n{shown}");
+    let lines = shown.lines().find(|line| line.contains("Remembered lines")).unwrap_or_default();
+    assert!(!lines.contains('…'), "the row is not cut: {lines}");
 }

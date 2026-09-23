@@ -26,7 +26,17 @@ pub fn keymap() -> (&'static str, &'static str) {
 /// English comes first: it is the language every other file is checked against.
 #[must_use]
 pub fn locales() -> &'static [(&'static str, &'static str)] {
-    &[("en.toml", include_str!("../locales/en.toml")), ("tr.toml", include_str!("../locales/tr.toml"))]
+    &[
+        ("en.toml", include_str!("../locales/en.toml")),
+        ("tr.toml", include_str!("../locales/tr.toml")),
+        ("de.toml", include_str!("../locales/de.toml")),
+        ("es.toml", include_str!("../locales/es.toml")),
+        ("fr.toml", include_str!("../locales/fr.toml")),
+        ("ja.toml", include_str!("../locales/ja.toml")),
+        ("pt-BR.toml", include_str!("../locales/pt-BR.toml")),
+        ("ru.toml", include_str!("../locales/ru.toml")),
+        ("zh-Hans.toml", include_str!("../locales/zh-Hans.toml")),
+    ]
 }
 
 #[cfg(test)]

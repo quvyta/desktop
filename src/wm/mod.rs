@@ -58,12 +58,6 @@ impl Windows {
         Self { screen, windows: Vec::new(), focus: None, next: WindowId::first(), cascade: 0 }
     }
 
-    /// The size of the terminal the desktop is on.
-    #[must_use]
-    pub fn screen(&self) -> Size {
-        self.screen
-    }
-
     /// The part of the terminal windows may use, in the desktop's own coordinates.
     ///
     /// The dock is always there and always one row, at whichever edge the settings name, so the
@@ -152,12 +146,6 @@ impl Windows {
     #[must_use]
     pub fn focused(&self) -> Option<&Window> {
         self.focus.and_then(|id| self.get(id))
-    }
-
-    /// The drawn window the cell `(x, y)` belongs to: the one in front, where they overlap.
-    #[must_use]
-    pub fn at(&self, x: i32, y: i32) -> Option<WindowId> {
-        self.visible().rev().find(|window| window.rect.contains(x, y)).map(|window| window.id)
     }
 
     /// The first open window that came from the entry `entry`, from the front.
@@ -678,19 +666,6 @@ mod tests {
         desk.minimize(first);
         let second = desk.open(&entry("two"));
         assert_eq!(desk.focus(), Some(second));
-    }
-
-    #[test]
-    fn the_cell_under_the_pointer_belongs_to_the_window_in_front() {
-        let mut desk = desk();
-        let first = desk.open(&entry("one"));
-        desk.move_to(first, 0, 0);
-        let second = desk.open(&entry("two"));
-        desk.move_to(second, 0, 0);
-        assert_eq!(desk.at(1, 1), Some(second));
-        desk.minimize(second);
-        assert_eq!(desk.at(1, 1), Some(first));
-        assert_eq!(desk.at(79, 22), None);
     }
 
     #[test]
