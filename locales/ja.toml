@@ -383,6 +383,5 @@ no-room = "デスクトップに {name} ウィジェットを置く場所があ�
 unshown = "壁紙を表示できませんでした"
 refused = "{name} は壁紙として使えません"
 not-text = "そのパスは設定ファイルに保存できるテキストではありません"
-nowhere = "画像を qdesk のデータフォルダに保存できませんでした"
 pick-title = "壁紙を選択"
 pick-cancel = "キャンセル"

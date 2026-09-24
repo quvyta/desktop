@@ -14,7 +14,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use qframe::date::{DateTime, local_offset};
 use qframe::desktop::XdgDirs;
-use qframe::env::{AssetDirs, Env};
+use qframe::env::Env;
+use qframe::graphics::Graphics;
 use qframe::keymap::Scope;
 use qframe::prelude::*;
 use qframe::runtime::{ClipboardEvent, Confirm, FrameLimit, Task, Termination, Update, UpdateCheck};
@@ -46,7 +47,7 @@ use crate::wm::{self, Exit, Grip, SPACES, TooSmall, Window, WindowId, Windows, l
 
 pub use follow::FolderNews;
 pub use gadgets::note_field;
-pub use wallpaper::{PICKER, PICTURE, Purpose, Shown, Wallpaper, can_draw};
+pub use wallpaper::{PICKER, PICTURE, Purpose, Shown, Wallpaper};
 
 /// Below this many columns the desktop cannot be drawn and the screen says so.
 pub const MIN_WIDTH: u16 = 40;
@@ -128,14 +129,14 @@ pub fn run() -> io::Result<()> {
 
 /// Whether the terminal the desktop is drawn on is reached over a network.
 ///
-/// The answer is the framework's own, [`Env::remote`], so every Quvyta application reads the
-/// connection the same way and the desktop keeps no rule of its own about SSH. The environment
-/// the runtime draws with is built inside [`Runtime::run`], after the application has been made,
-/// and an application is never handed it outside a frame; the two settings that follow the
-/// connection are decided between frames, so the answer is asked for here. Only the built-in
-/// files are loaded: nothing of the person's own is read twice.
+/// The answer is the framework's own rule, the one [`Env::remote`] answers in a view, so every
+/// Quvyta application reads the connection the same way and the desktop keeps no rule of its own
+/// about SSH. The settings that follow the connection (how often a program's output may ask for a
+/// frame, the power actions offered, the size a wallpaper is decoded at) are decided between
+/// frames, where no environment is handed out, so the desktop asks once here, before the runtime
+/// starts, and keeps the answer. [`Env::remote_session`] reads two variables and no file.
 fn remote_link() -> bool {
-    Env::load(&AssetDirs::default()).is_ok_and(|env| env.remote())
+    Env::remote_session()
 }
 
 /// The system clock in milliseconds since 1970-01-01 00:00 UTC; negative before it.
@@ -328,9 +329,9 @@ pub enum Msg {
     /// decodes.
     SetWallpaper(PathBuf),
     /// A picture was decoded for the floor, on the decoding of this run, for this purpose.
-    WallpaperDecoded(u64, PathBuf, Purpose, Result<ImageData, ImageError>),
-    /// One of qdesk's own pictures was written into its folder, or why it could not be.
-    OurWallpaper(Result<PathBuf, String>),
+    WallpaperDecoded(u64, wallpapers::Picture, Purpose, Result<ImageData, ImageError>),
+    /// The terminal draws pictures this way now: before the first frame and whenever it changes.
+    Graphics(Graphics),
     /// Something happened in the file picker that chooses a picture for the floor.
     WallpaperPicker(FilePickerMsg),
     /// The file picker was closed without a choice.
@@ -572,8 +573,12 @@ impl Desk {
     }
 
     /// Whether the terminal the desktop is drawn on is reached over a network, which is what
-    /// [`Env::remote`] answers. It decides how often a program's output may ask for a frame; the
-    /// drag style no longer asks it anything.
+    /// [`Env::remote_session`] answers before the runtime starts. It is the desktop's one answer
+    /// about the connection: how often a program's output may ask for a frame, whether the power
+    /// actions are offered, the frame cap the Settings screen shows and the size a wallpaper is
+    /// decoded at all read it. The drag style no longer asks it anything. A screen test that says
+    /// `true` here also calls [`Harness::set_remote`](qframe::runtime::Harness::set_remote), so the
+    /// framework's own pace agrees.
     #[must_use]
     pub fn remote(mut self, remote: bool) -> Self {
         self.remote = remote;
@@ -698,6 +703,13 @@ impl Desk {
     #[must_use]
     pub fn locked(&self) -> bool {
         self.lock.is_some()
+    }
+
+    /// The shortest time between two reports of output from a program started now: one frame
+    /// of the frame cap in force on this connection.
+    #[must_use]
+    pub fn output_pace(&self) -> Duration {
+        self.programs.pace()
     }
 
     /// The windows of the desktop.
@@ -2019,7 +2031,7 @@ impl Desk {
             Msg::Close => self.on_close(),
             Msg::Resized(size) => {
                 self.windows.resize(size);
-                Command::none()
+                self.wallpaper_resized(size)
             }
             Msg::Window(action) => self.on_window(action),
             Msg::Dock(id) => self.on_dock(id),
@@ -2079,11 +2091,11 @@ impl Desk {
             Msg::DesktopFolder(message) => self.on_folder(message),
             Msg::NewFolder => self.ask_name(FileManagerMsg::NewFolder(String::new())),
             Msg::RenameEntry(name) => self.ask_name(FileManagerMsg::Rename(name)),
-            Msg::SetWallpaper(path) => self.choose_wallpaper(path),
-            Msg::WallpaperDecoded(run, path, purpose, decoded) => {
-                self.on_wallpaper_decoded(run, path, purpose, decoded)
+            Msg::SetWallpaper(path) => self.choose_wallpaper(wallpapers::Picture::File(path)),
+            Msg::WallpaperDecoded(run, picture, purpose, decoded) => {
+                self.on_wallpaper_decoded(run, picture, purpose, decoded)
             }
-            Msg::OurWallpaper(written) => self.on_our_wallpaper(written),
+            Msg::Graphics(graphics) => self.wallpaper_graphics(graphics),
             Msg::WallpaperPicker(message) => self.on_wallpaper_picker(message),
             Msg::CloseWallpaperPicker => self.close_wallpaper_picker(),
             Msg::FilesView(id, view) => {
@@ -3013,6 +3025,12 @@ impl App for Desk {
 
     fn resized(&self, size: Size) -> Option<Msg> {
         Some(Msg::Resized(size))
+    }
+
+    /// The wallpaper is decoded at the size the terminal shows: a kitty terminal is sent many
+    /// more pixels than half blocks draw.
+    fn graphics(&self, graphics: Graphics) -> Option<Msg> {
+        Some(Msg::Graphics(graphics))
     }
 
     /// How often the screen may be drawn: what the person set, or the framework's own pace when

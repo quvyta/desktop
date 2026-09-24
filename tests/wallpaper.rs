@@ -16,8 +16,10 @@ use std::time::Instant;
 
 use qdesk::app::{Desk, Shown};
 use qdesk::apps::Environment;
+use qdesk::wallpapers::{MOST, OURS, Picture};
 use qframe::color::{ColorDepth, Rgb};
 use qframe::event::{MouseButton, MouseKind};
+use qframe::graphics::Graphics;
 use qframe::icons::GlyphMode;
 use qframe::prelude::*;
 
@@ -225,20 +227,104 @@ fn remove_on_the_settings_screen_gives_the_floor_its_colour_back_and_takes_the_l
 }
 
 #[test]
-fn an_included_picture_is_put_in_the_data_folder_and_named_by_its_path() {
+fn an_included_picture_is_decoded_from_the_program_and_the_settings_name_it_builtin() {
     let scratch = Scratch::new();
     let mut harness = scratch.desk(&support::ICONS);
     open_icon(&mut harness, "Settings");
     harness.click_text("Pick one");
-    harness.click_text("Dusk");
-    let path = scratch.data().join("quvyta/desktop/wallpapers/dusk.png");
-    until(&mut harness, "the included picture", |harness| harness.app().wallpaper().path() == Some(path.as_path()));
-    assert_eq!(fs::read(&path).expect("written"), qdesk::wallpapers::OURS[1].bytes);
-    assert!(!plain_floor(&harness, HIGH), "it is drawn:\n{}", harness.screen());
-    assert_eq!(harness.buffer()[(HIGH.0, HIGH.1)].symbol(), "▀");
-    let line = format!("wallpaper = \"{}\"", path.display());
-    until(&mut harness, "the file written", |_| scratch.settings().contains(&line));
-    assert_eq!(harness.app().settings_screen().wallpaper().ours, Some(1), "the drop-down shows which");
+    harness.click_text("Tide");
+    let tide = Picture::Ours(OURS[2]);
+    until(&mut harness, "the included picture", |harness| harness.app().wallpaper().picture() == Some(&tide));
+    until(&mut harness, "the file written", |_| scratch.settings().contains("wallpaper = \"builtin:tide\""));
+    assert!(!scratch.data().exists(), "nothing is written into the data folder");
+    assert_eq!(harness.buffer()[(HIGH.0, HIGH.1)].symbol(), "▀", "it is drawn:\n{}", harness.screen());
+    assert_eq!(harness.app().settings_screen().wallpaper().ours, Some(2), "the drop-down shows which");
+    assert_eq!(harness.app().settings_screen().wallpaper().name.as_deref(), Some("Tide"));
+
+    // The next run decodes it from the program again.
+    let mut again = scratch.desk(&support::ICONS);
+    until(&mut again, "the picture after a restart", |harness| harness.buffer()[(HIGH.0, HIGH.1)].symbol() == "▀");
+    assert!(!scratch.data().exists());
+}
+
+#[test]
+fn a_path_version_0_1_7_wrote_one_of_ours_into_is_still_that_picture_when_its_file_is_gone() {
+    let scratch = Scratch::new();
+    let old = scratch.data().join("quvyta/desktop/wallpapers/ember.png");
+    fs::write(scratch.config().join("desktop.conf"), format!("wallpaper = \"{}\"\n", old.display())).expect("file");
+    let mut harness = scratch.desk(&support::ICONS);
+    until(&mut harness, "the picture", |harness| harness.buffer()[(HIGH.0, HIGH.1)].symbol() == "▀");
+    assert!(!old.exists(), "it was never read from there");
+    assert_eq!(harness.app().settings_screen().wallpaper().ours, Some(0));
+    assert_eq!(harness.app().settings_screen().wallpaper().name.as_deref(), Some("Ember"));
+    assert!(scratch.settings().contains(&old.display().to_string()), "reading writes nothing");
+}
+
+/// A picture far larger than any floor, of two halves side by side, so the size it is decoded at
+/// is the size it was asked for.
+fn wide(path: &Path) {
+    picture(path, 2400, 1200, |x, _| if x < 1200 { TOP } else { BOTTOM });
+}
+
+/// The width and height the picture on the floor was decoded at, once it is.
+fn decoded(harness: &Harness<Desk>) -> Option<(u32, u32)> {
+    match harness.app().wallpaper().shown() {
+        Shown::Ready(data) => Some((data.width(), data.height())),
+        _ => None,
+    }
+}
+
+#[test]
+fn the_picture_is_decoded_at_the_size_the_terminal_shows_and_again_when_that_changes() {
+    let scratch = Scratch::new();
+    let file = scratch.pictures().join("genis.png");
+    wide(&file);
+    fs::write(scratch.config().join("desktop.conf"), format!("wallpaper = \"{}\"\n", file.display())).expect("file");
+    let mut harness = scratch.desk(&[]);
+    until(&mut harness, "the half blocks' picture", |harness| decoded(harness) == Some((960, 480)));
+    assert_eq!(harness.app().wallpaper().asked(), Some(MOST));
+
+    // The floor is 140 by 43 cells: ten by twenty pixels a cell.
+    harness.set_graphics(Graphics::Kitty).render();
+    assert_eq!(harness.app().wallpaper().asked(), Some((1400, 860)));
+    until(&mut harness, "the kitty picture", |harness| decoded(harness) == Some((1400, 700)));
+
+    harness.resize(100, 30);
+    assert_eq!(harness.app().wallpaper().asked(), Some((1000, 580)), "a smaller floor asks for less");
+    until(&mut harness, "the smaller picture", |harness| decoded(harness) == Some((1000, 500)));
+
+    harness.set_graphics(Graphics::HalfBlock).render();
+    assert_eq!(harness.app().wallpaper().asked(), Some(MOST));
+    until(&mut harness, "the half blocks' picture again", |harness| decoded(harness) == Some((960, 480)));
+}
+
+#[test]
+fn a_kitty_terminal_over_ssh_is_sent_twice_the_half_blocks_pixels() {
+    let scratch = Scratch::new();
+    let file = scratch.pictures().join("genis.png");
+    wide(&file);
+    fs::write(scratch.config().join("desktop.conf"), format!("wallpaper = \"{}\"\n", file.display())).expect("file");
+    let mut harness = support::desk_over(&scratch.config(), scratch.environment(None), &[], SIZE, true);
+    until(&mut harness, "the half blocks' picture", |harness| decoded(harness) == Some((960, 480)));
+    harness.set_graphics(Graphics::Kitty).render();
+    assert_eq!(harness.app().wallpaper().asked(), Some((280, 172)));
+    until(&mut harness, "the kitty picture", |harness| decoded(harness) == Some((280, 140)));
+}
+
+#[test]
+fn a_sixel_terminal_is_sent_a_cells_worth_of_pixels_here_and_twice_the_half_blocks_over_ssh() {
+    for (remote, asked, got) in [(false, (1400, 860), (1400, 700)), (true, (280, 172), (280, 140))] {
+        let scratch = Scratch::new();
+        let file = scratch.pictures().join("genis.png");
+        wide(&file);
+        fs::write(scratch.config().join("desktop.conf"), format!("wallpaper = \"{}\"\n", file.display()))
+            .expect("file");
+        let mut harness = support::desk_over(&scratch.config(), scratch.environment(None), &[], SIZE, remote);
+        until(&mut harness, "the half blocks' picture", |harness| decoded(harness) == Some((960, 480)));
+        harness.set_graphics(Graphics::Sixel).render();
+        assert_eq!(harness.app().wallpaper().asked(), Some(asked), "over ssh: {remote}");
+        until(&mut harness, "the sixel picture", |harness| decoded(harness) == Some(got));
+    }
 }
 
 #[test]
@@ -393,8 +479,8 @@ fn a_file_chosen_that_is_not_a_picture_is_refused_and_the_floor_is_left_as_it_wa
     open_icon(&mut harness, "Settings");
     harness.click_text("Choose…");
     until(&mut harness, "the picker", |harness| harness.screen().contains("sahte.png"));
-    // A click on the file the picker stands on chooses it, as Enter does.
-    harness.click_text("sahte.png");
+    // A double click on the file chooses it, as Enter does; a single click only stands on it.
+    harness.click_text("sahte.png").click_text("sahte.png");
     until(&mut harness, "the refusal", |harness| harness.screen().contains("sahte.png is not the wallpaper"));
     assert!(harness.screen().contains("not a PNG, JPEG, GIF or WebP"), "{}", harness.screen());
     assert!(plain_floor(&harness, HIGH));
@@ -447,4 +533,179 @@ fn a_relative_path_in_the_settings_file_is_said_with_its_line_and_left_out() {
     assert!(loaded.diagnostics[0].location().contains("desktop.conf:2"), "{:?}", loaded.diagnostics);
     let harness = scratch.desk(&support::ICONS);
     assert_eq!(harness.app().wallpaper().path(), None);
+}
+
+/// The cells that show the picture in half blocks: `▀` in two of its colours.
+fn picture_cells(harness: &Harness<Desk>) -> Vec<(u16, u16)> {
+    let mut cells = Vec::new();
+    for y in 0..SIZE.1 {
+        for x in 0..SIZE.0 {
+            if harness.buffer()[(x, y)].symbol() == "▀" {
+                cells.push((x, y));
+            }
+        }
+    }
+    cells
+}
+
+#[test]
+fn a_kitty_terminal_draws_the_picture_itself_on_a_floor_nothing_stands_on() {
+    let scratch = Scratch::new();
+    let file = scratch.pictures().join("deniz.png");
+    two_tone(&file);
+    fs::write(scratch.config().join("desktop.conf"), format!("wallpaper = \"{}\"\n", file.display())).expect("file");
+    let mut harness = scratch.desk(&[]);
+    until(&mut harness, "the picture", |harness| half_block(harness, HIGH, TOP, TOP));
+    harness.set_graphics(Graphics::Kitty).render();
+    assert!(picture_cells(&harness).is_empty(), "no half block is left:\n{}", harness.screen());
+    for cell in [HIGH, MIDDLE, LOW, (0, 0)] {
+        assert!(plain_floor(&harness, cell), "{cell:?} is ground for the terminal's pixels:\n{}", harness.screen());
+    }
+    assert!(harness.screen().contains("14:32"), "the dock is drawn over it:\n{}", harness.screen());
+
+    harness.set_graphics(Graphics::HalfBlock).render();
+    assert!(half_block(&harness, HIGH, TOP, TOP), "half blocks again where the terminal cannot");
+}
+
+/// The text colour the framework marks a picture's cells with on `ground`, where the terminal is
+/// to show its pixels: a space in a colour far from the ground's in every channel. A cell still
+/// holding it after the frame is painted is one the terminal puts pixels in.
+fn marker(ground: Rgb) -> Rgb {
+    let far = |channel: u8, offset: u8| if channel < 128 { 255 - offset } else { offset };
+    Rgb::new(far(ground.r, 3), far(ground.g, 7), far(ground.b, 4))
+}
+
+/// The cells the terminal shows the picture's own pixels in: nothing was painted over their mark.
+fn pixel_cells(harness: &Harness<Desk>) -> Vec<(u16, u16)> {
+    let canvas = harness.env().theme().color("canvas").expect("a canvas colour");
+    let mark = marker(canvas);
+    let mut cells = Vec::new();
+    for y in 0..SIZE.1 {
+        for x in 0..SIZE.0 {
+            if harness.buffer()[(x, y)].symbol() == " "
+                && harness.bg(x, y) == Some(canvas)
+                && harness.fg(x, y) == Some(mark)
+            {
+                cells.push((x, y));
+            }
+        }
+    }
+    cells
+}
+
+/// The screen as it stands drawn with half blocks and with `graphics`: whatever hides the picture
+/// in half blocks hides it there too, and the picture shows, as pixels or half blocks, in every
+/// cell it shows in with half blocks. Answers how many of those cells are pixels.
+fn same_cover(harness: &mut Harness<Desk>, graphics: Graphics, what: &str) -> usize {
+    harness.set_graphics(Graphics::HalfBlock).render();
+    let mut shown = picture_cells(harness);
+    shown.sort_unstable();
+    harness.set_graphics(graphics).render();
+    let pixels = pixel_cells(harness);
+    let mut there: Vec<(u16, u16)> = pixels.iter().copied().chain(picture_cells(harness)).collect();
+    there.sort_unstable();
+    let through: Vec<&(u16, u16)> = there.iter().filter(|cell| shown.binary_search(cell).is_err()).collect();
+    assert!(
+        through.is_empty(),
+        "{graphics:?}, {what}: the picture shows through at {through:?}:\n{}",
+        harness.screen()
+    );
+    let holes: Vec<&(u16, u16)> = shown.iter().filter(|cell| there.binary_search(cell).is_err()).collect();
+    assert!(holes.is_empty(), "{graphics:?}, {what}: the picture is missing at {holes:?}:\n{}", harness.screen());
+    pixels.len()
+}
+
+/// Walks a desktop with icons through what stands on a picture: the icons' tiles, the floor's
+/// menu, a clock widget, the launcher, the help and a Settings window, asking at each that
+/// `graphics` covers the picture exactly where half blocks do. Answers the pixel cells of each.
+fn walk_the_covers(graphics: Graphics) -> Vec<(&'static str, usize)> {
+    let scratch = Scratch::new();
+    let file = scratch.pictures().join("deniz.png");
+    two_tone(&file);
+    fs::write(scratch.config().join("desktop.conf"), format!("wallpaper = \"{}\"\n", file.display())).expect("file");
+    let mut harness = scratch.desk(&support::ICONS);
+    until(&mut harness, "the picture", |harness| half_block(harness, HIGH, TOP, TOP));
+    let mut pixels = Vec::new();
+    pixels.push(("the icons", same_cover(&mut harness, graphics, "the icons")));
+    harness.mouse(MouseKind::Down(MouseButton::Right), i32::from(MIDDLE.0), i32::from(MIDDLE.1));
+    harness.mouse(MouseKind::Up(MouseButton::Right), i32::from(MIDDLE.0), i32::from(MIDDLE.1));
+    assert!(harness.screen().contains("Add a widget"), "the floor's menu is open:\n{}", harness.screen());
+    pixels.push(("the floor's menu", same_cover(&mut harness, graphics, "the floor's menu")));
+    harness.click_text("Add a widget");
+    let (x, y) = harness.find("Clock").unwrap_or_else(|| panic!("a clock is offered:\n{}", harness.screen()));
+    harness.click(x, y);
+    assert_eq!(harness.app().gadgets().len(), 1, "a clock stands on the floor:\n{}", harness.screen());
+    pixels.push(("a clock", same_cover(&mut harness, graphics, "a clock")));
+    harness.press("space");
+    pixels.push(("the launcher", same_cover(&mut harness, graphics, "the launcher")));
+    harness.press("esc");
+    harness.press("f1");
+    pixels.push(("the help", same_cover(&mut harness, graphics, "the help")));
+    harness.press("esc");
+    harness.press("space");
+    harness.type_text("Settings");
+    harness.press("enter");
+    assert_eq!(harness.app().windows().len(), 1, "a Settings window is open:\n{}", harness.screen());
+    pixels.push(("a Settings window", same_cover(&mut harness, graphics, "a Settings window")));
+    pixels
+}
+
+/// The cells marked as a picture's are the framework's; if its mark changed, this file would
+/// look for the wrong colour and every covering test would pass with no pixels at all.
+#[test]
+fn the_mark_looked_for_is_the_one_the_picture_leaves() {
+    let scratch = Scratch::new();
+    let file = scratch.pictures().join("deniz.png");
+    two_tone(&file);
+    fs::write(scratch.config().join("desktop.conf"), format!("wallpaper = \"{}\"\n", file.display())).expect("file");
+    let mut harness = scratch.desk(&[]);
+    until(&mut harness, "the picture", |harness| half_block(harness, HIGH, TOP, TOP));
+    harness.set_graphics(Graphics::Kitty).render();
+    for cell in [HIGH, MIDDLE, LOW] {
+        assert!(pixel_cells(&harness).contains(&cell), "{cell:?} is marked for pixels:\n{}", harness.screen());
+    }
+}
+
+/// Whatever hides the picture where it is drawn with half blocks hides it where the terminal
+/// draws it with the kitty protocol, and the picture still shows as pixels between the icons, the
+/// widget and the windows: the terminal places it once in every free rectangle. The help lays a
+/// backdrop over the whole screen, and a dimmed picture is drawn with half blocks.
+#[test]
+fn whatever_covers_the_picture_in_half_blocks_covers_it_on_a_kitty_terminal_too() {
+    for (what, pixels) in walk_the_covers(Graphics::Kitty) {
+        if what == "the help" {
+            assert_eq!(pixels, 0, "under the help's backdrop the picture is dimmed half blocks");
+        } else {
+            assert!(pixels > 1000, "with {what} most of the floor is still the terminal's pixels: {pixels} cells");
+        }
+    }
+}
+
+/// The same on a sixel terminal, which paints the picture into the cells: it is written only where
+/// nothing at all stands on it, so with icons on the floor it is drawn with half blocks, over none
+/// of what stands on it.
+#[test]
+fn whatever_covers_the_picture_in_half_blocks_covers_it_on_a_sixel_terminal_too() {
+    for (what, pixels) in walk_the_covers(Graphics::Sixel) {
+        assert_eq!(pixels, 0, "with {what} the picture is half blocks");
+    }
+}
+
+/// A sixel terminal is written the picture's pixels on a floor nothing stands on, and half
+/// blocks again as soon as a window opens over it.
+#[test]
+fn a_sixel_terminal_draws_the_picture_itself_on_a_floor_nothing_stands_on() {
+    let scratch = Scratch::new();
+    let file = scratch.pictures().join("deniz.png");
+    two_tone(&file);
+    fs::write(scratch.config().join("desktop.conf"), format!("wallpaper = \"{}\"\n", file.display())).expect("file");
+    let mut harness = scratch.desk(&[]);
+    until(&mut harness, "the picture", |harness| half_block(harness, HIGH, TOP, TOP));
+    let pixels = same_cover(&mut harness, Graphics::Sixel, "an empty floor");
+    assert!(picture_cells(&harness).is_empty(), "no half block is left:\n{}", harness.screen());
+    assert_eq!(usize::from(SIZE.0) * usize::from(SIZE.1 - 1), pixels, "the whole floor is the terminal's pixels");
+    harness.press("space");
+    harness.type_text("Settings");
+    harness.press("enter");
+    assert_eq!(same_cover(&mut harness, Graphics::Sixel, "a Settings window"), 0, "a window turns it to half blocks");
 }

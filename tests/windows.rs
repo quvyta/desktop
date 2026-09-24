@@ -6,6 +6,8 @@
 
 mod support;
 
+use std::time::Duration;
+
 use qdesk::app::{Ask, Desk, Keys, Msg};
 use qdesk::settings::{self, DragStyle};
 use qdesk::wm::{Window, WindowId};
@@ -629,4 +631,48 @@ fn the_first_window_says_once_how_windows_are_resized_and_a_restart_remembers() 
     assert_eq!(again.app().windows().len(), 1);
     assert!(!again.screen().contains("resize from their edges"), "said once only:\n{}", again.screen());
     let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// The Settings window of a desktop opened with two clicks on its icon, scrolled until the frame
+/// cap's line shows: what that line says.
+fn frame_cap_line(mut harness: Harness<Desk>) -> String {
+    harness.click(3, 4);
+    harness.click(3, 4);
+    assert_eq!(harness.app().windows().len(), 1, "the window opened:\n{}", harness.screen());
+    let body = (FIRST.x + i32::from(FIRST.width) / 2, FIRST.y + i32::from(FIRST.height) / 2);
+    for _ in 0..200 {
+        // The sentence wraps inside the window: its two rows, cut to the window and joined.
+        let screen = harness.screen();
+        let rows: Vec<String> = screen
+            .lines()
+            .map(|line| {
+                let inside: String = line
+                    .chars()
+                    .skip(usize::try_from(FIRST.x).expect("on screen"))
+                    .take(usize::from(FIRST.width))
+                    .collect();
+                inside.replace('▌', " ").trim().to_owned()
+            })
+            .collect();
+        if let Some(at) = rows.iter().position(|row| row.contains("times a second")) {
+            let joined = format!("{} {}", rows[at.saturating_sub(1)], rows[at]);
+            return joined.split_whitespace().collect::<Vec<_>>().join(" ");
+        }
+        harness.mouse(MouseKind::ScrollDown, body.0, body.1);
+    }
+    panic!("the frame cap's line never showed:\n{}", harness.screen())
+}
+
+#[test]
+fn the_settings_window_says_the_frame_cap_the_connection_gives() {
+    let here = frame_cap_line(desk(80, 24));
+    assert!(here.contains("at most 60 times a second"), "a local terminal draws 60 frames a second: {here}");
+    let over_ssh = frame_cap_line(desk_over_ssh(80, 24));
+    assert!(over_ssh.contains("at most 20 times a second"), "an SSH link draws 20: {over_ssh}");
+}
+
+#[test]
+fn a_programs_output_asks_for_frames_at_the_pace_the_connection_gives() {
+    assert_eq!(desk(80, 24).app().output_pace(), Duration::from_secs(1) / 60, "sixty frames a second here");
+    assert_eq!(desk_over_ssh(80, 24).app().output_pace(), Duration::from_secs(1) / 20, "twenty over SSH");
 }

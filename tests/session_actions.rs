@@ -137,7 +137,7 @@ fn desk(scratch: &Scratch, remote: bool) -> Harness<Desk> {
         .remote(remote)
         .watch_within(PATIENCE);
     let mut harness = Harness::with_env(app, env(), 80, 24);
-    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
+    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true).set_remote(remote);
     harness
 }
 

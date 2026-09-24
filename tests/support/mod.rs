@@ -157,9 +157,10 @@ pub fn harness_with(catalog: Catalog, desktop: Desktop, width: u16, height: u16)
 
 /// The usual test desktop, drawn on a terminal reached over a network.
 ///
-/// The framework's environment answers the connection for the running desktop; a test says it
-/// here instead, because the environment a test draws in is never remote — it has to draw the
-/// same wherever it runs.
+/// The running desktop takes the framework's answer about the connection once, as it starts
+/// ([`Desk::remote`]); a test gives it here instead, because a test has to draw the same wherever
+/// it runs. The harness is told too ([`Harness::set_remote`]), so the framework's side of the
+/// screen draws as it would over SSH.
 #[must_use]
 pub fn desk_over_ssh(width: u16, height: u16) -> Harness<Desk> {
     let desktop = Desktop {
@@ -182,7 +183,7 @@ fn built(catalog: Catalog, desktop: Desktop, width: u16, height: u16, remote: bo
         .remote(remote)
         .watch_within(PATIENCE);
     let mut harness = Harness::with_env(app, env(), width, height);
-    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
+    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true).set_remote(remote);
     harness
 }
 
@@ -274,6 +275,19 @@ pub fn draw(app: Desk, width: u16, height: u16) -> Harness<Desk> {
 /// folder of its own as well as a settings file.
 #[must_use]
 pub fn desk_at(config: &Path, apps: Environment, icons: &[&str], width: u16, height: u16) -> Harness<Desk> {
+    desk_over(config, apps, icons, (width, height), false)
+}
+
+/// [`desk_at`] on a terminal that is `remote` or not: reached over SSH, as
+/// [`Env::remote_session`] answers where the desktop really runs. The desktop and the harness are
+/// both told, as in [`desk_over_ssh`].
+pub fn desk_over(
+    config: &Path,
+    apps: Environment,
+    icons: &[&str],
+    (width, height): (u16, u16),
+    remote: bool,
+) -> Harness<Desk> {
     let loaded = qdesk::settings::load_in(config);
     let clock = Box::new(|| MOMENT * 1_000);
     let desktop = Desktop {
@@ -288,8 +302,9 @@ pub fn desk_at(config: &Path, apps: Environment, icons: &[&str], width: u16, hei
         .catalog(catalog())
         .desktop(desktop)
         .settings(loaded.settings, loaded.prefs, loaded.diagnostics)
-        .watch_within(PATIENCE);
+        .watch_within(PATIENCE)
+        .remote(remote);
     let mut harness = Harness::with_env(app, env(), width, height);
-    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
+    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true).set_remote(remote);
     harness
 }

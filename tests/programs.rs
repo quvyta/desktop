@@ -211,7 +211,7 @@ fn desk_over_ssh(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> 
         .remote(true)
         .watch_within(PATIENCE);
     let mut harness = Harness::with_env(app, env, width, height);
-    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
+    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true).set_remote(true);
     harness
 }
 

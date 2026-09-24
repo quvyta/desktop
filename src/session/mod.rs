@@ -365,6 +365,13 @@ impl Sessions {
         self
     }
 
+    /// The shortest time between two reports of a program's output that the programs started
+    /// from now on keep: one frame of the frame cap in force.
+    #[must_use]
+    pub fn pace(&self) -> Duration {
+        self.coalesce
+    }
+
     /// Takes in settings the person changed.
     ///
     /// It reaches the programs started from now on: a running pseudo-terminal keeps the

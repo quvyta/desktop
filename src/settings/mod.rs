@@ -42,6 +42,7 @@ pub use screen::{
 };
 
 use crate::apps::{Diagnostic, DiagnosticKind, Position};
+use crate::wallpapers::Picture;
 
 /// The desktop's id in the Quvyta ecosystem: its settings are `desktop.conf` and its other
 /// configuration files are under `desktop/`.
@@ -239,8 +240,8 @@ impl Prefs {
             .choice(FLOOR_COLOR, FloorColor::ALL.map(FloorColor::name), FloorColor::default().name())
             .choice(FLOOR_STYLE, FloorStyle::ALL.map(FloorStyle::name), FloorStyle::default().name())
             // A path read from anywhere else than the folder qdesk happened to start in, so a
-            // relative one is said and left out rather than guessed at.
-            .optional(WALLPAPER, SettingKind::check(|path: &String| Path::new(path).is_absolute()))
+            // relative one is said and left out rather than guessed at; or one of qdesk's own.
+            .optional(WALLPAPER, SettingKind::check(|text: &String| Picture::parse(text).is_some()))
             .flag(FOLDERS_IN_EXPLORER, true)
             .flag(STATUS_STRIP, true)
             .choice(DRAG_STYLE, DragStyle::ALL.map(DragStyle::name), DragStyle::default().name())
@@ -323,23 +324,24 @@ pub fn set_floor(settings: &mut Settings, floor: Option<FloorColor>, style: Opti
     }
 }
 
-/// The picture `settings` lay over the floor: an absolute path, or `None` for none.
+/// The picture `settings` lay over the floor: one of qdesk's own (`builtin:tide`), a file by its
+/// absolute path, or `None` for none.
 #[must_use]
-pub fn wallpaper(settings: &Settings) -> Option<PathBuf> {
-    settings.get::<String>(WALLPAPER).map(PathBuf::from).filter(|path| path.is_absolute())
+pub fn wallpaper(settings: &Settings) -> Option<Picture> {
+    settings.get::<String>(WALLPAPER).and_then(|text| Picture::parse(&text))
 }
 
 /// Puts the floor's picture into `settings`, or takes it out with `None`. Nothing else in the file
 /// is touched. A path that is not text is not written, since the file is text; `false` says so.
-pub fn set_wallpaper(settings: &mut Settings, picture: Option<&Path>) -> bool {
+pub fn set_wallpaper(settings: &mut Settings, picture: Option<&Picture>) -> bool {
     match picture {
         None => {
             settings.remove(WALLPAPER);
             true
         }
-        Some(path) => match path.to_str() {
+        Some(picture) => match picture.text() {
             Some(text) => {
-                settings.set(WALLPAPER, text.to_owned());
+                settings.set(WALLPAPER, text);
                 true
             }
             None => false,
@@ -364,7 +366,7 @@ pub struct Loaded {
     /// What the file says the desktop should be, with defaults where it says nothing usable.
     pub prefs: Prefs,
     /// The picture the file lays over the floor, when it names one.
-    pub wallpaper: Option<PathBuf>,
+    pub wallpaper: Option<Picture>,
     /// What the file could not be read as; each names the file, the line and the column.
     pub diagnostics: Vec<Diagnostic>,
 }

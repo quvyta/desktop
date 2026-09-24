@@ -414,7 +414,5 @@ unshown = "The wallpaper could not be shown"
 # A picture that was chosen could not be used; the body says why.
 refused = "{name} is not the wallpaper"
 not-text = "Its path is not text the settings file can keep"
-# There is no data folder to put the included picture in.
-nowhere = "The picture could not be put in qdesk's data folder"
 pick-title = "Choose a wallpaper"
 pick-cancel = "Cancel"

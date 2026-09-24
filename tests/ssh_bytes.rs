@@ -91,6 +91,17 @@ fn write(path: &Path, text: &str) {
     std::fs::write(path, text).unwrap_or_else(|why| panic!("writing {}: {why}", path.display()));
 }
 
+/// What the terminal under measurement answers to the desktop's question about pictures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Answer {
+    /// Only its attributes, late and without sixel: pictures are half blocks.
+    Attributes,
+    /// At once, as a terminal speaking the kitty graphics protocol.
+    Kitty,
+    /// At once, with attributes that list sixel.
+    Sixel,
+}
+
 /// A `qdesk` running on a pseudo-terminal, with everything it has written counted.
 struct Desktop {
     written: Arc<AtomicU64>,
@@ -102,7 +113,13 @@ struct Desktop {
 impl Desktop {
     /// Opens the desktop of `scratch` on a terminal of `size`, and answers the question it asks
     /// the terminal before it draws anything.
-    fn open(scratch: &Scratch, (columns, rows): (u16, u16)) -> Self {
+    fn open(scratch: &Scratch, size: (u16, u16)) -> Self {
+        Self::open_answering(scratch, size, Answer::Attributes, false)
+    }
+
+    /// The same, on a terminal that answers the desktop's question with `answer`, reached over
+    /// SSH when `remote` is true: the desktop is given the variable an SSH server sets.
+    fn open_answering(scratch: &Scratch, (columns, rows): (u16, u16), answer: Answer, remote: bool) -> Self {
         let home = &scratch.0;
         let pair = native_pty_system()
             .openpty(PtySize { rows, cols: columns, pixel_width: 0, pixel_height: 0 })
@@ -122,6 +139,9 @@ impl Desktop {
         command.env("LANG", "C.UTF-8");
         // The same glyphs whatever fonts the machine has, so the byte counts can be compared.
         command.env("QUVYTA_ICONS", "unicode");
+        if remote {
+            command.env("SSH_CONNECTION", "192.0.2.7 50122 192.0.2.1 22");
+        }
         command.cwd(home);
         let child = pair.slave.spawn_command(command).expect("qdesk starts");
         drop(pair.slave);
@@ -143,8 +163,34 @@ impl Desktop {
         // The desktop asks the terminal what it can do and draws nothing until it hears back.
         // A terminal that speaks for itself is what a person has at the other end of an SSH
         // connection, so the test answers as one.
-        desktop.settle();
-        desktop.send(b"\x1b[?62;1;2;6;9;15;22c");
+        let prompt = |desktop: &Desktop| {
+            // The desktop waits for the answer only a moment (the framework's probe allows 150
+            // ms), so this terminal answers as soon as the question is out, as a local one does.
+            let giving_up = Instant::now() + AT_MOST;
+            while desktop.written() == 0 && Instant::now() < giving_up {
+                std::thread::sleep(STEP);
+            }
+        };
+        match answer {
+            Answer::Kitty => {
+                prompt(&desktop);
+                desktop.send(b"\x1b_Gi=31;OK\x1b\\\x1b[?62;1;2;6;9;15;22c");
+                // Then it asks what the keyboard can do, which a terminal answers the same way.
+                desktop.settle();
+                desktop.send(b"\x1b[?62;1;2;6;9;15;22c");
+            }
+            Answer::Sixel => {
+                // Attributes that list 4: the terminal paints sixel pictures.
+                prompt(&desktop);
+                desktop.send(b"\x1b[?62;4;9;22c");
+                desktop.settle();
+                desktop.send(b"\x1b[?62;4;9;22c");
+            }
+            Answer::Attributes => {
+                desktop.settle();
+                desktop.send(b"\x1b[?62;1;2;6;9;15;22c");
+            }
+        }
         desktop.settle();
         desktop
     }
@@ -683,7 +729,11 @@ fn a_clock_widget_writes_nothing_between_minutes_unless_it_shows_seconds() {
 /// gradients, a sun, waves, and a little grain, so neighbouring cells are close in colour but
 /// seldom the same, as they are in a real photo.
 fn photo(path: &Path) {
-    let (width, height) = (640_u32, 360_u32);
+    photo_of(path, (640, 360));
+}
+
+/// The same photo at `width` × `height` pixels.
+fn photo_of(path: &Path, (width, height): (u32, u32)) {
     let mut grain = 0x9e37_79b9_u32;
     let image = image::RgbImage::from_fn(width, height, |x, y| {
         grain ^= grain << 13;
@@ -759,4 +809,91 @@ fn a_picture_floor_costs_a_screen_of_colours_and_a_drag_uncovers_it() {
             screens[0], SIZE.0, SIZE.1, screens[1], LARGE.0, LARGE.1, SIZE.0, SIZE.1, steps[0], steps[1],
         );
     }
+}
+
+/// What a picture floor costs a terminal that draws pictures itself, with the kitty graphics
+/// protocol or with sixel (design 3.9), against the same picture in half blocks and the plain
+/// floor, on this machine and over SSH: the first screen at both sizes, then at the smaller size
+/// a window opened over it, one step of a drag and the drop.
+///
+/// Two pictures: a photo of 3840 × 2160, as a phone takes one, larger than the desktop keeps, so
+/// what is sent is what the desktop decodes; and `tide`, one of qdesk's own, 384 × 216 and smooth.
+/// Over SSH the desktop is given the variable an SSH server sets, so it decodes the picture at the
+/// size it chooses for a remote link and draws at the remote frame cap.
+///
+/// `QDESK_MEASURE` narrows it to the rows whose name holds that text, since the whole table takes
+/// minutes.
+/// How long a desktop decoding a large photo may stay quiet before the picture comes.
+const DECODING: Duration = Duration::from_secs(3);
+
+#[test]
+#[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
+fn a_picture_the_terminal_draws_is_sent_once_and_what_a_window_over_it_costs() {
+    let pictures = std::env::temp_dir().join(format!("qdesk-bytes-{}-pictures", std::process::id()));
+    std::fs::create_dir_all(&pictures).expect("a folder for the pictures");
+    let photo_file = pictures.join("deniz.png");
+    photo_of(&photo_file, (3840, 2160));
+    let tide = pictures.join("tide.png");
+    std::fs::write(&tide, include_bytes!("../assets/wallpapers/tide.png")).expect("tide is written");
+    let only = std::env::var("QDESK_MEASURE").unwrap_or_default();
+    let mut floors = Vec::new();
+    for remote in [false, true] {
+        floors.push(("plain", None, Answer::Attributes, remote));
+        for (name, file) in [("photo", &photo_file), ("tide", &tide)] {
+            for answer in [Answer::Attributes, Answer::Kitty, Answer::Sixel] {
+                floors.push((name, Some(file), answer, remote));
+            }
+        }
+    }
+    for (name, picture, answer, remote) in floors {
+        let how = match answer {
+            Answer::Attributes => "half blocks",
+            Answer::Kitty => "kitty",
+            Answer::Sixel => "sixel",
+        };
+        let floor = format!("{name}, {how}{}", if remote { ", over ssh" } else { "" });
+        if !floor.contains(&only) {
+            continue;
+        }
+        let scratch_with = |label: &str| {
+            let scratch = Scratch::new(label, "");
+            if let Some(picture) = picture {
+                write(
+                    &scratch.0.join(".config/quvyta/desktop.conf"),
+                    &format!("wallpaper = \"{}\"\n", picture.display()),
+                );
+            }
+            scratch
+        };
+        let mut screens = Vec::new();
+        for size in [SIZE, LARGE] {
+            let bytes: Vec<u64> = (0..RUNS)
+                .map(|_| {
+                    let scratch = scratch_with("pictures");
+                    let desktop = Desktop::open_answering(&scratch, size, answer, remote);
+                    // A large photo takes longer to decode than the usual quiet.
+                    desktop.settle_within(DECODING, DECODING * 4);
+                    desktop.written()
+                })
+                .collect();
+            screens.push(bytes);
+        }
+        let mut window = Vec::new();
+        for _ in 0..RUNS {
+            let scratch = scratch_with("pictures-drag");
+            let mut desktop = Desktop::open_answering(&scratch, SIZE, answer, remote);
+            desktop.settle_within(DECODING, DECODING * 4);
+            let before = desktop.written();
+            desktop.open_window("Quiet");
+            desktop.settle();
+            let opened = desktop.written() - before;
+            let (moving, dropped) = drag(&mut desktop, SIZE.0 / 3, title_row(SIZE.1), 20);
+            window.push((opened, moving / 20, dropped));
+        }
+        println!(
+            "floor {floor}: first screen {:?} bytes at {}x{}, {:?} at {}x{}; at {}x{} (window opened, drag step, drop) {:?}",
+            screens[0], SIZE.0, SIZE.1, screens[1], LARGE.0, LARGE.1, SIZE.0, SIZE.1, window,
+        );
+    }
+    let _ = std::fs::remove_dir_all(&pictures);
 }

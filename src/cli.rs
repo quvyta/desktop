@@ -21,6 +21,7 @@ use qframe::widgets::ImageData;
 
 use crate::locales;
 use crate::settings::{self, FloorColor, FloorStyle};
+use crate::wallpapers;
 
 /// The command did what was asked.
 pub const EXIT_OK: u8 = 0;
@@ -66,7 +67,8 @@ pub struct Floor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Picture {
     /// Lay the picture in this file over the floor, as it was typed; it is checked and made
-    /// absolute before it is written.
+    /// absolute before it is written. `builtin:` and the name of one of qdesk's own pictures
+    /// (`builtin:tide`) is that picture, as the settings file and the printed line name it.
     Set(PathBuf),
     /// Take the picture away.
     Clear,
@@ -241,7 +243,7 @@ fn set_wallpaper(floor: &Floor, config: Option<&Path>, out: &mut impl Write, err
     };
     let picture = match &floor.picture {
         Some(Picture::Set(file)) => match checked(file) {
-            Ok(path) => Some(Some(path)),
+            Ok(picture) => Some(Some(picture)),
             Err(refusal) => {
                 writeln!(err, "{}", refused(&refusal))?;
                 return Ok(EXIT_USAGE);
@@ -254,7 +256,7 @@ fn set_wallpaper(floor: &Floor, config: Option<&Path>, out: &mut impl Write, err
     if *floor == Floor::default() {
         let (color, pattern) = (loaded.prefs.floor.name(), pattern_name(loaded.prefs.floor_style));
         match &loaded.wallpaper {
-            Some(path) => writeln!(out, "{COLOR} {color} {PATTERN} {pattern} {}", quoted(&path.to_string_lossy()))?,
+            Some(picture) => writeln!(out, "{COLOR} {color} {PATTERN} {pattern} {}", quoted(&picture.to_string()))?,
             None => writeln!(out, "{COLOR} {color} {PATTERN} {pattern}")?,
         }
         return Ok(EXIT_OK);
@@ -262,9 +264,9 @@ fn set_wallpaper(floor: &Floor, config: Option<&Path>, out: &mut impl Write, err
     let before = loaded.settings.clone();
     settings::set_floor(&mut loaded.settings, floor.color, floor.pattern);
     if let Some(picture) = picture
-        && !settings::set_wallpaper(&mut loaded.settings, picture.as_deref())
+        && !settings::set_wallpaper(&mut loaded.settings, picture.as_ref())
     {
-        let file = picture.map(|path| path.display().to_string()).unwrap_or_default();
+        let file = picture.map(|picture| picture.to_string()).unwrap_or_default();
         let reason = t!("cli.wallpaper-not-text");
         writeln!(err, "{}", refused(&Refusal::Picture { file, reason }))?;
         return Ok(EXIT_USAGE);
@@ -283,14 +285,21 @@ fn set_wallpaper(floor: &Floor, config: Option<&Path>, out: &mut impl Write, err
     }
 }
 
-/// The picture at `file` made absolute, when it can be the floor's; otherwise why not.
-fn checked(file: &Path) -> Result<PathBuf, Refusal> {
+/// The picture `file` names, made absolute, when it can be the floor's; otherwise why not.
+/// `builtin:` and the name of one of qdesk's own pictures is that picture, built into the program,
+/// so nothing is read.
+fn checked(file: &Path) -> Result<wallpapers::Picture, Refusal> {
+    if let Some(ours) =
+        file.to_str().filter(|text| text.starts_with(wallpapers::BUILTIN)).and_then(wallpapers::Picture::parse)
+    {
+        return Ok(ours);
+    }
     let refusal = |reason: String| Refusal::Picture { file: file.display().to_string(), reason };
     let path = std::path::absolute(file).map_err(|error| refusal(error.to_string()))?;
     // Decoded small: only whether it decodes matters here, and the desktop decodes it again at
     // the size it draws it.
     ImageData::decode_file(&path, (1, 1)).map_err(|problem| refusal(problem.to_string()))?;
-    Ok(path)
+    Ok(wallpapers::Picture::File(path))
 }
 
 /// `text` as a shell reads it back as one word: as it is when it holds nothing a shell would
@@ -481,6 +490,24 @@ mod tests {
         answer_in(&["wallpaper", "--color", "theme", "--pattern", "plain"], Some(&config));
         let written = std::fs::read_to_string(&file).expect("file");
         assert_eq!(written, "dock-position = \"top\"\n");
+        let _ = std::fs::remove_dir_all(&config);
+    }
+
+    #[test]
+    fn one_of_our_pictures_is_set_by_its_builtin_name_and_printed_as_one_that_sets_it_again() {
+        let config = scratch("builtin");
+        let file = config.join("desktop.conf");
+        let (exit, out, err) = answer_in(&["wallpaper", "builtin:dusk"], Some(&config));
+        assert_eq!((exit, out.as_str(), err.as_str()), (Some(EXIT_OK), "", ""));
+        let written = std::fs::read_to_string(&file).expect("file");
+        assert_eq!(written, "wallpaper = \"builtin:dusk\"\n");
+        let (exit, out, _) = answer_in(&["wallpaper"], Some(&config));
+        assert_eq!((exit, out.as_str()), (Some(EXIT_OK), "--color theme --pattern plain builtin:dusk\n"));
+        // A name qdesk does not bring is a file that is not there.
+        let (exit, _, err) = answer_in(&["wallpaper", "builtin:coral"], Some(&config));
+        assert_eq!(exit, Some(EXIT_USAGE), "{err}");
+        assert!(err.contains("builtin:coral"), "{err}");
+        assert_eq!(std::fs::read_to_string(&file).expect("file"), written, "nothing is written");
         let _ = std::fs::remove_dir_all(&config);
     }
 

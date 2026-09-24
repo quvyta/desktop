@@ -2,6 +2,25 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.1.8 - 2026-09-24
+
+### Changed
+
+- On a terminal that speaks the kitty graphics protocol the wallpaper is drawn by the terminal in real pixels, and stays pixels between the icons, widgets, menus, the launcher and windows standing on it; none of them shows the picture through any more. Opening a window over it costs about half of what half blocks cost.
+- On a sixel terminal the wallpaper is drawn in real pixels while nothing stands on it, and in half blocks under icons, widgets and windows. It is decoded like a kitty picture: a cell's worth of pixels here, twice the half blocks' density over SSH, which makes the first screen of a photo over SSH about 2.5 times cheaper than decoding it large. What each way costs, here and over SSH, is measured and written down.
+- The desktop asks whether it runs over SSH without loading the framework's environment a second time as it starts.
+- The wallpaper is decoded at the size the terminal shows: about ten by twenty pixels a cell on a kitty or sixel terminal on your own machine (up to 4K), twice the half blocks' density on such a terminal over SSH, and 960x540 at most for half blocks. It is decoded again when the terminal's way of drawing pictures or the floor's size changes.
+- Ember, Dusk and Tide are decoded from the program itself; choosing one writes nothing into the data folder. `desktop.conf` names one as `wallpaper = "builtin:tide"`, and `qdesk wallpaper builtin:tide` sets one from a shell. A path 0.1.7 wrote (`~/.local/share/quvyta/desktop/wallpapers/tide.png`) is still read as that picture, even when the file is gone.
+- The file picker for a wallpaper offers the file types the framework's decoder reads, from the framework's own list, and a wallpaper is drawn wherever the framework says a picture can be, the question its picture asks itself; `QUVYTA_GRAPHICS=halfblock` now shows the wallpaper on a 16-colour terminal too.
+- The Files window selects from the keyboard as a desktop explorer does: shift with the arrows, page keys, Home or End, ctrl+a and Esc; a folder's own row takes a drop for the folder above it.
+- Built on quvyta-framework 0.1.27.
+
+### Fixed
+
+- btop works in a window: it drew its whole screen on one line because the terminal inside a window did not know one of the ways it moves the cursor.
+- Programs that draw boxes with the terminal's line-drawing set, such as ncdu, show lines instead of letters.
+- Text that arrives in one read, from tmux `send-keys`, a slow SSH link or dictation, keeps its spaces and Enters.
+
 ## 0.1.7 - 2026-09-24
 
 ### Added
