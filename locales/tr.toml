@@ -253,6 +253,8 @@ floor-style-dots = "Noktalı"
 floor-style-gradient-dots = "İkisi"
 folders-in-explorer = "Klasörleri {program} ile aç"
 folders-in-explorer-text = "Masaüstündeki ya da Dosyalar'daki bir klasör ekosistemin dosya gezgininde açılır. {program} kurulu değilse yerine Dosyalar açılır."
+status-strip = "Dock'ta durum"
+status-strip-text = "tmux oturumları, ağ, işlemci, bellek ve pil, makinenin adının yanında. Kapalıyken makine bunun için hiç okunmaz."
 
 connection = "Bağlantı"
 drag = "Pencere sürüklenirken"

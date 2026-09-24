@@ -69,17 +69,19 @@ impl Desk {
         DateTime::from_unix((self.wall)().div_euclid(1_000), self.offset_minutes.unwrap_or(0))
     }
 
-    /// Starts what keeps the gadgets current: the readings, while a system gadget stands on the
-    /// floor, and the second tick, while a clock shows its seconds. Each starts only once.
+    /// Starts what keeps the gadgets and the status strip current: the readings, while a system
+    /// gadget stands on the floor or the strip is on, and the second tick, while a clock shows its seconds. Each starts only once.
     pub(super) fn gadget_ticks(&mut self) -> Command<Msg> {
         let reading = self.sample(Duration::ZERO);
         let ticking = self.next_second();
         Command::batch([reading, ticking])
     }
 
-    /// Reads the machine after `wait`, when a system gadget wants it and no reading is under way.
-    fn sample(&mut self, wait: Duration) -> Command<Msg> {
-        let wanted = self.desktop.widgets.iter().any(|gadget| gadget.shows.kind() == Kind::System);
+    /// Reads the machine after `wait`, when a system gadget or the status strip wants it and no
+    /// reading is under way. Both draw the same reading, so one probe and one task serve them.
+    pub(super) fn sample(&mut self, wait: Duration) -> Command<Msg> {
+        let wanted =
+            self.prefs.status_strip || self.desktop.widgets.iter().any(|gadget| gadget.shows.kind() == Kind::System);
         if !wanted {
             return Command::none();
         }
@@ -170,7 +172,7 @@ impl Desk {
             }
             Msg::Sampled(probe, reading) => {
                 // Only a reading that would be drawn differently comes at all (`same_on_screen`),
-                // so each one is a frame worth sending.
+                // so each one is a frame worth sending, for the gadget and the strip alike.
                 self.probe = Some(probe);
                 self.status = reading;
                 self.sample(SAMPLE_EVERY)

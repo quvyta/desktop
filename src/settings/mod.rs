@@ -77,6 +77,8 @@ pub const FLOOR_STYLE: &str = "floor-style";
 /// The key of whether a folder opens in the ecosystem's file explorer when it is on the machine:
 /// `true` or `false`.
 pub const FOLDERS_IN_EXPLORER: &str = "folders-in-explorer";
+/// The key of whether the dock shows the status strip (design 3.10): `true` or `false`.
+pub const STATUS_STRIP: &str = "status-on-dock";
 /// The key of the drag style: `live` or `ghost`.
 pub const DRAG_STYLE: &str = "drag-style";
 /// The key of the frame cap in frames a second. Without it the cap follows the link.
@@ -190,6 +192,9 @@ pub struct Prefs {
     /// Whether a folder opens in the ecosystem's file explorer, `qexp`, when it is on the machine,
     /// rather than in a Files window.
     pub folders_in_explorer: bool,
+    /// Whether the dock shows the status strip: the tmux sessions, the network, the processor, the
+    /// memory and the battery. Off, the machine is not read for it at all.
+    pub status_strip: bool,
     /// How a window follows the mouse while it is dragged.
     pub drag: DragStyle,
     /// Frames a second, when a number was chosen; `None` follows the link.
@@ -199,14 +204,16 @@ pub struct Prefs {
 }
 
 impl Default for Prefs {
-    /// The dock at the bottom, the floor in the theme's canvas, folders in the explorer, a ghost drag, the frame cap following the link, two thousand
-    /// lines of scrollback.
+    /// The dock at the bottom with the status strip, the floor in the theme's canvas, folders in
+    /// the explorer, a ghost drag, the frame cap following the link, two thousand lines of
+    /// scrollback.
     fn default() -> Self {
         Self {
             dock: DockPosition::default(),
             floor: FloorColor::default(),
             floor_style: FloorStyle::default(),
             folders_in_explorer: true,
+            status_strip: true,
             drag: DragStyle::default(),
             frame_cap: None,
             scrollback: SCROLLBACK_DEFAULT,
@@ -226,6 +233,7 @@ impl Prefs {
             .choice(FLOOR_COLOR, FloorColor::ALL.map(FloorColor::name), FloorColor::default().name())
             .choice(FLOOR_STYLE, FloorStyle::ALL.map(FloorStyle::name), FloorStyle::default().name())
             .flag(FOLDERS_IN_EXPLORER, true)
+            .flag(STATUS_STRIP, true)
             .choice(DRAG_STYLE, DragStyle::ALL.map(DragStyle::name), DragStyle::default().name())
             // No default of its own: without the key the cap follows the link, and a number
             // outside the range is left out rather than replaced by one.
@@ -254,6 +262,7 @@ impl Prefs {
                 .and_then(|name| FloorStyle::from_name(&name))
                 .unwrap_or(defaults.floor_style),
             folders_in_explorer: settings.get::<bool>(FOLDERS_IN_EXPLORER).unwrap_or(defaults.folders_in_explorer),
+            status_strip: settings.get::<bool>(STATUS_STRIP).unwrap_or(defaults.status_strip),
             drag: settings
                 .get::<String>(DRAG_STYLE)
                 .and_then(|name| DragStyle::from_name(&name))
@@ -284,6 +293,7 @@ impl Prefs {
             self.folders_in_explorer,
             self.folders_in_explorer == defaults.folders_in_explorer,
         );
+        store(settings, STATUS_STRIP, self.status_strip, self.status_strip == defaults.status_strip);
         store(settings, DRAG_STYLE, self.drag.name().to_owned(), self.drag == defaults.drag);
         let frames = self.frame_cap.unwrap_or(FRAME_CAP_LOCAL);
         store(settings, FRAME_CAP, i64::from(frames), self.frame_cap.is_none());

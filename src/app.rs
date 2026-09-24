@@ -2,6 +2,7 @@
 //! that drives them.
 
 mod gadgets;
+mod strip;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -310,6 +311,13 @@ pub enum Msg {
     Second,
     /// The note kept in this file was typed into; this is all it holds now.
     NoteTyped(String, String),
+    /// Show the tmux sessions the status strip counts, or put their list away.
+    TmuxSessions,
+    /// Open a new terminal window attached to the tmux session of this name.
+    Attach(String),
+    /// Open the machine's process monitor, `btop` or `htop`: a press on the processor or the
+    /// memory of the status strip.
+    Monitor,
     /// Something arrived for an application that is no longer there.
     Ignore,
 }
@@ -412,8 +420,13 @@ pub struct Desk {
     /// What the system gadget reads the machine with; away while a reading is under way, and
     /// `None` for a desktop given none, which never reads the machine.
     probe: Option<Probe>,
-    /// The reading the system gadget shows.
+    /// The reading the system gadget and the status strip show.
     status: Status,
+    /// Whether the list of tmux sessions is open.
+    tmux_open: bool,
+    /// The process monitor a press on the strip's processor or memory opens, found on the
+    /// environment's `PATH`; `None` when the machine has neither `btop` nor `htop`.
+    monitor: Option<PathBuf>,
     /// Whether a wait for the next second is under way, for a clock showing its seconds.
     ticking: bool,
     /// The folder the notes are kept in; `None` keeps them only while the desktop runs.
@@ -495,6 +508,8 @@ impl Desk {
             lock: None,
             probe: None,
             status: Status::default(),
+            tmux_open: false,
+            monitor: None,
             ticking: false,
             notes_dir: None,
             notes: BTreeMap::new(),
@@ -548,6 +563,7 @@ impl Desk {
         // settings have been given so far, in whichever order the two were set.
         self.programs = Sessions::new(&self.apps, self.prefs, self.remote);
         self.tools = Tools::find(&self.apps);
+        self.monitor = strip::monitor(&self.apps);
         self
     }
 
@@ -1590,6 +1606,7 @@ impl Desk {
             return self.body_focus();
         }
         self.more = false;
+        self.tmux_open = false;
         self.inbox.read();
         // The keys land on the first notice that leads somewhere, so the list is walked and
         // answered without a mouse. A list of notices that lead nowhere takes no focus of its own.
@@ -1681,6 +1698,10 @@ impl Desk {
             self.more = false;
             return Command::none();
         }
+        if self.tmux_open {
+            self.tmux_open = false;
+            return self.body_focus();
+        }
         if self.inbox_open {
             self.inbox_open = false;
             return self.body_focus();
@@ -1710,7 +1731,9 @@ impl Desk {
                 // now on take the new numbers.
                 self.programs.set_prefs(prefs, self.remote);
                 prefs.write(&mut self.stored);
-                self.store()
+                // The strip switched on reads the machine again, when nothing else was.
+                let reading = self.sample(Duration::ZERO);
+                Command::batch([self.store(), reading])
             }
             Some(settings::Request::Shared(shared)) => {
                 self.share(&shared);
@@ -1816,6 +1839,7 @@ impl Desk {
                 self.help = false;
                 self.more = false;
                 self.inbox_open = false;
+                self.tmux_open = false;
                 Command::focus(LOCK_FIELD)
             }
             // Logging out is leaving qdesk, with the question leaving asks when programs run.
@@ -1920,6 +1944,7 @@ impl Desk {
             | Msg::Sampled(..)
             | Msg::Second
             | Msg::NoteTyped(..)) => self.on_gadget(msg),
+            msg @ (Msg::TmuxSessions | Msg::Attach(_) | Msg::Monitor) => self.on_strip(msg),
             Msg::OpenLauncher => {
                 self.launcher = Some(Launcher::default());
                 Command::focus(launcher::SEARCH)
@@ -1960,6 +1985,7 @@ impl Desk {
             Msg::MoreWindows => {
                 self.more = !self.more;
                 self.inbox_open = false;
+                self.tmux_open = false;
                 Command::none()
             }
             Msg::Notices => self.on_notices(),
@@ -2084,10 +2110,12 @@ impl Desk {
         let items = self.items(ui);
         let labels: Vec<dock::Label> = items.iter().map(|item| item.label.clone()).collect();
         let count = dock::count_label(&ui.env().icons().glyph("dot"), self.inbox.unread());
+        let strip = self.chips(ui.env().icons());
+        let texts: Vec<String> = strip.iter().map(|chip| chip.text.clone()).collect();
         // The plan measures the items as the buttons that draw them, so the row it plans is the
         // row that is painted whatever the theme's padding is.
         let padding = ui.env().theme().style("button", None, &[]).pair("padding").map_or(2, |(_, sides)| sides);
-        let plan = dock::plan(ui.size().width, &self.machine_text(), &clock, &count, &labels, padding);
+        let plan = dock::plan(ui.size().width, &self.machine_text(), &clock, &count, &labels, &texts, padding);
         let desktop_keys = self.keys;
         let workspaces = self.workspaces();
         let row = |ui: &mut View<'_, Msg>| match desktop_keys {
@@ -2105,8 +2133,11 @@ impl Desk {
                     notices: Msg::Notices,
                     press: &|item: &dock::Item| Msg::Dock(item.id),
                     menu: &|item: &dock::Item| self.window_menu(item.id),
+                    chip: &|chip: &dock::Chip| self.chip_press(chip.kind),
+                    chip_menu: &|chip: &dock::Chip| self.chip_menu(chip.kind),
                 };
-                dock::view(&plan, &clock, &count, &items, &presses, ui);
+                let parts = dock::Parts { clock: &clock, count: &count, items: &items, strip: &strip };
+                dock::view(&plan, &parts, &presses, ui);
             }
         };
         // The shell's own header and footer are what keep the row out of the body: whichever end
@@ -2152,6 +2183,9 @@ impl Desk {
             }
             if self.inbox_open {
                 self.notices_view(ui);
+            }
+            if self.sessions_shown() {
+                self.sessions_view(ui);
             }
             if let Some(launcher) = &self.launcher {
                 self.launcher_view(launcher, ui);

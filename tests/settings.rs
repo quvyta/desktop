@@ -40,6 +40,20 @@ impl App for SettingsApp {
     }
 }
 
+/// Turns the wheel over the list until `text` is on screen, the way a person reaches a row below
+/// the window's edge. At most as many turns as the screen has rows: the list is not that long.
+fn scrolled_to(harness: &mut Harness<SettingsApp>, text: &str) -> String {
+    let rows = harness.screen().lines().count();
+    for _ in 0..rows {
+        let shown = harness.screen();
+        if shown.contains(text) {
+            return shown;
+        }
+        harness.mouse(qframe::event::MouseKind::ScrollDown, 10, 5);
+    }
+    harness.screen()
+}
+
 fn env() -> Env {
     let dirs = AssetDirs {
         locale_sources: qdesk::locales().iter().map(|(file, text)| ((*file).to_owned(), (*text).to_owned())).collect(),
@@ -140,7 +154,8 @@ fn every_glyph_mode_and_sixteen_colours_draw_the_screen_without_decoration() {
 fn the_screen_speaks_turkish_when_the_language_does() {
     let mut harness = screen(80, 24);
     harness.set_locale("tr").render();
-    let shown = harness.screen();
+    let mut shown = harness.screen();
+    shown.push_str(&scrolled_to(&mut harness, "Bağlantı"));
     for text in ["Görünüş", "Dil", "Tema", "Masaüstü", "Bağlantı"] {
         assert!(shown.contains(text), "no `{text}`:\n{shown}");
     }
@@ -171,7 +186,7 @@ fn the_screen_speaks_every_language_qdesk_carries() {
 #[test]
 fn a_changed_drag_style_is_shown_at_once_with_what_it_comes_to_here() {
     let mut harness = screen(80, 24);
-    let before = harness.screen();
+    let before = scrolled_to(&mut harness, "a shaded area follows the mouse");
     assert!(before.contains("a shaded area follows the mouse"), "ghost is the default everywhere:\n{before}");
 
     harness.send(Msg::Drag(DragStyle::Live));
@@ -310,8 +325,8 @@ fn a_shared_setting_is_applied_to_the_whole_screen_and_handed_back_to_be_stored(
 #[test]
 fn the_numbers_in_force_are_readable_in_their_fields() {
     let prefs = Prefs { frame_cap: Some(45), scrollback: 500, ..Prefs::default() };
-    let harness = screen_of(prefs, false, Vec::new(), 100, 30);
-    let shown = harness.screen();
+    let mut harness = screen_of(prefs, false, Vec::new(), 100, 30);
+    let shown = scrolled_to(&mut harness, "Remembered lines");
     assert!(shown.contains("500"), "the scrollback field shows its number:\n{shown}");
     assert!(shown.contains("45"), "the frame cap field shows its number:\n{shown}");
 }
@@ -320,8 +335,8 @@ fn the_numbers_in_force_are_readable_in_their_fields() {
 fn the_largest_numbers_are_whole_in_their_fields() {
     // The widest numbers the fields take: nothing of them is cut away behind the steppers.
     let prefs = Prefs { frame_cap: Some(60), scrollback: 10_000, ..Prefs::default() };
-    let harness = screen_of(prefs, false, Vec::new(), 100, 30);
-    let shown = harness.screen();
+    let mut harness = screen_of(prefs, false, Vec::new(), 100, 30);
+    let shown = scrolled_to(&mut harness, "Remembered lines");
     assert!(shown.contains("10000"), "the scrollback field shows all five digits:\n{shown}");
     let lines = shown.lines().find(|line| line.contains("Remembered lines")).unwrap_or_default();
     assert!(!lines.contains('…'), "the row is not cut: {lines}");

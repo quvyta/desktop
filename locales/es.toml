@@ -263,6 +263,8 @@ floor-style-dots = "Puntos"
 floor-style-gradient-dots = "Ambos"
 folders-in-explorer = "Abrir carpetas con {program}"
 folders-in-explorer-text = "Una carpeta del escritorio o de Archivos se abre en el explorador de archivos del ecosistema. Cuando {program} no está instalado, se abre Archivos en su lugar."
+status-strip = "Estado en el dock"
+status-strip-text = "Las sesiones de tmux, la red, el procesador, la memoria y la batería junto al nombre del equipo. Si está desactivado, no se consulta el equipo para ello."
 
 connection = "Conexión"
 drag = "Al arrastrar una ventana"

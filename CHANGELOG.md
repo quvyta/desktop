@@ -10,14 +10,16 @@ Every release of quvyta-desktop, newest first. The format follows [Keep a Change
 - Four workspaces: `1`–`4` in desktop mode, `alt+1`–`alt+4` to send a window, marks beside the launcher button, and **Move to workspace** in a window's menu.
 - Widgets on the floor: a clock, a calendar, the machine's readings (processor, memory, network, battery) and a note. Add them from the floor's menu, drag them anywhere, change or remove them from their own menus. A clock without seconds costs about 150 bytes a minute over SSH.
 - The floor takes a pattern beside its colour: a gradient, dots, or both (**Settings → Desktop → Floor pattern**).
+- A status strip on the dock, before the machine's name: the tmux sessions, the network rate, processor, memory and battery (only where there is one). A click on tmux opens a session in a new window; a click on processor or memory opens btop or htop. Warnings show in the theme's warning colour with a mark. On a narrow dock the strip gives way first. **Settings → Desktop → Status on the dock** takes it away, and then the machine is not read at all. A quiet machine costs about 120 bytes a minute over SSH.
 - The Desktop folder stands on the floor, by the name your language gives it (`~/Masaüstü`, `~/Schreibtisch`). **New folder** and **Rename** are in the menus, and a folder opens in qexp or Files. A machine without a Desktop folder, as most servers are, shows the applications alone; nothing is created.
 - Files draws each file with the icon of its kind, opens it with the terminal program your system sets for that kind, and offers **Open with** in the file's menu. A graphical program is never started.
 
 ### Changed
 
+- Files behaves like a file explorer: a click chooses a row, a double click or Enter opens it.
 - Several selected icons move together when one of them is dragged; shift with a click selects a range.
 - How to resize a window is shown: a **Resize** row in a window's menu, a hint on the sizing row, and a note the first time a window opens.
-- Built on quvyta-framework 0.1.22.
+- Built on quvyta-framework 0.1.23.
 
 ## 0.1.5 - 2026-09-24
 

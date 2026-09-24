@@ -398,3 +398,20 @@ fn two_readings_look_the_same_when_every_text_and_tone_of_the_strip_would() {
     other.tmux.push("logs".to_owned());
     assert!(!same(&reading(10.0, 0.0), &other), "a new tmux session is drawn");
 }
+
+#[test]
+fn the_widest_texts_hold_every_number_their_items_can_show() {
+    english(|| {
+        assert_eq!(widest(Kind::Cpu).as_deref(), Some("100%"));
+        assert_eq!(widest(Kind::Tmux), None, "the count changes at a person's pace");
+        let network = widest(Kind::Network).expect("a widest rate");
+        let room = qframe::text::width(&network);
+        for bytes in [0.0, 9.0, 999.0, 1_000.0, 10_189.0, 10_240.0, 1_048_000.0, 5.0e9] {
+            let shown = rate_text(bytes);
+            assert!(qframe::text::width(&shown) <= room, "{shown} is wider than {network}");
+        }
+        for share in [0.0, 9.4, 55.5, 100.0] {
+            assert!(qframe::text::width(&percent(share)) <= 4, "{share}");
+        }
+    });
+}

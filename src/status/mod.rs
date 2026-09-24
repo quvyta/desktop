@@ -178,6 +178,28 @@ pub fn items(status: &Status) -> Vec<Item> {
     items
 }
 
+/// The widest text the item of `kind` can show, in the language on screen: `100%` for a share,
+/// the widest rate for the network. The dock keeps each item that wide, its number to the right,
+/// so a number that changes never moves the items beside it: the row holds still, and over SSH
+/// only the changed number is sent. `None` for the tmux count, which changes at a person's pace.
+///
+/// A battery that starts charging, or an item that turns to a warning, still grows by its mark:
+/// that happens seldom, and the mark is the point.
+#[must_use]
+pub fn widest(kind: Kind) -> Option<String> {
+    match kind {
+        Kind::Tmux => None,
+        Kind::Cpu | Kind::Memory | Kind::Battery => Some(percent(100.0)),
+        Kind::Network => {
+            // Below ten a rate has a decimal; from ten to 999 it is whole.
+            [999.0, 9.9 * 1024.0, 999.0 * 1024.0]
+                .into_iter()
+                .map(rate_text)
+                .max_by_key(|text| qframe::text::width(text))
+        }
+    }
+}
+
 /// Whether the strip drawn from `previous` must be drawn again for `next`: some text, tone or
 /// menu differs. Over SSH an unchanged strip is not sent at all.
 #[must_use]

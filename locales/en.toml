@@ -268,6 +268,8 @@ floor-style-dots = "Dots"
 floor-style-gradient-dots = "Both"
 folders-in-explorer = "Open folders with {program}"
 folders-in-explorer-text = "A folder on the desktop or in Files opens in the ecosystem's file explorer. When {program} is not installed, Files opens instead."
+status-strip = "Status on the dock"
+status-strip-text = "The tmux sessions, the network, the processor, the memory and the battery beside the machine name. Off, the machine is not read for it."
 
 connection = "Connection"
 drag = "Dragging a window"

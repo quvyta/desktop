@@ -263,6 +263,8 @@ floor-style-dots = "圆点"
 floor-style-gradient-dots = "两者兼有"
 folders-in-explorer = "用 {program} 打开文件夹"
 folders-in-explorer-text = "桌面上或“文件”中的文件夹会在生态系统的文件管理器中打开。若未安装 {program}，则改为在“文件”中打开。"
+status-strip = "Dock 上的状态栏"
+status-strip-text = "在机器名称旁显示 tmux 会话、网络、处理器、内存和电池。关闭后，系统将不再读取这些信息。"
 
 connection = "连接"
 drag = "拖动窗口"

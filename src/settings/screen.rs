@@ -68,6 +68,8 @@ pub enum Msg {
     FloorStyle(FloorStyle),
     /// Folders were set to open in the ecosystem's file explorer (`true`) or in Files.
     FoldersInExplorer(bool),
+    /// The status strip was shown on the dock (`true`) or taken off it.
+    StatusStrip(bool),
     /// A drag style was chosen.
     Drag(DragStyle),
     /// A frame cap was chosen, or `None` to follow the link again.
@@ -160,6 +162,7 @@ pub fn update<M: From<Msg> + Clone + Send + 'static>(
         Msg::FoldersInExplorer(folders_in_explorer) => {
             (Command::none(), Some(Request::Prefs(Prefs { folders_in_explorer, ..*prefs })))
         }
+        Msg::StatusStrip(status_strip) => (Command::none(), Some(Request::Prefs(Prefs { status_strip, ..*prefs }))),
         Msg::Drag(drag) => (Command::none(), Some(Request::Prefs(Prefs { drag, ..*prefs }))),
         Msg::FrameCap(frames) => {
             let frame_cap = frames.map(|frames| frames.clamp(FRAME_CAP_LEAST, FRAME_CAP_MOST));
@@ -297,6 +300,10 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
                     .description(about);
                 list.row(row, |ui| {
                     ui.add(Switch::new(prefs.folders_in_explorer).on_toggle(|on| M::from(Msg::FoldersInExplorer(on))));
+                });
+                let row = SettingRow::new(t!("settings.status-strip")).description(t!("settings.status-strip-text"));
+                list.row(row, |ui| {
+                    ui.add(Switch::new(prefs.status_strip).on_toggle(|on| M::from(Msg::StatusStrip(on))));
                 });
 
                 list.heading(t!("settings.connection"));

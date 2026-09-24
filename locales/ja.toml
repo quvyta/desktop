@@ -263,6 +263,8 @@ floor-style-dots = "ドット"
 floor-style-gradient-dots = "両方"
 folders-in-explorer = "フォルダを {program} で開く"
 folders-in-explorer-text = "デスクトップや「ファイル」のフォルダは、エコシステムのファイルエクスプローラーで開きます。{program} がインストールされていない場合は、代わりに「ファイル」が開きます。"
+status-strip = "ドックのステータス"
+status-strip-text = "tmux セッション、ネットワーク、プロセッサ、メモリ、バッテリーをマシン名の横に表示します。オフにすると、このためにマシンを読み取ることはありません。"
 
 connection = "接続"
 drag = "ウィンドウのドラッグ"

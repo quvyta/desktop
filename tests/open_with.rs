@@ -183,11 +183,11 @@ fn given(harness: &mut Harness<Desk>, scratch: &Scratch, id: &str) -> PathBuf {
 }
 
 #[test]
-fn a_click_on_a_file_opens_it_with_the_terminal_program_chosen_for_its_kind() {
+fn a_double_click_on_a_file_opens_it_with_the_terminal_program_chosen_for_its_kind() {
     let scratch = Scratch::new();
     let mut harness = files_open(&scratch);
     let (x, y) = row_of(&harness, "main.rs");
-    harness.click(x, y);
+    harness.click(x, y).click(x, y);
     assert_eq!(given(&mut harness, &scratch, "tavsan"), scratch.home().join("main.rs"));
     assert!(!scratch.said("kedi").exists() && !scratch.said("editor").exists(), "only the chosen program ran");
     let front = harness.app().windows().front().expect("the file's window");
@@ -200,7 +200,7 @@ fn a_file_whose_chosen_program_is_graphical_opens_in_the_editor_and_nothing_grap
     let scratch = Scratch::new();
     let mut harness = files_open(&scratch);
     let (x, y) = row_of(&harness, "notlar.txt");
-    harness.click(x, y);
+    harness.click(x, y).click(x, y);
     assert_eq!(given(&mut harness, &scratch, "editor"), scratch.home().join("notlar.txt"));
     assert!(!scratch.said("pencereli").exists(), "the graphical program never ran");
     assert!(harness.opens().is_empty(), "nothing was opened beside the desktop: {:?}", harness.opens());

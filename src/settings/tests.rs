@@ -176,6 +176,7 @@ fn two_saves_in_a_row_leave_a_file_that_reads_back_the_same() {
         floor: FloorColor::Mist,
         floor_style: FloorStyle::Dots,
         folders_in_explorer: false,
+        status_strip: false,
         drag: DragStyle::Live,
         frame_cap: Some(45),
         scrollback: 0,

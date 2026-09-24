@@ -1,8 +1,8 @@
 //! The dock: one row of the screen, at the bottom or, when the settings say so, at the top.
 //!
 //! Its left end holds the launcher button, then the marks of the workspaces, then the open windows
-//! of the workspace on screen in the order they were opened, and its right side the name of the
-//! machine and the clock. The launcher button works like a
+//! of the workspace on screen in the order they were opened, and its right side the status strip
+//! (design 3.10), the name of the machine and the clock. The launcher button works like a
 //! Start button: it opens the launcher and closes it again, and it stays pressed while the launcher
 //! is open. Which of them fit in a given width is
 //! decided by [`plan`], a pure function, and drawn by [`view`] into whichever row it is given.
@@ -17,6 +17,7 @@ use qframe::widget::{EventCx, MeasureCx, PaintCx, Widget};
 use qframe::widgets::{ContextItem, ContextMenu, Tooltip};
 
 use crate::desktop::quvyta_icon;
+use crate::status;
 use crate::wm::{SPACES, WindowId};
 
 /// Rows the dock takes at its edge of the screen. It is always there, so the desktop has this
@@ -44,6 +45,10 @@ pub const NOTICES: &str = "dock-notices";
 /// Cells on each side of the workspace marks, between them and the launcher button and between
 /// them and the first window.
 pub const MARKS_GAP: u16 = 2;
+
+/// Cells between two items of the status strip. Narrower than the gap between the dock's parts, so
+/// the strip reads as one part.
+pub const STRIP_GAP: u16 = 2;
 
 /// How the workspaces are shown beside the launcher button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,6 +138,30 @@ pub struct Item {
     pub label: Label,
 }
 
+/// One item of the status strip, as the dock draws it: what it shows and how urgently.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Chip {
+    /// The part of the machine it shows.
+    pub kind: status::Kind,
+    /// Everything it writes: the glyph, the mark of a warning or an alarm, and the short text.
+    pub text: String,
+    /// How urgently it asks to be looked at, which picks its colour. The mark in `text` says the
+    /// same without colour.
+    pub tone: status::Tone,
+}
+
+/// The id of the status strip's item of `kind`.
+#[must_use]
+pub fn chip_id(kind: status::Kind) -> &'static str {
+    match kind {
+        status::Kind::Tmux => "dock-status-tmux",
+        status::Kind::Network => "dock-status-network",
+        status::Kind::Cpu => "dock-status-cpu",
+        status::Kind::Memory => "dock-status-memory",
+        status::Kind::Battery => "dock-status-battery",
+    }
+}
+
 /// What the dock shows in the width it has.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plan {
@@ -152,6 +181,9 @@ pub struct Plan {
     pub hidden: usize,
     /// How the workspaces are shown.
     pub marks: Marks,
+    /// How many items of the status strip are drawn, counted from its right end: the ones nearest
+    /// the machine name stay longest.
+    pub strip: usize,
 }
 
 /// Which parts of the dock fit in `width` columns, for the machine name `name`, the clock text
@@ -177,8 +209,21 @@ pub struct Plan {
 /// the windows do: when the windows would go behind `+n` beside them, only the number of the
 /// workspace on screen is left. That number outlives the clock and the count, because it is the
 /// one answer to "where am I", and goes only when the whole machine name would not fit beside it.
+///
+/// The status strip, whose items are `strip`, gives way before everything else (design 3.10): it
+/// takes only what the windows, the marks, the clock and the count leave, and its items leave from
+/// the left, the tmux sessions first and the battery last. A strip item is something to glance at;
+/// a window's name is how a window is found, and the machine name how the machine is.
 #[must_use]
-pub fn plan(width: u16, name: &str, clock: &str, count: &str, labels: &[Label], padding: u16) -> Plan {
+pub fn plan(
+    width: u16,
+    name: &str,
+    clock: &str,
+    count: &str,
+    labels: &[Label],
+    strip: &[String],
+    padding: u16,
+) -> Plan {
     let room = width.saturating_sub(2 * EDGE + launcher_width(padding));
     // The room beside the number; none at all when the number itself does not fit.
     let beside = room.checked_sub(Marks::Current.lead());
@@ -211,7 +256,36 @@ pub fn plan(width: u16, name: &str, clock: &str, count: &str, labels: &[Label], 
     };
     let left = left.saturating_sub(if marks == Marks::All { more } else { 0 });
     let (shown, named, hidden) = windows(left, labels, padding);
-    Plan { name: shown_name, count: count_shown, clock: clock_shown, shown, named, hidden, marks }
+    // The strip stands between the windows and the right end, a gap from each; the gap on the
+    // windows' side is the one `left` already kept. Beside no name at all it has nothing to stand
+    // beside, and the row is too narrow for it anyway.
+    let spare = left.saturating_sub(windows_width(labels, shown, named, hidden, padding));
+    let strip = if right == 0 { 0 } else { strip_items(spare, strip) };
+    Plan { name: shown_name, count: count_shown, clock: clock_shown, shown, named, hidden, marks, strip }
+}
+
+/// Cells the window items and the `+n` control take as [`windows`] chose them.
+fn windows_width(labels: &[Label], shown: usize, named: bool, hidden: usize, padding: u16) -> u16 {
+    let widths: Vec<u16> = labels.iter().take(shown).map(|label| item_width(&label.text(named), padding)).collect();
+    let mut used = row_width(&widths);
+    if hidden > 0 {
+        let gap = if shown > 0 { ITEM_GAP } else { 0 };
+        used = used.saturating_add(gap).saturating_add(item_width(&more_label(hidden), padding));
+    }
+    used
+}
+
+/// Cells the last `count` items of the strip take, the gaps between them and the gap after them
+/// included.
+fn strip_width(strip: &[String], count: usize) -> u16 {
+    let items = &strip[strip.len() - count.min(strip.len())..];
+    let gaps = u16::try_from(items.len().saturating_sub(1)).unwrap_or(u16::MAX).saturating_mul(STRIP_GAP);
+    items.iter().fold(gaps.saturating_add(GAP), |sum, item| sum.saturating_add(text::width(item)))
+}
+
+/// How many items of the strip fit in `room` columns, counted from its right end.
+fn strip_items(room: u16, strip: &[String]) -> usize {
+    (1..=strip.len()).rev().find(|count| strip_width(strip, *count) <= room).unwrap_or(0)
 }
 
 /// Cells the launcher button takes with a button padding of `padding` columns on each side.
@@ -292,18 +366,28 @@ pub struct Presses<'a, Msg> {
     pub press: &'a dyn Fn(&Item) -> Msg,
     /// The rows of the menu a right click on a window's item opens.
     pub menu: &'a dyn Fn(&Item) -> Vec<ContextItem<Msg>>,
+    /// Pressing an item of the status strip; `None` for an item a press does nothing on.
+    pub chip: &'a dyn Fn(&Chip) -> Option<Msg>,
+    /// The rows of the menu a right click on an item of the strip opens; none for most.
+    pub chip_menu: &'a dyn Fn(&Chip) -> Vec<ContextItem<Msg>>,
+}
+
+/// What the dock draws: the clock, the unread count, the windows and the status strip.
+pub struct Parts<'a> {
+    /// The clock's text.
+    pub clock: &'a str,
+    /// The unread count, empty when nothing is unread.
+    pub count: &'a str,
+    /// The windows of the workspace on screen.
+    pub items: &'a [Item],
+    /// The status strip, left to right; empty while it is off.
+    pub strip: &'a [Chip],
 }
 
 /// Draws the dock for `plan` in the row it is given: the launcher button at its left end, the open
-/// windows after it, the machine and the clock at its right.
-pub fn view<Msg: Clone + 'static>(
-    plan: &Plan,
-    clock: &str,
-    count: &str,
-    items: &[Item],
-    presses: &Presses<'_, Msg>,
-    ui: &mut View<'_, Msg>,
-) {
+/// windows after it, the status strip, the machine and the clock at its right.
+pub fn view<Msg: Clone + 'static>(plan: &Plan, parts: &Parts<'_>, presses: &Presses<'_, Msg>, ui: &mut View<'_, Msg>) {
+    let Parts { clock, count, items, strip } = *parts;
     let icon = quvyta_icon(ui.env().icons());
     let glyph = ui.env().icons().glyph(icon).into_owned();
     ui.row(|ui| {
@@ -335,6 +419,16 @@ pub fn view<Msg: Clone + 'static>(
             ui.add(Button::new(more_label(plan.hidden)).on_press(presses.more.clone())).id("dock-more");
         }
         ui.spacer();
+        let first = strip.len() - plan.strip.min(strip.len());
+        for (index, chip) in strip.iter().skip(first).enumerate() {
+            if index > 0 {
+                ui.spacer().width(Length::Cells(STRIP_GAP));
+            }
+            chip_view(chip, presses, ui);
+        }
+        if first < strip.len() {
+            ui.spacer().width(Length::Cells(GAP));
+        }
         if plan.count && !count.is_empty() {
             ui.add(Button::new(count).on_press(presses.notices.clone())).id(NOTICES);
             ui.spacer().width(Length::Cells(GAP));
@@ -352,6 +446,29 @@ pub fn view<Msg: Clone + 'static>(
     .padding(Padding { top: 0, right: EDGE, bottom: 0, left: EDGE })
     .fill_width()
     .height(Length::Cells(HEIGHT));
+}
+
+/// Draws one item of the status strip: its text in the secondary tone, or in the theme's warning or
+/// danger tone with the mark that says so in `text`. It answers the pointer only when a press on it
+/// does something; its name comes up under the pointer either way.
+fn chip_view<Msg: Clone + 'static>(chip: &Chip, presses: &Presses<'_, Msg>, ui: &mut View<'_, Msg>) {
+    let token = match chip.tone {
+        // The colour of the theme's secondary text, the clock's.
+        status::Tone::Calm => "dim",
+        status::Tone::Warn => "warning",
+        status::Tone::Alert => "danger",
+    };
+    let mark = Mark { glyph: chip.text.clone(), token, bold: false, on_press: (presses.chip)(chip) };
+    let menu = (presses.chip_menu)(chip);
+    ui.add_with(Tooltip::new(chip.kind.label()), |ui| {
+        if menu.is_empty() {
+            ui.add(mark).id(chip_id(chip.kind));
+        } else {
+            ui.add_with(ContextMenu::new(menu), |ui| {
+                ui.add(mark).id(chip_id(chip.kind));
+            });
+        }
+    });
 }
 
 /// The id of the mark of the workspace `space`, counted from 0.
@@ -376,7 +493,7 @@ pub fn marks_view<Msg: Clone + 'static>(
         Marks::Hidden => {}
         Marks::Current => {
             let number = workspaces.current + 1;
-            let mark = Mark { glyph: number.to_string(), tone: Tone::Current, on_press: space(number % SPACES) };
+            let mark = Mark::space(number.to_string(), Tone::Current, space(number % SPACES));
             ui.add_with(Tooltip::new(t!("dock.workspace-next", n = number)), |ui| {
                 ui.add(mark).id(MARK_CURRENT);
             });
@@ -400,7 +517,7 @@ pub fn marks_view<Msg: Clone + 'static>(
                     Tone::Occupied => held.clone(),
                     Tone::Empty => empty.clone(),
                 };
-                let mark = Mark { glyph, tone, on_press: space(index) };
+                let mark = Mark::space(glyph, tone, space(index));
                 ui.add_with(Tooltip::new(t!("dock.workspace", n = index + 1)), |ui| {
                     ui.add(mark).id(mark_id(index));
                 });
@@ -426,15 +543,31 @@ enum Tone {
     Empty,
 }
 
-/// One mark of a workspace: a single glyph that goes there when clicked.
+/// One mark of a workspace, or one item of the status strip: a few cells of text that do something
+/// when clicked.
 ///
-/// It is a glyph and not a button because a button's padding would make four of them wider than
+/// It is text and not a button because a button's padding would make four of them wider than
 /// the windows they stand beside; it takes the icon button's hover tone, so it answers the pointer
-/// the way every small control of the framework does.
+/// the way every small control of the framework does. A mark without `on_press` does not answer
+/// it at all.
 struct Mark<Msg> {
     glyph: String,
-    tone: Tone,
-    on_press: Msg,
+    /// The theme's colour token it is written in.
+    token: &'static str,
+    bold: bool,
+    on_press: Option<Msg>,
+}
+
+impl<Msg> Mark<Msg> {
+    /// The mark of a workspace in `tone`, going there when pressed.
+    fn space(glyph: String, tone: Tone, on_press: Msg) -> Self {
+        let token = match tone {
+            Tone::Current => "accent",
+            Tone::Occupied => "text",
+            Tone::Empty => "dim",
+        };
+        Self { glyph, token, bold: tone == Tone::Current, on_press: Some(on_press) }
+    }
 }
 
 /// Whether the left button went down on the mark, so only a click that began on it presses it.
@@ -452,23 +585,21 @@ impl<Msg: Clone + 'static> Widget<Msg> for Mark<Msg> {
         if area.is_empty() {
             return;
         }
-        let states = cx.pressable_states();
-        let style = cx.style("icon-button", None, &states).text();
-        if let Some(bg) = style.bg {
-            cx.fill(area, bg);
+        if self.on_press.is_some() {
+            let states = cx.pressable_states();
+            let style = cx.style("icon-button", None, &states).text();
+            if let Some(bg) = style.bg {
+                cx.fill(area, bg);
+            }
         }
         cx.register_hit(area);
-        let token = match self.tone {
-            Tone::Current => "accent",
-            Tone::Occupied => "text",
-            Tone::Empty => "dim",
-        };
-        let look = CellStyle::fg(cx.color(token)).with_bold(self.tone == Tone::Current);
+        let look = CellStyle::fg(cx.color(self.token)).with_bold(self.bold);
         cx.text(area.x, area.y, &self.glyph, look, area.width);
     }
 
     fn event(&self, cx: &mut EventCx<'_, Msg>, event: &Event) -> bool {
         let Event::Mouse(mouse) = event else { return false };
+        let Some(on_press) = &self.on_press else { return false };
         match mouse.kind {
             MouseKind::Down(MouseButton::Left) => {
                 cx.capture_pointer();
@@ -478,7 +609,7 @@ impl<Msg: Clone + 'static> Widget<Msg> for Mark<Msg> {
             MouseKind::Up(MouseButton::Left) => {
                 let held = std::mem::take(&mut cx.memory::<MarkMemory>().held);
                 if held && cx.area().contains(mouse.x, mouse.y) {
-                    cx.emit(self.on_press.clone());
+                    cx.emit(on_press.clone());
                 }
                 held
             }
@@ -503,12 +634,12 @@ mod tests {
     const NUMBER: u16 = 1 + 2 * MARKS_GAP;
 
     fn plan(width: u16, name: &str, clock: &str) -> Plan {
-        super::plan(width, name, clock, "", &[], PAD)
+        super::plan(width, name, clock, "", &[], &[], PAD)
     }
 
     /// The same row with two notifications unread.
     fn with_count(width: u16, name: &str) -> Plan {
-        super::plan(width, name, CLOCK, &count_label("●", 2), &[], PAD)
+        super::plan(width, name, CLOCK, &count_label("●", 2), &[], &[], PAD)
     }
 
     /// An item of a window that is on the desktop.
@@ -578,7 +709,7 @@ mod tests {
 
     #[test]
     fn nothing_unread_puts_nothing_on_the_row() {
-        let plan = super::plan(80, "sunucu-1", CLOCK, &count_label("●", 0), &[], PAD);
+        let plan = super::plan(80, "sunucu-1", CLOCK, &count_label("●", 0), &[], &[], PAD);
         assert!(!plan.count, "an empty count is no count");
         assert_eq!(count_label("●", 0), "");
         assert_eq!(count_label("●", 2), "●2", "the design writes it as one word (3.4)");
@@ -610,7 +741,7 @@ mod tests {
         let count = count_label("●", 12);
         for name in ["", "pi", "sunucu-1", "build-server-europe-west-17"] {
             for width in 0..=120 {
-                let plan = super::plan(width, name, CLOCK, &count, &[], PAD);
+                let plan = super::plan(width, name, CLOCK, &count, &[], &[], PAD);
                 let mut used = text::width(&plan.name) + plan.marks.lead();
                 if plan.count {
                     used += item_width(&count, PAD) + GAP;
@@ -635,7 +766,7 @@ mod tests {
     #[test]
     fn a_wide_dock_writes_every_window_with_its_name() {
         let labels = [label("▦", "htop"), label("❯", "Terminal")];
-        let plan = super::plan(80, "sunucu-1", CLOCK, "", &labels, PAD);
+        let plan = super::plan(80, "sunucu-1", CLOCK, "", &labels, &[], PAD);
         assert_eq!((plan.shown, plan.named, plan.hidden), (2, true, 0));
         assert_eq!(labels[0].text(true), "▦ htop");
     }
@@ -662,14 +793,14 @@ mod tests {
             ["Midnight Commander", "Terminal", "Settings", "htop"].into_iter().map(|name| label("▦", name)).collect();
         // 80 columns: 2 edges, 3 for the launcher, "sunucu-1", a gap and the clock leave 56, and
         // four named items want 4 × (1 + 1 + name + 4) plus three gaps: more than that.
-        let plan = super::plan(80, "sunucu-1", CLOCK, "", &labels, PAD);
+        let plan = super::plan(80, "sunucu-1", CLOCK, "", &labels, &[], PAD);
         assert_eq!((plan.shown, plan.named, plan.hidden), (4, false, 0));
     }
 
     #[test]
     fn what_does_not_fit_at_all_goes_behind_a_control_that_says_how_many() {
         let labels: Vec<Label> = (0..12).map(|index| label("▦", &format!("window {index}"))).collect();
-        let plan = super::plan(60, "pi", CLOCK, "", &labels, PAD);
+        let plan = super::plan(60, "pi", CLOCK, "", &labels, &[], PAD);
         assert!(!plan.named);
         assert_eq!(plan.shown + plan.hidden, labels.len());
         assert!(plan.hidden > 0, "{plan:?}");
@@ -681,7 +812,7 @@ mod tests {
         let labels: Vec<Label> = (0..8).map(|index| label("▦", &format!("app {index}"))).collect();
         for width in 0..=160 {
             for count in 0..=labels.len() {
-                let plan = super::plan(width, "sunucu-1", CLOCK, "", &labels[..count], PAD);
+                let plan = super::plan(width, "sunucu-1", CLOCK, "", &labels[..count], &[], PAD);
                 let widths: Vec<u16> =
                     labels[..plan.shown].iter().map(|label| item_width(&label.text(plan.named), PAD)).collect();
                 let mut used = row_width(&widths);
@@ -719,7 +850,7 @@ mod tests {
     #[test]
     fn a_wide_row_shows_a_mark_for_every_workspace() {
         let labels = [label("▦", "htop"), label("❯", "Terminal")];
-        let plan = super::plan(80, "sunucu-1", CLOCK, "", &labels, PAD);
+        let plan = super::plan(80, "sunucu-1", CLOCK, "", &labels, &[], PAD);
         assert_eq!(plan.marks, Marks::All);
         assert_eq!((plan.shown, plan.named, plan.hidden), (2, true, 0));
         assert_eq!(Marks::All.width(), 7, "four marks a cell apart");
@@ -731,13 +862,13 @@ mod tests {
         // row of 70; beside the number they do.
         let labels: Vec<Label> = (0..6).map(|index| label("▦", &format!("window {index}"))).collect();
         for width in 0..=160 {
-            let plan = super::plan(width, "sunucu-1", CLOCK, "", &labels, PAD);
+            let plan = super::plan(width, "sunucu-1", CLOCK, "", &labels, &[], PAD);
             if plan.marks == Marks::All {
                 assert_eq!(plan.hidden, 0, "every mark cost a window at width {width}: {plan:?}");
                 assert_eq!(plan.shown, labels.len(), "width {width}");
             }
         }
-        let plan = super::plan(70, "sunucu-1", CLOCK, "", &labels, PAD);
+        let plan = super::plan(70, "sunucu-1", CLOCK, "", &labels, &[], PAD);
         assert_eq!((plan.marks, plan.shown, plan.hidden), (Marks::Current, 6, 0), "{plan:?}");
         assert!(plan.clock, "the marks shrink before the clock goes: {plan:?}");
     }
@@ -758,7 +889,80 @@ mod tests {
     fn the_narrowest_desktop_keeps_every_mark_while_there_is_no_window() {
         let plan = plan(40, "raspberrypi", CLOCK);
         assert_eq!((plan.marks, plan.clock), (Marks::All, true), "{plan:?}");
-        let one = super::plan(40, "raspberrypi", CLOCK, "", &[label("▦", "htop")], PAD);
+        let one = super::plan(40, "raspberrypi", CLOCK, "", &[label("▦", "htop")], &[], PAD);
         assert_eq!((one.shown, one.hidden), (1, 0), "{one:?}");
+    }
+
+    /// The status strip of a laptop with two tmux sessions, left to right.
+    fn strip() -> Vec<String> {
+        ["❯ 2", "◎ 1.2M/s", "▣ 12%", "◰ 41%", "○ 87%+"].map(str::to_owned).to_vec()
+    }
+
+    /// Two windows on the desktop.
+    fn two() -> [Label; 2] {
+        [label("▦", "htop"), label("❯", "Terminal")]
+    }
+
+    #[test]
+    fn the_strip_takes_only_what_every_other_part_leaves() {
+        let strip = strip();
+        let labels = two();
+        let count = count_label("●", 2);
+        for windows in [&labels[..0], &labels[..]] {
+            for unread in ["", count.as_str()] {
+                for width in 0..=200 {
+                    let bare = super::plan(width, "sunucu-1", CLOCK, unread, windows, &[], PAD);
+                    let plan = super::plan(width, "sunucu-1", CLOCK, unread, windows, &strip, PAD);
+                    assert_eq!(Plan { strip: 0, ..plan.clone() }, bare, "the strip cost another part at width {width}");
+                    // What the row holds, the strip's items and gaps included, is inside it.
+                    let mut used = windows_width(windows, plan.shown, plan.named, plan.hidden, PAD);
+                    used += text::width(&plan.name) + plan.marks.lead();
+                    if plan.count {
+                        used += item_width(unread, PAD) + GAP;
+                    }
+                    if plan.clock {
+                        used += GAP + text::width(CLOCK);
+                    }
+                    if plan.strip > 0 {
+                        used += strip_width(&strip, plan.strip);
+                    }
+                    if plan.strip > 0 || plan.shown + plan.hidden > 0 {
+                        used += GAP;
+                    }
+                    assert!(used + ROOM <= width.max(ROOM), "{plan:?} is wider than {width}");
+                    // A wider row shows no fewer items, unless the windows took the room for their
+                    // names: the strip gives way to them.
+                    let wider = super::plan(width + 1, "sunucu-1", CLOCK, unread, windows, &strip, PAD);
+                    let (rest, wider_rest) = (Plan { strip: 0, ..plan.clone() }, Plan { strip: 0, ..wider.clone() });
+                    if rest == wider_rest {
+                        assert!(wider.strip >= plan.strip, "width {width}: {plan:?} then {wider:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_strips_items_leave_from_the_left_tmux_first_and_the_battery_last() {
+        let strip = strip();
+        let labels = two();
+        let shown = |width: u16, windows: &[Label]| super::plan(width, "sunucu-1", CLOCK, "", windows, &strip, PAD);
+        let at_120 = shown(120, &labels);
+        assert_eq!((at_120.strip, at_120.shown, at_120.named, at_120.clock), (5, 2, true, true), "{at_120:?}");
+        // 80 columns: the two named windows and the marks leave room for the last two items.
+        let at_80 = shown(80, &labels);
+        assert_eq!((at_80.strip, at_80.shown, at_80.named, at_80.marks), (2, 2, true, Marks::All), "{at_80:?}");
+        assert_eq!(shown(80, &[]).strip, 5, "an empty desktop shows the whole strip at 80");
+        // 60: the windows are down to their glyphs beside every mark, which is the marks' own
+        // rule; what they leave holds the battery.
+        let at_60 = shown(60, &labels);
+        assert_eq!((at_60.strip, at_60.shown, at_60.clock), (1, 2, true), "{at_60:?}");
+        let at_40 = shown(40, &[]);
+        assert_eq!((at_40.strip, at_40.clock, at_40.name.as_str()), (0, true, "sunucu-1"), "{at_40:?}");
+        // Somewhere between, one item at a time goes, from the left.
+        let counts: Vec<usize> = (40..=120).map(|width| shown(width, &labels).strip).collect();
+        for count in 1..=5 {
+            assert!(counts.contains(&count), "some width shows exactly the last {count}: {counts:?}");
+        }
     }
 }

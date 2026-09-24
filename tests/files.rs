@@ -222,7 +222,22 @@ fn two_clicks_on_the_files_icon_show_the_home_folder_as_a_list() {
 }
 
 #[test]
-fn a_click_on_a_folder_row_goes_into_it() {
+fn a_double_click_on_a_folder_row_goes_into_it() {
+    let scratch = Scratch::new();
+    furnish(&scratch);
+    let mut harness = desk(&scratch);
+    open_icon(&mut harness, "Files");
+    let (x, y) = row_of(&harness, "belgeler");
+    harness.click(x, y).click(x, y);
+    let screen = harness.screen();
+    assert!(screen.contains("mektup.txt"), "the folder's own file is shown:\n{screen}");
+    assert!(!screen.contains("notlar.txt"), "the home folder's file is not:\n{screen}");
+    // The strip says where the window is, as a Terminal window's strip says where its shell is.
+    assert!(screen.contains("belgeler"), "the strip names the folder:\n{screen}");
+}
+
+#[test]
+fn a_single_click_on_a_row_only_chooses_it_as_a_file_explorer_does() {
     let scratch = Scratch::new();
     furnish(&scratch);
     let mut harness = desk(&scratch);
@@ -230,10 +245,11 @@ fn a_click_on_a_folder_row_goes_into_it() {
     let (x, y) = row_of(&harness, "belgeler");
     harness.click(x, y);
     let screen = harness.screen();
-    assert!(screen.contains("mektup.txt"), "the folder's own file is shown:\n{screen}");
-    assert!(!screen.contains("notlar.txt"), "the home folder's file is not:\n{screen}");
-    // The strip says where the window is, as a Terminal window's strip says where its shell is.
-    assert!(screen.contains("belgeler"), "the strip names the folder:\n{screen}");
+    assert!(screen.contains("notlar.txt"), "the window stays in the home folder:\n{screen}");
+    assert!(!screen.contains("mektup.txt"), "the folder is not gone into:\n{screen}");
+    let (x, y) = row_of(&harness, "notlar.txt");
+    harness.click(x, y);
+    assert_eq!(harness.app().windows().len(), 1, "no window opens for the file:\n{}", harness.screen());
 }
 
 #[test]
@@ -296,7 +312,7 @@ fn each_files_window_keeps_its_own_folder_and_shape_and_lets_it_go_when_it_close
     open_icon(&mut harness, "Files");
     let first = front_id(&harness);
     let (x, y) = row_of(&harness, "belgeler");
-    harness.click(x, y);
+    harness.click(x, y).click(x, y);
     open_icon(&mut harness, "Files");
     let second = front_id(&harness);
     assert_ne!(first, second, "Files opens as many windows as are asked for");
@@ -363,7 +379,7 @@ fn bring(harness: &mut Harness<Desk>, name: &str) {
 }
 
 #[test]
-fn a_click_on_a_file_opens_it_in_the_person_s_editor_in_a_window_of_its_own() {
+fn a_double_click_on_a_file_opens_it_in_the_person_s_editor_in_a_window_of_its_own() {
     let scratch = Scratch::new();
     furnish(&scratch);
     // The editor is the test's own: a script read by the system's shell, which writes down the
@@ -375,9 +391,9 @@ fn a_click_on_a_file_opens_it_in_the_person_s_editor_in_a_window_of_its_own() {
     let apps = Environment { editor: Some(format!("/bin/sh {}", script.display())), ..environment(&scratch) };
     let mut harness = desk_in(apps, Vec::new(), &["files"], 120, 32);
     open_icon(&mut harness, "Files");
-    // A click on a file's row is what opens it, as a click on a folder's row goes into it.
+    // A double click on a file's row is what opens it, as one on a folder's row goes into it.
     let (x, y) = row_of(&harness, "notlar.txt");
-    harness.click(x, y);
+    harness.click(x, y).click(x, y);
     until(&mut harness, "the editor's word", |_| said.is_file());
     let opened = fs::read_to_string(&said).expect("the editor wrote what it was given");
     assert_eq!(Path::new(&opened), scratch.home().join("notlar.txt"), "the editor was given the file");
