@@ -420,6 +420,20 @@ impl Windows {
         true
     }
 
+    /// Gives the window `id` the rectangle `from` moved by `dx` columns and `dy` rows, kept inside
+    /// the desktop: a drag places a window from where the drag began, so one held at the screen's
+    /// edge or above the dock's row waits there for the pointer to come back.
+    ///
+    /// `from` is where the drag began, already freed of a fill or a snap (see
+    /// [`view::drag_start`]); the window floats from here on.
+    pub fn move_from(&mut self, id: WindowId, from: Rect, dx: i32, dy: i32) -> bool {
+        let area = self.area();
+        let Some(window) = self.window_mut(id) else { return false };
+        window.placement = Placement::Floating;
+        window.rect = layout::moved(from, dx, dy, area);
+        true
+    }
+
     /// Moves the window `id` so its top left corner is at `(x, y)`, as far as the desktop allows.
     pub fn move_to(&mut self, id: WindowId, x: i32, y: i32) -> bool {
         let Some(window) = self.get(id) else { return false };

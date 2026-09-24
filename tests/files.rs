@@ -451,7 +451,7 @@ fn a_folder_a_terminal_stands_in_carries_the_terminal_s_icon_in_the_accent_until
     furnish(&scratch);
     let mut harness = terminal_in_belgeler(&scratch, GlyphMode::Unicode);
     let line = row_line(&harness, "belgeler");
-    assert!(line.contains("❯ belgeler"), "the row carries the Terminal's icon: {line}");
+    assert!(line.contains("▭ belgeler"), "the row carries the Terminal's icon: {line}");
     assert!(row_line(&harness, "projeler").contains("■ projeler"), "a folder no window is in is unmarked");
     let (x, y) = row_of(&harness, "belgeler");
     let accent = harness.env().theme().color("accent");
@@ -472,7 +472,7 @@ fn the_mark_is_a_sign_of_its_own_in_ascii_and_in_sixteen_colours_without_bracket
     harness.set_depth(ColorDepth::Ansi16);
     let marked = row_line(&harness, "belgeler");
     let plain = row_line(&harness, "projeler");
-    assert!(marked.contains("> belgeler"), "the Terminal's ASCII sign stands before the name: {marked}");
+    assert!(marked.contains("$ belgeler"), "the Terminal's ASCII sign stands before the name: {marked}");
     assert!(plain.contains("# projeler"), "a plain folder keeps its own sign: {plain}");
     let screen = harness.screen();
     assert_eq!(decoration(&screen), None, "no brackets and no box lines:\n{screen}");

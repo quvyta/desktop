@@ -46,6 +46,22 @@ pub struct Battery {
     pub charging: bool,
 }
 
+/// The network's rate in each direction, in bytes a second, on every interface but loopback.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Traffic {
+    /// Bytes received a second.
+    pub down: f64,
+    /// Bytes sent a second.
+    pub up: f64,
+}
+
+/// Bytes received and sent so far, the counters a [`Traffic`] is measured between.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Bytes {
+    received: u64,
+    sent: u64,
+}
+
 /// The processor's counters from the first line of `/proc/stat`, in clock ticks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CpuTicks {
@@ -57,7 +73,7 @@ struct CpuTicks {
 #[derive(Debug, Clone, Copy)]
 struct Counters {
     cpu: Option<CpuTicks>,
-    network: Option<u64>,
+    network: Option<Bytes>,
     at: Instant,
 }
 
@@ -114,7 +130,11 @@ impl Probe {
         };
         let rate = match (last, network) {
             (Some(Counters { network: Some(before), at, .. }), Some(after)) => {
-                rate(before, after, now.saturating_duration_since(at))
+                let elapsed = now.saturating_duration_since(at);
+                match (rate(before.received, after.received, elapsed), rate(before.sent, after.sent, elapsed)) {
+                    (Some(down), Some(up)) => Some(Traffic { down, up }),
+                    _ => None,
+                }
             }
             _ => None,
         };
@@ -251,14 +271,14 @@ fn read_battery(power_root: &Path) -> Option<Battery> {
 }
 
 /// Bytes received and sent on every interface but loopback, from `/proc/net/dev`.
-fn read_network(proc_root: &Path) -> Option<u64> {
+fn read_network(proc_root: &Path) -> Option<Bytes> {
     parse_network(&std::fs::read_to_string(proc_root.join("net").join("dev")).ok()?)
 }
 
 /// `/proc/net/dev`: two heading lines, then `name: rx_bytes rx_packets ... tx_bytes ...`, the
 /// sent bytes being the ninth number.
-fn parse_network(text: &str) -> Option<u64> {
-    let mut sum = 0u64;
+fn parse_network(text: &str) -> Option<Bytes> {
+    let mut sum = Bytes { received: 0, sent: 0 };
     let mut any = false;
     for line in text.lines().skip(2) {
         let Some((name, numbers)) = line.split_once(':') else { continue };
@@ -268,7 +288,8 @@ fn parse_network(text: &str) -> Option<u64> {
         let numbers: Vec<&str> = numbers.split_whitespace().collect();
         let (Some(received), Some(sent)) = (numbers.first(), numbers.get(8)) else { continue };
         let (Ok(received), Ok(sent)) = (received.parse::<u64>(), sent.parse::<u64>()) else { continue };
-        sum = sum.saturating_add(received).saturating_add(sent);
+        sum.received = sum.received.saturating_add(received);
+        sum.sent = sum.sent.saturating_add(sent);
         any = true;
     }
     any.then_some(sum)

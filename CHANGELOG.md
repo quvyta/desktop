@@ -2,6 +2,17 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.1.9 - 2026-09-24
+
+### Changed
+
+- A window moved against the edge of the screen or onto the dock's row waits there until the pointer comes back to where it holds it, as a ghost and alive; it used to start back as soon as the pointer turned. Resizing already worked this way; both now take the whole way the pointer has gone from the framework instead of adding up its steps.
+- The status strip draws icons of its own: a session for tmux, a processor, a memory module, a battery that empties with its charge and shows when it is charging, and an arrow for the network. A charging battery no longer has a `+` after its number; the icon says it.
+- The network item shows the direction that carries more, received or sent, with its arrow, instead of the sum of both, which had no direction. The system widget's network row shows the same arrow.
+- The Terminal and its windows carry a terminal icon, and a window attached to a tmux session a session icon.
+- Over SSH a window dragged at a hand's pace is drawn at the remote frame cap instead of once for every move of the pointer: a two-second drag takes 38 frames instead of 54, and as a ghost over a plain floor 72 KB instead of 90 KB. With the frame cap set to 5 it costs a quarter to a third of what it did. On this machine nothing changes.
+- Built on quvyta-framework 0.1.28.
+
 ## 0.1.8 - 2026-09-24
 
 ### Changed

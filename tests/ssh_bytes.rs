@@ -41,6 +41,10 @@ const QUIET: Duration = Duration::from_millis(300);
 /// How often the counter is looked at while waiting.
 const STEP: Duration = Duration::from_millis(2);
 
+/// What every frame the desktop draws begins with: the terminal is asked to hold the screen until
+/// the whole frame is there (a synchronized update).
+const FRAME_START: &[u8] = b"\x1b[?2026h";
+
 /// A folder of its own under the system's temporary folder, removed when dropped.
 ///
 /// It holds the home folder, the settings and the applications of one measurement, so the desktop
@@ -105,6 +109,7 @@ enum Answer {
 /// A `qdesk` running on a pseudo-terminal, with everything it has written counted.
 struct Desktop {
     written: Arc<AtomicU64>,
+    frames: Arc<AtomicU64>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
     pid: u32,
@@ -150,16 +155,29 @@ impl Desktop {
         let writer = pair.master.take_writer().expect("a writer");
         let written = Arc::new(AtomicU64::new(0));
         let counted = Arc::clone(&written);
+        let frames = Arc::new(AtomicU64::new(0));
+        let framed = Arc::clone(&frames);
         std::thread::spawn(move || {
             let mut buffer = [0u8; 65536];
+            // The end of the read before, so a mark cut in two by a read is still counted once.
+            let mut tail: Vec<u8> = Vec::new();
             while let Ok(count) = reader.read(&mut buffer) {
                 if count == 0 {
                     break;
                 }
                 counted.fetch_add(count as u64, Ordering::Relaxed);
+                let kept = tail.len();
+                tail.extend_from_slice(&buffer[..count]);
+                let marks = tail
+                    .windows(FRAME_START.len())
+                    .enumerate()
+                    .filter(|(at, window)| *window == FRAME_START && at + FRAME_START.len() > kept);
+                framed.fetch_add(marks.count() as u64, Ordering::Relaxed);
+                let keep = tail.len().saturating_sub(FRAME_START.len() - 1);
+                tail.drain(..keep);
             }
         });
-        let mut desktop = Self { written, writer, child, pid };
+        let mut desktop = Self { written, frames, writer, child, pid };
         // The desktop asks the terminal what it can do and draws nothing until it hears back.
         // A terminal that speaks for itself is what a person has at the other end of an SSH
         // connection, so the test answers as one.
@@ -198,6 +216,12 @@ impl Desktop {
     /// How many bytes the desktop has written to the terminal since it started.
     fn written(&self) -> u64 {
         self.written.load(Ordering::Relaxed)
+    }
+
+    /// How many frames the desktop has drawn since it started: every frame begins with
+    /// [`FRAME_START`].
+    fn frames(&self) -> u64 {
+        self.frames.load(Ordering::Relaxed)
     }
 
     /// Sends `bytes` to the desktop as a terminal would send what a person typed or clicked.
@@ -541,9 +565,11 @@ fn four_windows_pouring_out_lines_cost_what_one_screen_costs() {
 /// this is where the two answers of the design's section 5.3 can be told apart: the frame cap
 /// (decision 2) and the ghost (decision 4).
 ///
-/// A frame that answers what the person did is never held back — that is the runtime's promise,
-/// and it is what keeps typing from lagging. A pointer being dragged is input too, so the cap
-/// merges none of it. What makes a drag cheap is the ghost, and only the ghost.
+/// A key, a paste, a press and a release are never held back — that is the runtime's promise, and
+/// it is what keeps typing from lagging. The pointer's motion is merged by the cap like the
+/// application's own work (framework 0.1.28): every step still reaches the window, but the screen
+/// is drawn at most once a gap of the cap, so at a low cap the drag costs far fewer frames. The
+/// ghost makes each of those frames cheaper still.
 #[test]
 #[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
 fn a_drag_at_a_hand_pace_is_paid_for_by_the_ghost_and_not_by_the_cap() {
@@ -576,9 +602,69 @@ fn a_drag_at_a_hand_pace_is_paid_for_by_the_ghost_and_not_by_the_cap() {
         }
     }
     let (live_slow, live_fast, ghost_slow) = (measured[0], measured[1], measured[2]);
-    assert!(ghost_slow < live_slow, "the ghost is what makes a drag cheap: {ghost_slow} against {live_slow}");
-    let apart = live_slow.abs_diff(live_fast) * 100 / live_fast;
-    assert!(apart < 20, "the cap merges none of a drag, because a drag is input: {live_slow} against {live_fast}");
+    assert!(ghost_slow < live_slow, "the ghost makes a drag cheaper still: {ghost_slow} against {live_slow}");
+    assert!(live_slow * 2 < live_fast, "the cap merges a drag's motion: {live_slow} against {live_fast}");
+}
+
+/// A drag at a hand's pace over SSH, where the desktop draws at the remote frame cap of 20 frames
+/// a second, and on this machine at 60: as a ghost and alive, over the plain floor and over a
+/// picture. Sixty steps over two seconds, as [`a_drag_at_a_hand_pace_is_paid_for_by_the_ghost_and_not_by_the_cap`]
+/// sends them; what is counted is the bytes and the frames of the motion, the press and the
+/// release left out.
+///
+/// Before framework 0.1.28 every step of the pointer was a frame of its own, whatever the cap. Now
+/// the motion waits for the cap, so over SSH two seconds of it are about forty frames.
+#[test]
+#[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
+fn a_hand_paced_drag_over_ssh_is_drawn_at_the_remote_frame_cap() {
+    for picture in [false, true] {
+        for remote in [true, false] {
+            for style in ["ghost", "live"] {
+                let mut runs = Vec::new();
+                for _ in 0..RUNS {
+                    let scratch = Scratch::new("ssh-drag", &format!("drag-style = \"{style}\"\n"));
+                    if picture {
+                        let file = scratch.0.join("deniz.png");
+                        photo(&file);
+                        write(
+                            &scratch.0.join(".config/quvyta/desktop.conf"),
+                            &format!("drag-style = \"{style}\"\nwallpaper = \"{}\"\n", file.display()),
+                        );
+                    }
+                    let mut desktop = Desktop::open_answering(&scratch, SIZE, Answer::Attributes, remote);
+                    if picture {
+                        desktop.settle_within(DECODING, DECODING * 2);
+                    }
+                    desktop.open_window("Quiet");
+                    desktop.settle();
+                    let row = title_row(SIZE.1);
+                    let from = SIZE.0 / 3;
+                    desktop.send(format!("\x1b[<0;{from};{row}M").as_bytes());
+                    desktop.settle();
+                    let (bytes, frames) = (desktop.written(), desktop.frames());
+                    for step in 1..=60u16 {
+                        desktop.send(format!("\x1b[<32;{};{row}M", from + step % 20).as_bytes());
+                        std::thread::sleep(Duration::from_millis(33));
+                    }
+                    desktop.settle();
+                    runs.push((desktop.written() - bytes, desktop.frames() - frames));
+                    desktop.send(format!("\x1b[<0;{};{row}m", from + 20).as_bytes());
+                    desktop.settle();
+                }
+                let floor = if picture { "photo" } else { "plain" };
+                let place = if remote { "over SSH, cap 20" } else { "here, cap 60" };
+                println!("a two second drag, {floor} floor, {style}, {place}: (bytes, frames) {runs:?}");
+                if remote {
+                    // Two seconds and a little at 20 frames a second is about 42; a frame a step was
+                    // 54 here, where a few steps arrive together.
+                    assert!(
+                        runs.iter().all(|(_, frames)| *frames <= 45),
+                        "the motion waits for the cap instead of taking a frame a step: {runs:?}"
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// What a desktop nobody is touching costs a connection.

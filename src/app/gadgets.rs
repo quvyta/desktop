@@ -306,12 +306,17 @@ impl Desk {
         }
     }
 
-    /// The system gadget: a meter for each share, the network rate as a number.
+    /// The system gadget: a meter for each share, the network rate as a number after the arrow
+    /// of the direction it is for, as the strip draws it.
     fn system_face(&self, readings: &Readings, ui: &mut View<'_, Msg>) {
         let items = status::items(&self.status);
         let text_of = |kind: status::Kind| {
             items.iter().find(|item| item.kind == kind).map(|item| item.text.clone()).unwrap_or_default()
         };
+        let network = items
+            .iter()
+            .find(|item| item.kind == status::Kind::Network)
+            .map_or_else(String::new, |item| format!("{} {}", ui.env().icons().glyph(item.glyph_key), item.text));
         let width = readings.shown().iter().map(|reading| qframe::text::width(&reading.label())).max().unwrap_or(0);
         #[expect(clippy::cast_possible_truncation, reason = "a share on screen needs no more than f32 keeps")]
         let share = |value: f64| value as f32;
@@ -346,7 +351,7 @@ impl Desk {
                         }
                     }
                     Reading::Network => {
-                        ui.add(Line::new(label, width, text_of(status::Kind::Network)));
+                        ui.add(Line::new(label, width, network.clone()));
                     }
                 }
             }

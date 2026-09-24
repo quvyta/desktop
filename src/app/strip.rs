@@ -97,7 +97,7 @@ impl Desk {
         let Some(program) = tmux.to_str() else { return self.body_focus() };
         let mut words = status::attach_command(name);
         program.clone_into(&mut words[0]);
-        let mut entry = Self::made_entry("tmux", name, "prompt", Category::System, Launch::Command(words));
+        let mut entry = Self::made_entry("tmux", name, "session", Category::System, Launch::Command(words));
         entry.unset.push("TMUX".to_owned());
         let opened = self.open_entry(&entry, true);
         Command::batch([opened, self.body_focus()])

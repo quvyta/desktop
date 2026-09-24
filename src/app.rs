@@ -1178,7 +1178,7 @@ impl Desk {
             Some(entry) if entry.launch == Launch::Screen(screen) => entry.clone(),
             _ => {
                 let (name, icon, category) = match screen {
-                    Screen::Terminal => ("Terminal", "prompt", Category::System),
+                    Screen::Terminal => ("Terminal", "terminal", Category::System),
                     Screen::Files => ("Files", "folder", Category::Files),
                     Screen::Settings => ("Settings", "settings", Category::System),
                 };
@@ -1543,12 +1543,12 @@ impl Desk {
                 self.windows.raise(id);
                 Command::none()
             }
-            wm::Action::Move { id, dx, dy } => {
-                self.drag_move(id, dx, dy);
+            wm::Action::Move { id, by } => {
+                self.drag_move(id, by);
                 Command::none()
             }
-            wm::Action::Resize { id, grip, dx, dy } => {
-                self.drag_size(id, grip, dx, dy);
+            wm::Action::Resize { id, grip, by } => {
+                self.drag_size(id, grip, by);
                 Command::none()
             }
             wm::Action::Dropped(id) => {
@@ -1567,51 +1567,55 @@ impl Desk {
         }
     }
 
-    /// One step of a drag of the window `id`.
+    /// A step of a drag of the window `id`, which has gone `by` columns and rows since the button
+    /// went down.
     ///
     /// A ghost drag leaves the window where it is and only the ghost follows the pointer; the
     /// window lands in one frame when the button comes up. That is one changed area a frame
     /// instead of every cell of the window, cheap enough to be the default everywhere, not only
     /// over a remote link.
-    fn drag_move(&mut self, id: WindowId, dx: i32, dy: i32) {
+    ///
+    /// Either way the window or its ghost is placed from where the drag began by the whole way
+    /// the pointer has gone, not a step at a time: held at the screen's edge or above the dock's
+    /// row, it stays there until the pointer comes back over it.
+    fn drag_move(&mut self, id: WindowId, by: (i32, i32)) {
+        let area = self.windows.area();
+        let running = match self.dragging {
+            Some(wm::Dragging::Moving { id: dragged, from } | wm::Dragging::Ghosting { id: dragged, from, .. })
+                if dragged == id =>
+            {
+                Some(from)
+            }
+            _ => None,
+        };
+        let Some(from) = running.or_else(|| Some(wm::view::drag_start(self.windows.get(id)?, area))) else {
+            return;
+        };
         if self.prefs.drag == DragStyle::Live {
-            if self.windows.move_by(id, dx, dy) {
-                self.dragging = Some(wm::Dragging::Moving(id));
+            if self.windows.move_from(id, from, by.0, by.1) {
+                self.dragging = Some(wm::Dragging::Moving { id, from });
             }
             return;
         }
-        let area = self.windows.area();
-        let running = match self.dragging {
-            Some(wm::Dragging::Ghosting { id: dragged, from, rect }) if dragged == id => Some((from, rect)),
-            _ => None,
-        };
-        let Some((from, rect)) = running.or_else(|| {
-            let start = wm::view::ghost_start(self.windows.get(id)?, area);
-            Some((start, start))
-        }) else {
-            return;
-        };
-        self.dragging = Some(wm::Dragging::Ghosting { id, from, rect: layout::moved(rect, dx, dy, area) });
+        self.dragging = Some(wm::Dragging::Ghosting { id, from, rect: layout::moved(from, by.0, by.1, area) });
     }
 
-    /// One step of a drag of the edge or corner `grip` of the window `id`.
+    /// A step of a drag of the edge or corner `grip` of the window `id`, which has gone `by`
+    /// columns and rows since the button went down.
     ///
-    /// The steps are added up and the window is sized from the rectangle it had when the drag
-    /// began, so the held edge stays under the pointer: one that stopped at the smallest size or
-    /// at the screen does not start back until the pointer is over it again.
-    fn drag_size(&mut self, id: WindowId, grip: Grip, dx: i32, dy: i32) {
+    /// The window is sized from the rectangle it had when the drag began, so the held edge stays
+    /// under the pointer: one that stopped at the smallest size or at the screen does not start
+    /// back until the pointer is over it again.
+    fn drag_size(&mut self, id: WindowId, grip: Grip, by: (i32, i32)) {
         let running = match self.dragging {
-            Some(wm::Dragging::Sizing { id: held, grip: holding, from, by }) if held == id && holding == grip => {
-                Some((from, by))
-            }
+            Some(wm::Dragging::Sizing { id: held, grip: holding, from }) if held == id && holding == grip => Some(from),
             _ => None,
         };
-        let Some((from, by)) = running.or_else(|| Some((self.windows.get(id)?.rect(), (0, 0)))) else {
+        let Some(from) = running.or_else(|| Some(self.windows.get(id)?.rect())) else {
             return;
         };
-        let by = (by.0.saturating_add(dx), by.1.saturating_add(dy));
         if self.windows.resize_from(id, from, grip, by.0, by.1) {
-            self.dragging = Some(wm::Dragging::Sizing { id, grip, from, by });
+            self.dragging = Some(wm::Dragging::Sizing { id, grip, from });
         }
     }
 
@@ -1625,7 +1629,7 @@ impl Desk {
                 self.windows.move_by(id, rect.x - from.x, rect.y - from.y);
                 self.windows.drop_dragged(id);
             }
-            Some(wm::Dragging::Moving(dragged)) if dragged == id => {
+            Some(wm::Dragging::Moving { id: dragged, .. }) if dragged == id => {
                 self.windows.drop_dragged(id);
             }
             // A resize never snaps: an edge pulled to the screen's edge is being sized.

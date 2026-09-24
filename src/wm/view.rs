@@ -14,7 +14,7 @@ use std::path::Path;
 use qframe::geometry::{Rect, Size};
 use qframe::icons::Glyph;
 use qframe::prelude::*;
-use qframe::widgets::{Ghost, Window as Surface, WindowEdge, WindowEvent};
+use qframe::widgets::{Ghost, Window as Surface, WindowDrag, WindowEdge, WindowEvent};
 
 use super::layout::clamp_into;
 use super::{Grip, Window, WindowId, Windows, snap};
@@ -34,19 +34,19 @@ const SNAP_MIX: f32 = 0.20;
 
 /// What the person did to a window with the pointer.
 ///
-/// The deltas are the ones the framework reports: cells since the last message of the same drag.
+/// A move and a resize carry how far the pointer has gone since the button went down, not the
+/// step since the last message: the window is placed from where the drag began, so one held back
+/// at the screen's edge or at its smallest size waits there until the pointer comes back to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     /// A window that did not have the focus was pressed: bring it forward.
     Focus(WindowId),
-    /// A window was dragged by this many cells.
+    /// A window was dragged by this many cells since the button went down.
     Move {
         /// The window.
         id: WindowId,
-        /// Columns to the right; negative is to the left.
-        dx: i32,
-        /// Rows down; negative is up.
-        dy: i32,
+        /// Columns to the right, negative to the left, and rows down, negative up.
+        by: (i32, i32),
     },
     /// An edge or a corner of a window was dragged.
     Resize {
@@ -54,10 +54,8 @@ pub enum Action {
         id: WindowId,
         /// The edge or corner that moves.
         grip: Grip,
-        /// Columns the held side moves to the right.
-        dx: i32,
-        /// Rows the held side moves down.
-        dy: i32,
+        /// Columns and rows the pointer has gone since the button went down.
+        by: (i32, i32),
     },
     /// The minimize mark was pressed.
     Minimize(WindowId),
@@ -73,7 +71,16 @@ pub enum Action {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dragging {
     /// The window itself follows the pointer, and may snap to an edge when it is let go.
-    Moving(WindowId),
+    ///
+    /// Like a resize, the window is placed from where it began by everything the pointer has gone
+    /// since: a window held at the screen's edge or above the dock's row stays there until the
+    /// pointer is back over it, instead of starting back the moment the pointer turns.
+    Moving {
+        /// The window.
+        id: WindowId,
+        /// The rectangle the window had when the drag began, freed of a fill or a snap.
+        from: Rect,
+    },
     /// The window stays where it is and only a ghost follows the pointer; the window lands in one
     /// frame when the button comes up. This is the `ghost` drag style, the default everywhere and
     /// not only over a remote link (`drag-style`).
@@ -99,8 +106,6 @@ pub enum Dragging {
         grip: Grip,
         /// The rectangle the window had when the drag began.
         from: Rect,
-        /// Columns and rows the pointer has gone since then.
-        by: (i32, i32),
     },
 }
 
@@ -109,7 +114,7 @@ impl Dragging {
     #[must_use]
     pub fn id(self) -> WindowId {
         match self {
-            Self::Moving(id) | Self::Ghosting { id, .. } | Self::Sizing { id, .. } => id,
+            Self::Moving { id, .. } | Self::Ghosting { id, .. } | Self::Sizing { id, .. } => id,
         }
     }
 }
@@ -152,16 +157,32 @@ pub struct Look {
 }
 
 /// The [`Action`] a framework [`WindowEvent`] on the window `id` means.
+///
+/// Moves and resizes come through [`dragged`], with the whole drag so far. The window sends their
+/// steps here only when it has no `on_drag`, which [`view`] always gives it; a lone step is then
+/// read as the drag so far, which it is for the first step.
 #[must_use]
 pub fn action(id: WindowId, event: WindowEvent) -> Action {
     match event {
         WindowEvent::Focus => Action::Focus(id),
-        WindowEvent::Move { dx, dy } => Action::Move { id, dx, dy },
-        WindowEvent::Resize { edge, dx, dy } => Action::Resize { id, grip: grip_of(edge), dx, dy },
+        WindowEvent::Move { dx, dy } | WindowEvent::Resize { dx, dy, .. } => {
+            dragged(id, WindowDrag { step: event, total_dx: dx, total_dy: dy })
+        }
         WindowEvent::Minimize => Action::Minimize(id),
         WindowEvent::ToggleMaximize => Action::ToggleMaximize(id),
         WindowEvent::Close => Action::Close(id),
         WindowEvent::Dropped => Action::Dropped(id),
+    }
+}
+
+/// The [`Action`] a step of a move or a resize of the window `id` means: the step's kind, with
+/// how far the pointer has gone since the button went down.
+#[must_use]
+pub fn dragged(id: WindowId, drag: WindowDrag) -> Action {
+    let by = (drag.total_dx, drag.total_dy);
+    match drag.step {
+        WindowEvent::Resize { edge, .. } => Action::Resize { id, grip: grip_of(edge), by },
+        _ => Action::Move { id, by },
     }
 }
 
@@ -181,13 +202,13 @@ fn grip_of(edge: WindowEdge) -> Grip {
     }
 }
 
-/// The rectangle a ghost drag of `window` starts from inside `area`.
+/// The rectangle a drag of `window` moves from inside `area`, the window's own or its ghost's.
 ///
 /// It is not always the rectangle the window shows: dragging a maximized or snapped window frees
-/// it at the size it had before, so the ghost has to show that size from its very first frame.
+/// it at the size it had before, so a ghost has to show that size from its very first frame.
 /// Otherwise the window would land smaller than the shape the person was aiming with.
 #[must_use]
-pub fn ghost_start(window: &Window, area: Rect) -> Rect {
+pub fn drag_start(window: &Window, area: Rect) -> Rect {
     clamp_into(window.placement().restore().unwrap_or_else(|| window.rect()), area)
 }
 
@@ -199,7 +220,7 @@ pub fn ghost_start(window: &Window, area: Rect) -> Rect {
 #[must_use]
 pub fn preview(windows: &Windows, dragging: Option<Dragging>) -> Option<Preview> {
     match dragging? {
-        Dragging::Moving(id) => windows.snap_target(id).map(|snap| Preview::Snap(snap.rect)),
+        Dragging::Moving { id, .. } => windows.snap_target(id).map(|snap| Preview::Snap(snap.rect)),
         Dragging::Ghosting { rect, .. } => {
             Some(snap::target(rect, windows.area()).map_or(Preview::Ghost(rect), |snap| Preview::Snap(snap.rect)))
         }
@@ -257,6 +278,7 @@ pub fn view<Msg: 'static>(
         let id = window.id();
         let focused = focus == Some(id);
         let send = on_action.clone();
+        let drag = on_action.clone();
         let mut surface = Surface::new((strip.name)(window))
             .icon(Glyph::literal((strip.glyph)(window)))
             .focused(focused)
@@ -264,7 +286,8 @@ pub fn view<Msg: 'static>(
             // Only the focused window casts a shadow (design 3.1): it is the one that is meant to
             // look lifted, and over a remote link every shadow is cells sent again.
             .shadow(look.shadow && focused)
-            .on_event(move |event| send(action(id, event)));
+            .on_event(move |event| send(action(id, event)))
+            .on_drag(move |step| drag(dragged(id, step)));
         if let Some(said) = (strip.subtitle)(window) {
             surface = surface.subtitle(said);
         }
@@ -333,15 +356,25 @@ mod tests {
     fn every_window_event_becomes_the_action_of_its_window() {
         let id = desk().open(&entry("one"));
         assert_eq!(action(id, WindowEvent::Focus), Action::Focus(id));
-        assert_eq!(action(id, WindowEvent::Move { dx: 2, dy: -1 }), Action::Move { id, dx: 2, dy: -1 });
+        assert_eq!(action(id, WindowEvent::Move { dx: 2, dy: -1 }), Action::Move { id, by: (2, -1) });
         assert_eq!(
             action(id, WindowEvent::Resize { edge: WindowEdge::BottomLeft, dx: 1, dy: 2 }),
-            Action::Resize { id, grip: Grip::BottomLeft, dx: 1, dy: 2 }
+            Action::Resize { id, grip: Grip::BottomLeft, by: (1, 2) }
         );
         assert_eq!(action(id, WindowEvent::Minimize), Action::Minimize(id));
         assert_eq!(action(id, WindowEvent::ToggleMaximize), Action::ToggleMaximize(id));
         assert_eq!(action(id, WindowEvent::Close), Action::Close(id));
         assert_eq!(action(id, WindowEvent::Dropped), Action::Dropped(id));
+    }
+
+    #[test]
+    fn a_drag_step_becomes_the_whole_drag_so_far_not_the_step() {
+        let id = desk().open(&entry("one"));
+        let step = WindowDrag { step: WindowEvent::Move { dx: 1, dy: 0 }, total_dx: -7, total_dy: 3 };
+        assert_eq!(dragged(id, step), Action::Move { id, by: (-7, 3) });
+        let edge = WindowEvent::Resize { edge: WindowEdge::TopRight, dx: 1, dy: -1 };
+        let step = WindowDrag { step: edge, total_dx: 4, total_dy: -6 };
+        assert_eq!(dragged(id, step), Action::Resize { id, grip: Grip::TopRight, by: (4, -6) });
     }
 
     #[test]
@@ -367,12 +400,12 @@ mod tests {
     }
 
     #[test]
-    fn a_ghost_starts_at_the_rectangle_the_window_shows() {
+    fn a_drag_starts_at_the_rectangle_the_window_shows() {
         let mut desk = desk();
         let id = desk.open(&entry("one"));
         desk.move_to(id, 5, 4);
         let window = desk.get(id).expect("open");
-        assert_eq!(ghost_start(window, desk.area()), Rect::new(5, 4, 52, 14));
+        assert_eq!(drag_start(window, desk.area()), Rect::new(5, 4, 52, 14));
     }
 
     #[test]
@@ -383,7 +416,7 @@ mod tests {
         desk.maximize(id);
         let window = desk.get(id).expect("open");
         assert_eq!(window.rect(), desk.area(), "it fills the desktop now");
-        assert_eq!(ghost_start(window, desk.area()), Rect::new(5, 4, 52, 14), "the ghost shows the size it frees at");
+        assert_eq!(drag_start(window, desk.area()), Rect::new(5, 4, 52, 14), "the ghost shows the size it frees at");
     }
 
     #[test]
@@ -392,7 +425,7 @@ mod tests {
         let id = desk.open(&entry("one"));
         desk.move_by(id, -100, 5);
         assert_eq!(preview(&desk, None), None);
-        let sizing = Dragging::Sizing { id, grip: Grip::Left, from: desk.area(), by: (0, 0) };
+        let sizing = Dragging::Sizing { id, grip: Grip::Left, from: desk.area() };
         assert_eq!(preview(&desk, Some(sizing)), None, "a resize never snaps");
     }
 
@@ -400,9 +433,10 @@ mod tests {
     fn a_dragged_window_against_an_edge_previews_the_half_it_would_take() {
         let mut desk = desk();
         let id = desk.open(&entry("one"));
-        assert_eq!(preview(&desk, Some(Dragging::Moving(id))), None, "in the middle there is nothing to show");
+        let moving = Dragging::Moving { id, from: desk.area() };
+        assert_eq!(preview(&desk, Some(moving)), None, "in the middle there is nothing to show");
         desk.move_by(id, -100, 5);
-        assert_eq!(preview(&desk, Some(Dragging::Moving(id))), Some(Preview::Snap(Rect::new(0, 0, 40, 23))));
+        assert_eq!(preview(&desk, Some(moving)), Some(Preview::Snap(Rect::new(0, 0, 40, 23))));
     }
 
     #[test]
@@ -479,8 +513,8 @@ mod tests {
     fn a_dragging_names_its_window() {
         let id = WindowId::first();
         let rect = Rect::new(0, 0, 20, 5);
-        assert_eq!(Dragging::Moving(id).id(), id);
-        assert_eq!(Dragging::Sizing { id, grip: Grip::Right, from: rect, by: (1, 0) }.id(), id);
+        assert_eq!(Dragging::Moving { id, from: rect }.id(), id);
+        assert_eq!(Dragging::Sizing { id, grip: Grip::Right, from: rect }.id(), id);
         assert_eq!(Dragging::Ghosting { id, from: rect, rect }.id(), id);
     }
 
@@ -490,6 +524,6 @@ mod tests {
         let id = desk.open(&entry("one"));
         desk.snap(id, Edge::Left);
         assert_eq!(desk.get(id).and_then(Window::snapped_to), Some(Edge::Left));
-        assert_eq!(preview(&desk, Some(Dragging::Moving(id))), None);
+        assert_eq!(preview(&desk, Some(Dragging::Moving { id, from: desk.area() })), None);
     }
 }

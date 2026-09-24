@@ -254,6 +254,76 @@ fn a_held_edge_stops_at_the_screen_and_at_the_dock_s_row() {
     assert!(harness.screen().lines().last().is_some_and(|dock| dock.contains("sunucu-1")), "{}", harness.screen());
 }
 
+/// An alt drag with the left button from `at` through every point of `path`, letting go at the
+/// last one: the window moves from wherever in its body it was pressed.
+fn alt_drag_through(harness: &mut Harness<Desk>, at: (i32, i32), path: &[(i32, i32)]) {
+    let mods = Modifiers { alt: true, ..Modifiers::default() };
+    let event = |kind, (x, y)| Event::Mouse(MouseEvent { kind, x, y, mods });
+    let mut events = vec![event(MouseKind::Down(MouseButton::Left), at)];
+    events.extend(path.iter().map(|&to| event(MouseKind::Drag(MouseButton::Left), to)));
+    events.push(event(MouseKind::Up(MouseButton::Left), path.last().copied().unwrap_or(at)));
+    harness.events(&events);
+}
+
+#[test]
+fn a_window_held_at_the_screen_s_edge_waits_there_for_the_pointer_to_come_back() {
+    // Each drag takes the window further than the screen lets it go, then the pointer comes part
+    // of the way back. The window has to be where the pointer holds it now, not a step back from
+    // where it stopped: that would be a window slipping out from under the pointer.
+    for style in [DragStyle::Ghost, DragStyle::Live] {
+        // The title is pressed four columns right of the window's left side. The pointer goes to
+        // the screen's first column, where the window stopped with four columns still to go, then
+        // six to the right: the window is two columns in, not six.
+        let (mut harness, _folder) = with_settings_dragging(style, "left");
+        let title = (FIRST.x + 4, FIRST.y);
+        drag_through(&mut harness, title, &[(0, FIRST.y), (6, FIRST.y)]);
+        assert_eq!(
+            rect(&harness),
+            Rect::new(2, FIRST.y, FIRST.width, FIRST.height),
+            "{style:?}:\n{}",
+            harness.screen()
+        );
+
+        // Pressed with alt six rows down in the body, the window stops at the top with six rows
+        // to go; eight rows back down it is two rows from the top.
+        let (mut harness, _folder) = with_settings_dragging(style, "top");
+        let body = (FIRST.x + 20, FIRST.y + 6);
+        alt_drag_through(&mut harness, body, &[(body.0, 0), (body.0, 8)]);
+        assert_eq!(
+            rect(&harness),
+            Rect::new(FIRST.x, 2, FIRST.width, FIRST.height),
+            "{style:?}:\n{}",
+            harness.screen()
+        );
+
+        // Down onto the dock's row the window stops above it; coming back up to four rows under
+        // where the title was pressed leaves it four rows lower than it began.
+        let (mut harness, _folder) = with_settings_dragging(style, "dock");
+        drag_through(&mut harness, title, &[(title.0, 23), (title.0, FIRST.y + 4)]);
+        assert_eq!(
+            rect(&harness),
+            Rect::new(FIRST.x, FIRST.y + 4, FIRST.width, FIRST.height),
+            "{style:?}:\n{}",
+            harness.screen()
+        );
+    }
+}
+
+#[test]
+fn a_window_that_follows_the_pointer_stays_at_the_edge_while_the_pointer_is_past_it() {
+    let (mut harness, _folder) = with_settings_dragging(DragStyle::Live, "held");
+    let title = (FIRST.x + 4, FIRST.y);
+    harness.mouse(MouseKind::Down(MouseButton::Left), title.0, title.1);
+    harness.mouse(MouseKind::Drag(MouseButton::Left), 0, title.1);
+    assert_eq!(rect(&harness).x, 0, "stopped at the screen's edge:\n{}", harness.screen());
+    // Two columns back the pointer is still two left of where it holds the title.
+    harness.mouse(MouseKind::Drag(MouseButton::Left), 2, title.1);
+    assert_eq!(rect(&harness).x, 0, "it waits for the pointer:\n{}", harness.screen());
+    harness.mouse(MouseKind::Drag(MouseButton::Left), 5, title.1);
+    assert_eq!(rect(&harness).x, 1, "and follows it again from where it holds the title");
+    harness.mouse(MouseKind::Up(MouseButton::Left), 5, title.1);
+}
+
 #[test]
 fn a_filled_or_snapped_window_is_sized_from_its_edges_and_floats_at_that_size() {
     let mut harness = with_settings(80, 24);

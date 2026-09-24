@@ -681,18 +681,36 @@ fn whatever_covers_the_picture_in_half_blocks_covers_it_on_a_kitty_terminal_too(
     }
 }
 
-/// The same on a sixel terminal, which paints the picture into the cells: it is written only where
-/// nothing at all stands on it, so with icons on the floor it is drawn with half blocks, over none
-/// of what stands on it.
+/// The same on a sixel terminal on this machine: the picture is written in pieces around whatever
+/// stands on it, never over it, as on a kitty terminal. The help's backdrop dims it to half blocks.
 #[test]
 fn whatever_covers_the_picture_in_half_blocks_covers_it_on_a_sixel_terminal_too() {
     for (what, pixels) in walk_the_covers(Graphics::Sixel) {
-        assert_eq!(pixels, 0, "with {what} the picture is half blocks");
+        if what == "the help" {
+            assert_eq!(pixels, 0, "under the help's backdrop the picture is dimmed half blocks");
+        } else {
+            assert!(pixels > 1000, "with {what} most of the floor is still the terminal's pixels: {pixels} cells");
+        }
     }
 }
 
-/// A sixel terminal is written the picture's pixels on a floor nothing stands on, and half
-/// blocks again as soon as a window opens over it.
+/// Over SSH a sixel picture is sent whole or not at all: pieces around the icons would cost more
+/// than half blocks on a slow link, so with icons on the floor it is drawn with half blocks, and
+/// still over none of them.
+#[test]
+fn over_ssh_a_sixel_picture_with_icons_on_it_is_drawn_with_half_blocks() {
+    let scratch = Scratch::new();
+    let file = scratch.pictures().join("deniz.png");
+    two_tone(&file);
+    fs::write(scratch.config().join("desktop.conf"), format!("wallpaper = \"{}\"\n", file.display())).expect("file");
+    let mut harness = scratch.desk(&support::ICONS);
+    harness.set_remote(true);
+    until(&mut harness, "the picture", |harness| half_block(harness, HIGH, TOP, TOP));
+    assert_eq!(same_cover(&mut harness, Graphics::Sixel, "the icons"), 0, "over SSH the picture is half blocks");
+}
+
+/// A sixel terminal is written the picture's pixels on a floor nothing stands on, and in pieces
+/// around a window that opens over it, none of them inside the window.
 #[test]
 fn a_sixel_terminal_draws_the_picture_itself_on_a_floor_nothing_stands_on() {
     let scratch = Scratch::new();
@@ -707,5 +725,6 @@ fn a_sixel_terminal_draws_the_picture_itself_on_a_floor_nothing_stands_on() {
     harness.press("space");
     harness.type_text("Settings");
     harness.press("enter");
-    assert_eq!(same_cover(&mut harness, Graphics::Sixel, "a Settings window"), 0, "a window turns it to half blocks");
+    let around = same_cover(&mut harness, Graphics::Sixel, "a Settings window");
+    assert!(around > 0 && around < pixels, "the pixels go around the window, not over it: {around} of {pixels}");
 }

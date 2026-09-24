@@ -173,18 +173,30 @@ fn an_old_kernel_without_mem_available_counts_free_buffers_and_cache() {
 }
 
 #[test]
-fn the_network_rate_sums_every_interface_but_loopback() {
+fn the_network_rate_sums_every_interface_but_loopback_in_each_direction() {
     let scratch = Scratch::new();
     laptop(&scratch);
     let mut probe = scratch.probe();
     let start = Instant::now();
     assert_eq!(probe.sample_at(start).network, None, "one reading has no rate");
-    // Loopback moves a lot and must not count; the others move 2.4 MiB in two seconds.
+    // Loopback moves a lot and must not count; the others receive 2.1 MB and send 0.4 MB in two
+    // seconds.
     scratch.net(999_999_999, 10_000 + 2_000_000, 5_000 + 400_000, 1_000 + 100_000, 500 + 16_583);
     let status = probe.sample_at(start + Duration::from_secs(2));
-    let rate = status.network.expect("a rate");
-    assert!((rate - 1_258_291.5).abs() < 1e-6, "{rate}");
-    assert_eq!(text_of(&status, Kind::Network).as_deref(), Some("1.2M/s"));
+    let traffic = status.network.expect("a rate");
+    assert!((traffic.down - 1_050_000.0).abs() < 1e-6, "{traffic:?}");
+    assert!((traffic.up - 208_291.5).abs() < 1e-6, "{traffic:?}");
+    // The strip has room for one number: the direction that carries more, with its arrow.
+    let network = |status: &Status| {
+        english(|| {
+            items(status).into_iter().find(|item| item.kind == Kind::Network).map(|item| (item.glyph_key, item.text))
+        })
+    };
+    assert_eq!(network(&status), Some(("network-down", "1.0M/s".to_owned())));
+    // Sending more than coming in, as a machine does whose desktop is drawn over SSH.
+    scratch.net(999_999_999, 10_000 + 2_000_000 + 2_048, 5_000 + 400_000 + 20_480, 1_000 + 100_000, 500 + 16_583);
+    let status = probe.sample_at(start + Duration::from_secs(4));
+    assert_eq!(network(&status), Some(("network-up", "10K/s".to_owned())));
 }
 
 #[test]
@@ -195,7 +207,7 @@ fn a_counter_that_goes_back_reads_as_no_traffic() {
     let start = Instant::now();
     probe.sample_at(start);
     scratch.net(0, 0, 0, 0, 0);
-    assert_eq!(probe.sample_at(start + SAMPLE_EVERY).network, Some(0.0));
+    assert_eq!(probe.sample_at(start + SAMPLE_EVERY).network, Some(Traffic { down: 0.0, up: 0.0 }));
 }
 
 #[test]
@@ -204,13 +216,34 @@ fn the_battery_shows_its_level_and_whether_it_charges() {
     laptop(&scratch);
     let status = scratch.probe().sample_at(Instant::now());
     assert_eq!(status.battery, Some(Battery { percent: 87, charging: true }));
-    assert_eq!(text_of(&status, Kind::Battery).as_deref(), Some("87%+"));
+    // The glyph says it charges; the number stays a number.
+    assert_eq!(text_of(&status, Kind::Battery).as_deref(), Some("87%"));
+    assert_eq!(battery_glyph(&status), Some("battery-charging"));
 
     scratch.supply("BAT0", &[("capacity", "9"), ("status", "Discharging")]);
     let status = scratch.probe().sample_at(Instant::now());
     assert_eq!(text_of(&status, Kind::Battery).as_deref(), Some("9%"));
     let tone = english(|| items(&status).into_iter().find(|item| item.kind == Kind::Battery).map(|item| item.tone));
     assert_eq!(tone, Some(Tone::Alert));
+}
+
+fn battery_glyph(status: &Status) -> Option<&'static str> {
+    english(|| items(status).into_iter().find(|item| item.kind == Kind::Battery).map(|item| item.glyph_key))
+}
+
+#[test]
+fn the_battery_s_glyph_empties_with_its_charge() {
+    let glyph = |percent, charging| {
+        battery_glyph(&Status { battery: Some(Battery { percent, charging }), ..Status::default() })
+    };
+    assert_eq!(glyph(100, false), Some("battery-full"));
+    assert_eq!(glyph(61, false), Some("battery-full"));
+    assert_eq!(glyph(60, false), Some("battery-half"));
+    assert_eq!(glyph(21, false), Some("battery-half"));
+    assert_eq!(glyph(20, false), Some("battery-empty"), "empty from where it warns");
+    assert_eq!(glyph(3, false), Some("battery-empty"));
+    assert_eq!(glyph(3, true), Some("battery-charging"));
+    assert_eq!(glyph(100, true), Some("battery-charging"));
 }
 
 #[test]
@@ -321,7 +354,7 @@ fn texts_are_short_and_rates_step_through_units() {
 fn numbers_follow_the_language_on_screen() {
     let status = Status {
         cpu: Some(12.4),
-        network: Some(1.2 * 1024.0 * 1024.0),
+        network: Some(Traffic { down: 1.2 * 1024.0 * 1024.0, up: 0.0 }),
         battery: Some(Battery { percent: 50, charging: false }),
         ..Status::default()
     };
@@ -371,8 +404,32 @@ fn attaching_asks_tmux_for_exactly_that_session() {
 fn every_glyph_is_in_the_framework_icon_set() {
     let icons = IconSetRegistry::builtin().icons("default", &BTreeMap::new(), GlyphMode::Ascii);
     for kind in [Kind::Tmux, Kind::Network, Kind::Cpu, Kind::Memory, Kind::Battery] {
-        assert!(icons.contains(kind.glyph_key()), "{kind:?}: `{}` is not an icon", kind.glyph_key());
+        for key in kind.glyph_keys() {
+            assert!(icons.contains(key), "{kind:?}: `{key}` is not an icon");
+        }
         assert!(english(|| !kind.label().starts_with("status.")), "{kind:?} has a name");
+    }
+    // Every glyph an item draws is one its part names, whatever the reading.
+    let readings = [
+        Status {
+            cpu: Some(5.0),
+            memory: Some(Memory { used: 1, total: 2 }),
+            network: Some(Traffic { down: 1.0, up: 0.0 }),
+            battery: Some(Battery { percent: 90, charging: false }),
+            tmux: vec!["a".to_owned()],
+        },
+        Status {
+            network: Some(Traffic { down: 0.0, up: 1.0 }),
+            battery: Some(Battery { percent: 40, charging: false }),
+            ..Status::default()
+        },
+        Status { battery: Some(Battery { percent: 5, charging: false }), ..Status::default() },
+        Status { battery: Some(Battery { percent: 5, charging: true }), ..Status::default() },
+    ];
+    for status in &readings {
+        for item in english(|| items(status)) {
+            assert!(item.kind.glyph_keys().contains(&item.glyph_key), "{:?} drew `{}`", item.kind, item.glyph_key);
+        }
     }
 }
 
@@ -382,7 +439,7 @@ fn two_readings_look_the_same_when_every_text_and_tone_of_the_strip_would() {
         cpu: Some(cpu),
         memory: Some(Memory { used: 40, total: 100 }),
         battery: None,
-        network: Some(rate),
+        network: Some(Traffic { down: rate, up: 0.0 }),
         tmux: vec!["main".to_owned()],
     };
     let same = |a: &Status, b: &Status| {
@@ -397,6 +454,9 @@ fn two_readings_look_the_same_when_every_text_and_tone_of_the_strip_would() {
     let mut other = reading(10.0, 0.0);
     other.tmux.push("logs".to_owned());
     assert!(!same(&reading(10.0, 0.0), &other), "a new tmux session is drawn");
+    let mut sending = reading(10.0, 1000.0);
+    sending.network = Some(Traffic { down: 0.0, up: 1000.0 });
+    assert!(!same(&reading(10.0, 1000.0), &sending), "the same number the other way has the other arrow");
 }
 
 #[test]

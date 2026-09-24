@@ -20,7 +20,7 @@ use qframe::i18n;
 use qframe::prelude::*;
 use qframe::runtime::Task;
 
-pub use probe::{Battery, Memory, Probe};
+pub use probe::{Battery, Memory, Probe, Traffic};
 
 /// How often the machine is read.
 ///
@@ -50,8 +50,9 @@ const BATTERY_WARN: u8 = 20;
 /// The level below which it alarms.
 const BATTERY_ALERT: u8 = 10;
 
-/// Written after the level of a battery that is charging. ASCII, so every terminal draws it.
-const CHARGING_MARK: &str = "+";
+/// The level above which a battery that is not charging is drawn full; from [`BATTERY_WARN`] up
+/// to here it is drawn half full, and below that empty, as it warns.
+const BATTERY_FULL: u8 = 60;
 
 /// What the machine is doing, as one reading saw it. A part the machine does not have, or that
 /// needs two readings to be known, is `None`.
@@ -65,7 +66,7 @@ pub struct Status {
     pub battery: Option<Battery>,
     /// Bytes received and sent per second on every interface but loopback, since the reading
     /// before.
-    pub network: Option<f64>,
+    pub network: Option<Traffic>,
     /// The names of the tmux sessions, in tmux's order. Empty when tmux is not installed, has no
     /// server or fails.
     pub tmux: Vec<String>,
@@ -99,18 +100,16 @@ impl Kind {
         }
     }
 
-    /// The key of the part's glyph in the framework's icon set.
-    ///
-    /// The set has no processor, memory, battery or terminal icon of its own; these are the
-    /// nearest it has until it does.
+    /// The keys of every glyph the part's item can show, in the framework's icon set. The
+    /// battery's glyph says its charge, and the network's the direction its number is for.
     #[must_use]
-    pub fn glyph_key(self) -> &'static str {
+    pub fn glyph_keys(self) -> &'static [&'static str] {
         match self {
-            Self::Tmux => "prompt",
-            Self::Network => "category-network",
-            Self::Cpu => "category-system",
-            Self::Memory => "workspace",
-            Self::Battery => "power",
+            Self::Tmux => &["session"],
+            Self::Network => &["network-down", "network-up"],
+            Self::Cpu => &["cpu"],
+            Self::Memory => &["memory"],
+            Self::Battery => &["battery-full", "battery-half", "battery-empty", "battery-charging"],
         }
     }
 }
@@ -143,8 +142,8 @@ pub struct Item {
 }
 
 impl Item {
-    fn new(kind: Kind, text: String, tone: Tone) -> Self {
-        Self { kind, glyph_key: kind.glyph_key(), text, tone, menu: Vec::new() }
+    fn new(kind: Kind, glyph_key: &'static str, text: String, tone: Tone) -> Self {
+        Self { kind, glyph_key, text, tone, menu: Vec::new() }
     }
 }
 
@@ -154,26 +153,25 @@ impl Item {
 pub fn items(status: &Status) -> Vec<Item> {
     let mut items = Vec::new();
     if !status.tmux.is_empty() {
-        let mut item = Item::new(Kind::Tmux, status.tmux.len().to_string(), Tone::Calm);
+        let mut item = Item::new(Kind::Tmux, "session", status.tmux.len().to_string(), Tone::Calm);
         item.menu.clone_from(&status.tmux);
         items.push(item);
     }
-    if let Some(rate) = status.network {
-        items.push(Item::new(Kind::Network, rate_text(rate), Tone::Calm));
+    if let Some(traffic) = status.network {
+        let (up, rate) = busier(traffic);
+        let key = if up { "network-up" } else { "network-down" };
+        items.push(Item::new(Kind::Network, key, rate_text(rate), Tone::Calm));
     }
     if let Some(cpu) = status.cpu {
-        items.push(Item::new(Kind::Cpu, percent(cpu), load_tone(cpu)));
+        items.push(Item::new(Kind::Cpu, "cpu", percent(cpu), load_tone(cpu)));
     }
     if let Some(memory) = status.memory {
         let share = memory.share();
-        items.push(Item::new(Kind::Memory, percent(share), load_tone(share)));
+        items.push(Item::new(Kind::Memory, "memory", percent(share), load_tone(share)));
     }
     if let Some(battery) = status.battery {
-        let mut text = percent(f64::from(battery.percent));
-        if battery.charging {
-            text.push_str(CHARGING_MARK);
-        }
-        items.push(Item::new(Kind::Battery, text, battery_tone(battery)));
+        let text = percent(f64::from(battery.percent));
+        items.push(Item::new(Kind::Battery, battery_key(battery), text, battery_tone(battery)));
     }
     items
 }
@@ -183,8 +181,8 @@ pub fn items(status: &Status) -> Vec<Item> {
 /// so a number that changes never moves the items beside it: the row holds still, and over SSH
 /// only the changed number is sent. `None` for the tmux count, which changes at a person's pace.
 ///
-/// A battery that starts charging, or an item that turns to a warning, still grows by its mark:
-/// that happens seldom, and the mark is the point.
+/// An item that turns to a warning still grows by its mark: that happens seldom, and the mark is
+/// the point.
 #[must_use]
 pub fn widest(kind: Kind) -> Option<String> {
     match kind {
@@ -286,16 +284,18 @@ pub fn same_on_screen(a: &Status, b: &Status) -> bool {
 
 /// What decides how a reading is drawn, without the words: each number as it is rounded for the
 /// strip, with its tone.
-type Glance = (Option<(i64, Tone)>, Option<(i64, Tone)>, Option<(u8, bool, Tone)>, Option<(usize, i64)>, Vec<String>);
+type Glance =
+    (Option<(i64, Tone)>, Option<(i64, Tone)>, Option<(u8, bool, Tone)>, Option<(bool, usize, i64)>, Vec<String>);
 
 fn glance(status: &Status) -> Glance {
     #[expect(clippy::cast_possible_truncation, reason = "a share or a shown rate is far inside i64")]
     let whole = |value: f64| value.round() as i64;
-    let rate = status.network.map(|bytes| {
+    let rate = status.network.map(|traffic| {
+        let (up, bytes) = busier(traffic);
         let (unit, value, decimals) = rate_parts(bytes);
         #[expect(clippy::cast_possible_truncation, reason = "a shown rate is far inside i64")]
         let shown = (value * 10_f64.powi(i32::try_from(decimals).unwrap_or(0))).round() as i64;
-        (unit, shown)
+        (up, unit, shown)
     });
     (
         status.cpu.map(|cpu| (whole(cpu), load_tone(cpu))),
@@ -332,6 +332,28 @@ fn rate_parts(bytes_per_second: f64) -> (usize, f64, usize) {
         unit += 1;
     }
     (unit, value, usize::from(unit > 0 && value < 9.95))
+}
+
+/// The direction the strip shows the network's rate for, `true` for sent, and that rate.
+///
+/// The strip has room for one number. The sum of both directions would be a number with no
+/// direction, and over SSH the machine's own sending is mostly the desktop drawing itself, so the
+/// strip shows the direction that carries more, with its arrow; a tie shows what comes in.
+fn busier(traffic: Traffic) -> (bool, f64) {
+    if traffic.up > traffic.down { (true, traffic.up) } else { (false, traffic.down) }
+}
+
+/// The battery's glyph: charging, or full, half full or empty by its level.
+fn battery_key(battery: Battery) -> &'static str {
+    if battery.charging {
+        "battery-charging"
+    } else if battery.percent > BATTERY_FULL {
+        "battery-full"
+    } else if battery.percent > BATTERY_WARN {
+        "battery-half"
+    } else {
+        "battery-empty"
+    }
 }
 
 fn load_tone(share: f64) -> Tone {

@@ -63,6 +63,12 @@ impl Scratch {
         self.write("proc/stat", &format!("cpu  {busy} 0 0 {idle} 0 0 0 0 0 0\ncpu0 1 1 1 1 0 0 0 0 0 0\n"));
     }
 
+    /// `/proc/net/dev` with one interface that has received `received` bytes and sent `sent`.
+    fn network(&self, received: u64, sent: u64) {
+        let heading = "Inter-|   Receive\n face |bytes\n";
+        self.write("proc/net/dev", &format!("{heading}  eth0: {received} 0 0 0 0 0 0 0 {sent} 0 0 0 0 0 0 0\n"));
+    }
+
     /// `/proc/meminfo` with `used` of 100 units in use.
     fn memory(&self, used: u64) {
         let total = 8_000_000;
@@ -442,6 +448,28 @@ fn a_reading_that_shows_the_same_texts_is_not_taken_so_nothing_is_drawn_again() 
     scratch.stat(1_251 + 900, 1_249 + 100);
     wall.pass(&mut harness, qdesk::status::SAMPLE_EVERY);
     assert_eq!(harness.app().machine().cpu, Some(90.0));
+}
+
+#[test]
+fn the_system_widget_says_which_way_its_network_rate_goes() {
+    let scratch = Scratch::new("network");
+    scratch.stat(1, 1);
+    scratch.network(0, 0);
+    let (mut harness, wall) = reading(&scratch, None);
+    // The machine sends more than it receives: the rate is the one going up, with its arrow.
+    scratch.network(1_000, 900_000);
+    wall.pass(&mut harness, qdesk::status::SAMPLE_EVERY);
+    let up = harness.env().icons().glyph("network-up").into_owned();
+    let down = harness.env().icons().glyph("network-down").into_owned();
+    let line = |harness: &Harness<Desk>| {
+        harness.screen().lines().find(|line| line.contains("Network")).map(str::to_owned).unwrap_or_default()
+    };
+    assert!(line(&harness).contains(&format!("{up} ")), "{}", harness.screen());
+    // Then a download: the arrow turns.
+    scratch.network(90_000_000, 900_000);
+    wall.pass(&mut harness, qdesk::status::SAMPLE_EVERY);
+    assert!(line(&harness).contains(&format!("{down} ")), "{}", harness.screen());
+    assert!(!line(&harness).contains(&up), "{}", harness.screen());
 }
 
 #[test]

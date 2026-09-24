@@ -207,7 +207,7 @@ fn the_dock_shows_the_machines_readings_before_its_name_and_clock() {
     let row = dock(&harness);
     println!("120x24 dock: {row:?}");
     // tmux, the network, the processor, the memory and the battery, then the name and the clock.
-    let order = ["❯ 2", "◎ ", "/s", "▣  10%", "◰  41%", "○  87%", MACHINE, "14:32"];
+    let order = ["◫ 2", "▼ ", "/s", "▣  10%", "▦  41%", "■  87%", MACHINE, "14:32"];
     let mut from = 0;
     for part in order {
         let at = row[from..].find(part).unwrap_or_else(|| panic!("{part} after column {from}: {row:?}"));
@@ -228,7 +228,7 @@ fn at_80_by_24_an_empty_desktop_shows_the_whole_strip() {
     let harness = read_twice(&scratch, 80, 24);
     let row = dock(&harness);
     println!("80x24 dock: {row:?}");
-    for part in ["❯ 2", "◎ ", "▣  10%", "◰  41%", "○  87%", MACHINE, "14:32"] {
+    for part in ["◫ 2", "▼ ", "▣  10%", "▦  41%", "■  87%", MACHINE, "14:32"] {
         assert!(row.contains(part), "{part}: {row:?}");
     }
 }
@@ -236,9 +236,9 @@ fn at_80_by_24_an_empty_desktop_shows_the_whole_strip() {
 #[test]
 fn a_narrow_dock_lets_the_strip_go_from_the_left_and_keeps_the_name_and_the_clock() {
     for (width, kept, gone) in [
-        (60, &["◰  41%", "○  87%"][..], &["❯ 2", "◎", "▣"][..]),
-        (50, &["○  87%"][..], &["❯ 2", "◎", "▣", "◰"][..]),
-        (40, &[][..], &["❯ 2", "◎", "▣", "◰", "○  87%"][..]),
+        (60, &["▦  41%", "■  87%"][..], &["◫ 2", "▼", "▣"][..]),
+        (50, &["■  87%"][..], &["◫ 2", "▼", "▣", "▦"][..]),
+        (40, &[][..], &["◫ 2", "▼", "▣", "▦", "■  87%"][..]),
     ] {
         let scratch = Scratch::new("narrow");
         let harness = read_twice(&scratch, width, 24);
@@ -259,14 +259,14 @@ fn a_full_memory_says_so_with_a_mark_and_the_themes_warning_and_danger_colours()
     let scratch = Scratch::new("tones");
     scratch.memory(80);
     let harness = strip_desk(&scratch, Vec::new(), 120, 24);
-    let (x, y) = harness.find("◰ ▲  80%").unwrap_or_else(|| panic!("a warning mark:\n{}", dock(&harness)));
+    let (x, y) = harness.find("▦ ▲  80%").unwrap_or_else(|| panic!("a warning mark:\n{}", dock(&harness)));
     let at = |x: i32| harness.fg(u16::try_from(x).unwrap_or(0), u16::try_from(y).unwrap_or(0));
     let theme = harness.env().theme();
     assert_eq!(at(x + 4), theme.color("warning"), "the warning colour, as well as the mark");
 
     scratch.memory(95);
     let harness = strip_desk(&scratch, Vec::new(), 120, 24);
-    let (x, y) = harness.find("◰ ✕  95%").unwrap_or_else(|| panic!("an alarm mark:\n{}", dock(&harness)));
+    let (x, y) = harness.find("▦ ✕  95%").unwrap_or_else(|| panic!("an alarm mark:\n{}", dock(&harness)));
     let colour = harness.fg(u16::try_from(x + 4).unwrap_or(0), u16::try_from(y).unwrap_or(0));
     assert_eq!(colour, harness.env().theme().color("danger"), "the danger colour");
 }
@@ -276,7 +276,7 @@ fn a_click_on_the_tmux_item_opens_the_sessions_menu_and_one_opens_attached_witho
     let scratch = Scratch::new("attach");
     let said = scratch.tmux();
     let mut harness = strip_desk(&scratch, Vec::new(), 120, 24);
-    let (x, y) = harness.find("❯ 2").unwrap_or_else(|| panic!("the tmux item:\n{}", dock(&harness)));
+    let (x, y) = harness.find("◫ 2").unwrap_or_else(|| panic!("the tmux item:\n{}", dock(&harness)));
     harness.click(x, y);
     assert!(harness.find("dev ").is_some(), "the sessions are offered:\n{}", harness.screen());
     let (x, y) = harness.find("devops").unwrap_or_else(|| panic!("the sessions are offered:\n{}", harness.screen()));
@@ -293,7 +293,7 @@ fn a_right_click_on_the_tmux_item_offers_the_same_menu() {
     let scratch = Scratch::new("menu");
     let said = scratch.tmux();
     let mut harness = strip_desk(&scratch, Vec::new(), 120, 24);
-    let (x, y) = harness.find("❯ 2").unwrap_or_else(|| panic!("the tmux item:\n{}", dock(&harness)));
+    let (x, y) = harness.find("◫ 2").unwrap_or_else(|| panic!("the tmux item:\n{}", dock(&harness)));
     harness.mouse(MouseKind::Down(MouseButton::Right), x, y);
     harness.click_text("dev ");
     until(&mut harness, "the attach", |_| said.exists());
@@ -306,7 +306,7 @@ fn a_second_click_on_the_tmux_item_puts_the_sessions_menu_away() {
     let scratch = Scratch::new("again");
     scratch.tmux();
     let mut harness = strip_desk(&scratch, Vec::new(), 120, 24);
-    let (x, y) = harness.find("❯ 2").unwrap_or_else(|| panic!("the tmux item:\n{}", dock(&harness)));
+    let (x, y) = harness.find("◫ 2").unwrap_or_else(|| panic!("the tmux item:\n{}", dock(&harness)));
     harness.click(x, y);
     assert!(harness.find("devops").is_some(), "the first click opens the menu:\n{}", harness.screen());
     // The item sits inside its name's tooltip, which takes the pointer itself; the same click
@@ -323,7 +323,7 @@ fn escape_puts_the_sessions_menu_away() {
     let scratch = Scratch::new("escape");
     scratch.tmux();
     let mut harness = strip_desk(&scratch, Vec::new(), 120, 24);
-    let (x, y) = harness.find("❯ 2").expect("the tmux item");
+    let (x, y) = harness.find("◫ 2").expect("the tmux item");
     harness.click(x, y);
     assert!(harness.find("devops").is_some(), "{}", harness.screen());
     harness.press("esc");
@@ -344,7 +344,7 @@ fn a_click_on_the_processor_opens_btop_else_htop_else_nothing() {
 
     fs::remove_file(scratch.bin().join("btop")).expect("btop goes");
     let mut harness = read_twice(&scratch, 120, 24);
-    let (x, y) = harness.find("◰  41%").expect("the memory");
+    let (x, y) = harness.find("▦  41%").expect("the memory");
     harness.click(x, y);
     until(&mut harness, "htop", |_| htop.exists());
 
@@ -359,12 +359,12 @@ fn a_click_on_the_processor_opens_btop_else_htop_else_nothing() {
 fn a_changing_number_never_moves_the_items_beside_it() {
     let scratch = Scratch::new("still");
     let mut harness = read_twice(&scratch, 120, 24);
-    let memory = harness.find("◰").expect("the memory");
+    let memory = harness.find("▦").expect("the memory");
     // From a tenth busy to nine in a hundred: one digit fewer.
     scratch.stat(100 + 9, 900 + 91);
     pass(&mut harness, SAMPLE_EVERY);
     assert!(dock(&harness).contains("▣   9%"), "{}", dock(&harness));
-    assert_eq!(harness.find("◰"), Some(memory), "the memory stayed where it was: {}", dock(&harness));
+    assert_eq!(harness.find("▦"), Some(memory), "the memory stayed where it was: {}", dock(&harness));
 }
 
 /// Opens Settings from its icon on the floor, clicks the switch of "Status on the dock" where it
@@ -388,9 +388,9 @@ fn the_settings_switch_takes_the_strip_off_the_dock_and_stops_reading_the_machin
     let scratch = Scratch::new("switch");
     let mut harness = strip_desk(&scratch, Vec::new(), 140, 44);
     assert!(harness.app().prefs().status_strip, "on until someone turns it off");
-    assert!(dock(&harness).contains("◰  41%"), "{}", dock(&harness));
+    assert!(dock(&harness).contains("▦  41%"), "{}", dock(&harness));
     switch_strip_in_settings(&mut harness);
-    assert!(!dock(&harness).contains("◰"), "the strip is gone: {}", dock(&harness));
+    assert!(!dock(&harness).contains("▦"), "the strip is gone: {}", dock(&harness));
     // A reading under way may still come back; after that, nothing reads the machine.
     pass(&mut harness, Duration::from_secs(120));
     let before = harness.app().machine().clone();
@@ -403,10 +403,10 @@ fn the_settings_switch_takes_the_strip_off_the_dock_and_stops_reading_the_machin
     assert!(written.contains("status-on-dock = false"), "{written}");
     drop(harness);
     let mut again = strip_desk(&scratch, Vec::new(), 140, 44);
-    assert!(!dock(&again).contains("◰"), "still off after a restart: {}", dock(&again));
+    assert!(!dock(&again).contains("▦"), "still off after a restart: {}", dock(&again));
     // On again: the strip comes back with a fresh reading, and the default leaves the file.
     switch_strip_in_settings(&mut again);
-    assert!(dock(&again).contains("◰  60%"), "{}", dock(&again));
+    assert!(dock(&again).contains("▦  60%"), "{}", dock(&again));
     let written = fs::read_to_string(scratch.config().join("desktop.conf")).expect("the settings file");
     assert!(!written.contains("status-on-dock"), "the default is not written:\n{written}");
 }
@@ -416,15 +416,17 @@ fn with_the_strip_off_the_system_widget_still_reads_the_machine() {
     let scratch = Scratch::new("widget");
     scratch.write("config/desktop.conf", "status-on-dock = false\n");
     let mut harness = strip_desk(&scratch, vec![Gadget::new(Kind::System, (9, 0), "")], 120, 40);
-    assert!(!dock(&harness).contains("◰"), "{}", dock(&harness));
+    assert!(!dock(&harness).contains("▦"), "{}", dock(&harness));
     scratch.memory(90);
     pass(&mut harness, SAMPLE_EVERY);
     assert!(harness.find("90%").is_some(), "the widget reads on:\n{}", harness.screen());
 }
 
 #[test]
-fn the_strip_is_drawn_without_brackets_or_lines_in_ascii_and_sixteen_colours() {
+fn the_strip_is_drawn_without_brackets_or_lines_in_every_glyph_mode_and_sixteen_colours() {
     for (mode, depth) in [
+        (GlyphMode::Nerd, ColorDepth::TrueColor),
+        (GlyphMode::Nerd, ColorDepth::Ansi16),
         (GlyphMode::Ascii, ColorDepth::Ansi16),
         (GlyphMode::Unicode, ColorDepth::Ansi16),
         (GlyphMode::Ascii, ColorDepth::TrueColor),
@@ -437,6 +439,15 @@ fn the_strip_is_drawn_without_brackets_or_lines_in_ascii_and_sixteen_colours() {
         assert_eq!(decoration(&harness.screen()), None, "{mode:?} {depth:?}:\n{}", harness.screen());
         let alarm = harness.env().icons().glyph("error").into_owned();
         assert!(row.contains(&format!("{alarm}  95%")), "{mode:?}: the alarm has its mark: {row:?}");
+        // Every item's own glyph in this mode is on the row: nothing fell back to a borrowed one.
+        let icons = harness.env().icons();
+        for (key, text) in [("session", "2"), ("network-down", ""), ("cpu", "10%"), ("battery-full", "87%")] {
+            let glyph = icons.glyph(key).into_owned();
+            assert!(row.contains(&format!("{glyph} ")), "{mode:?}: {key} is `{glyph}`: {row:?}");
+            assert!(row.contains(text), "{row:?}");
+        }
+        let memory = icons.glyph("memory").into_owned();
+        assert!(row.contains(&format!("{memory} {alarm}  95%")), "{mode:?}: the memory's glyph: {row:?}");
         assert!(row.contains(MACHINE), "{row:?}");
     }
 }

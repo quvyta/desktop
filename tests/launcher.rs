@@ -337,7 +337,7 @@ fn the_applications_are_cards_with_what_they_do_under_their_names() {
     harness.press("space");
     let rows = screen(&harness);
     // The floor has a Terminal icon too; the card's name follows its glyph on one row.
-    let (x, y) = harness.find("❯ Terminal").expect("the Terminal card");
+    let (x, y) = harness.find("▭ Terminal").expect("the Terminal card");
     let under = &rows[usize::try_from(y + 1).unwrap_or(0)];
     let column = usize::try_from(x).unwrap_or(0);
     assert!(

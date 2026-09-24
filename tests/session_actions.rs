@@ -355,7 +355,7 @@ fn a_program_that_ends_behind_the_lock_says_nothing_until_it_is_opened() {
     open_terminal(&mut harness);
     until(&mut harness, "the first shell", |_| scratch.0.join("first").exists());
     open_launcher(&mut harness);
-    let (x, y) = harness.find("❯ Terminal").expect("the Terminal card");
+    let (x, y) = harness.find("▭ Terminal").expect("the Terminal card");
     harness.click(x, y);
     until(&mut harness, "the second shell", |harness| {
         let windows = harness.app().windows();
