@@ -8,10 +8,22 @@ fallback = "en"
 [cli]
 usage = """
 qdesk                 デスクトップを開く
-  -h, --help          このヘルプを表示
+  -h, --help          このテキストを表示
   -V, --version       バージョンを表示
-デスクトップ上で ctrl+q で終了します。"""
+qdesk wallpaper       背景の色、パターン、画像を表示
+  --color NAME        色を設定: theme, deep, mist, accent
+  --pattern NAME      パターンを設定: plain, gradient, dots, both
+qdesk wallpaper FILE  背景に PNG、JPEG、GIF、WebP の画像を敷く
+  --no-picture        画像を取り除く
+デスクトップでは ctrl+q で終了します。"""
 unknown-argument = "qdesk: 不明な引数 {argument} です。qdesk --help を参照してください"
+wallpaper-color = "qdesk wallpaper: --color には theme, deep, mist, accent を指定してください。{value} は使えません"
+wallpaper-pattern = "qdesk wallpaper: --pattern には plain, gradient, dots, both を指定してください。{value} は使えません"
+wallpaper-missing = "qdesk wallpaper: {option} には値が必要です。qdesk --help を参照してください"
+wallpaper-picture = "qdesk wallpaper: {file} は壁紙として使えません: {reason}"
+wallpaper-not-text = "そのパスは設定ファイルに保存できるテキストではありません"
+wallpaper-nowhere = "qdesk wallpaper: 設定を保存するホームフォルダがありません"
+wallpaper-unsaved = "qdesk wallpaper: {file} を書き込めませんでした: {error}"
 
 [dock]
 workspace = "ワークスペース {n}"
@@ -100,6 +112,7 @@ body = "{id} — {file} — {command}"
 no-viewer = "{name} はファイルを開きますが、qdesk にはまだ対応するビューアがありません"
 # A program that could not be started at all: it is not there, or no pseudo-terminal was free.
 start-failed = "{program} を起動できませんでした"
+settings-unread = "設定ファイルを最後まで読み込めませんでした"
 # The whole sentence: the system's words with the program they belong to.
 start-failed-why = "{program} を起動できませんでした：{reason}"
 install = "{name} をインストールしています"
@@ -141,7 +154,7 @@ quit = "終了"
 tile-narrow = "デスクトップが狭すぎて、ウィンドウを横に並べられません。"
 tile-short = "デスクトップに並べられるウィンドウは {fits} 個までです。"
 resize-hint = "ウィンドウは端をドラッグしてサイズ変更できます"
-resize-hint-body = "右または下の端、またはその間の角をドラッグしてください。Alt を押しながら右ボタンならどこからでもサイズ変更でき、ドックのメニューの「サイズ変更」では矢印キーで操作できます。"
+resize-hint-body = "端や角をドラッグするとサイズを変更でき、上の角の間のタイトルバーをドラッグするとウィンドウを移動できます。Alt を押しながら右ボタンならどこからでもサイズを変更でき、ドックのメニューの「サイズ変更」を選ぶと矢印キーでも操作できます。"
 
 [mode]
 # The dock's row while the keys are the desktop's.
@@ -158,7 +171,7 @@ leave = "戻る"
 back = "もどる"
 release = "はなす"
 far = "{cells} ずつ"
-drag = "端"
+drag = "端や角"
 drag-label = "ドラッグ"
 workspace = "スペース"
 
@@ -261,6 +274,17 @@ floor-style-plain = "無地"
 floor-style-gradient = "グラデーション"
 floor-style-dots = "ドット"
 floor-style-gradient-dots = "両方"
+wallpaper = "壁紙"
+wallpaper-text = "背景に敷く画像です。16色のときは背景の色がそのまま残ります。"
+wallpaper-unshown = "{reason}。画像が戻るまでは背景の色とパターンを表示します。"
+wallpaper-none = "なし"
+wallpaper-choose = "選択…"
+wallpaper-remove = "削除"
+wallpaper-ours = "同梱の画像"
+wallpaper-ours-pick = "選ぶ"
+wallpaper-ember = "熾火"
+wallpaper-dusk = "黄昏"
+wallpaper-tide = "潮"
 folders-in-explorer = "フォルダを {program} で開く"
 folders-in-explorer-text = "デスクトップや「ファイル」のフォルダは、エコシステムのファイルエクスプローラーで開きます。{program} がインストールされていない場合は、代わりに「ファイル」が開きます。"
 status-strip = "ドックのステータス"
@@ -295,6 +319,7 @@ not-text = "{name} を開けません: この名前はプログラムに渡せ�
 open-with = "別のプログラムで開く"
 open-with-editor = "{program}、エディタ"
 open-with-reader = "{program}、閲覧用"
+set-wallpaper = "壁紙に設定"
 
 [status]
 tmux = "tmux セッション"
@@ -353,3 +378,11 @@ week-start-sunday = "日曜日"
 note-placeholder = "何か書いてください"
 note-unsaved = "メモを保存できませんでした"
 no-room = "デスクトップに {name} ウィジェットを置く場所がありません"
+
+[wallpaper]
+unshown = "壁紙を表示できませんでした"
+refused = "{name} は壁紙として使えません"
+not-text = "そのパスは設定ファイルに保存できるテキストではありません"
+nowhere = "画像を qdesk のデータフォルダに保存できませんでした"
+pick-title = "壁紙を選択"
+pick-cancel = "キャンセル"

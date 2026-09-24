@@ -8,8 +8,20 @@ code = "tr"
 usage = """qdesk                 masaüstünü açar
   -h, --help          bu yardımı gösterir
   -V, --version       sürümü yazar
+qdesk wallpaper       zeminin rengini, desenini ve resmini yazar
+  --color AD          rengi seçer: theme, deep, mist ya da accent
+  --pattern AD        deseni seçer: plain, gradient, dots ya da both
+qdesk wallpaper DOSYA zemine bir PNG, JPEG, GIF ya da WebP resmi serer
+  --no-picture        resmi kaldırır
 Masaüstündeyken ctrl+q ile çıkılır."""
 unknown-argument = "qdesk: {argument} diye bir seçenek yok; seçenekler için qdesk --help"
+wallpaper-color = "qdesk wallpaper: --color theme, deep, mist ya da accent olur; {value} olmaz"
+wallpaper-pattern = "qdesk wallpaper: --pattern plain, gradient, dots ya da both olur; {value} olmaz"
+wallpaper-missing = "qdesk wallpaper: {option} bir değer ister; seçenekler için qdesk --help"
+wallpaper-picture = "qdesk wallpaper: {file} duvar kâğıdı olamaz: {reason}"
+wallpaper-not-text = "yolu ayar dosyasının saklayabileceği bir metin değil"
+wallpaper-nowhere = "qdesk wallpaper: ayarın saklanacağı bir ev klasörü yok"
+wallpaper-unsaved = "qdesk wallpaper: {file} yazılamadı: {error}"
 
 [dock]
 # Başlatıcı düğmesinin yanındaki çalışma alanı işaretleri ve dar satırda onların yerine duran numara.
@@ -90,6 +102,7 @@ body = "{id} — {file} — {command}"
 [notice]
 no-viewer = "{name} bir dosya açıyor, qdesk'in henüz görüntüleyicisi yok"
 start-failed = "{program} başlatılamadı"
+settings-unread = "Ayar dosyasının bir kısmı okunamadı"
 start-failed-why = "{program} başlatılamadı: {reason}"
 install = "{name} kuruluyor"
 install-unknown = "{name} nasıl kurulacağını söylemiyor"
@@ -129,7 +142,7 @@ tile-narrow = "Masaüstü pencereleri yan yana dizecek kadar geniş değil."
 tile-short = "Masaüstüne en çok {fits} pencere döşenebiliyor."
 # İlk pencere açılınca bir kez söylenir.
 resize-hint = "Pencereler kenarlarından boyutlanır"
-resize-hint-body = "Sağ ya da alt kenarı, ya da ikisinin köşesini sürükle. Alt ile sağ tuş pencereyi her yerinden boyutlandırır; dock'taki menüsünde Boyutlandır bunu ok tuşlarıyla yapar."
+resize-hint-body = "Herhangi bir kenarı ya da köşeyi sürükle; üst köşelerin arasındaki başlık şeridi pencereyi taşır. Alt ile sağ tuş pencereyi her yerinden boyutlandırır; dock'taki menüsünde Boyutlandır bunu ok tuşlarıyla yapar."
 
 [mode]
 # Tuşlar masaüstündeyken dock'un satırı.
@@ -147,7 +160,7 @@ back = "geri"
 release = "bırak"
 far = "{cells} hücre"
 # Fare de boyutlandırır: tuşun yerinde sürüklenen şey, yanında ne işe yaradığı.
-drag = "kenar"
+drag = "her kenar"
 drag-label = "sürükle"
 workspace = "alan"
 
@@ -251,6 +264,17 @@ floor-style-gradient = "Degrade"
 floor-style-dots = "Noktalı"
 # Degrade ve noktalar birlikte.
 floor-style-gradient-dots = "İkisi"
+wallpaper = "Duvar kâğıdı"
+wallpaper-text = "Zemine serilen bir resim; 16 renkte zemin kendi renginde kalır."
+wallpaper-unshown = "{reason}. Resim geri gelene kadar zemin kendi rengi ve deseniyle görünür."
+wallpaper-none = "Yok"
+wallpaper-choose = "Seç…"
+wallpaper-remove = "Kaldır"
+wallpaper-ours = "Hazır resimler"
+wallpaper-ours-pick = "Birini seçin"
+wallpaper-ember = "Kor"
+wallpaper-dusk = "Alacakaranlık"
+wallpaper-tide = "Gelgit"
 folders-in-explorer = "Klasörleri {program} ile aç"
 folders-in-explorer-text = "Masaüstündeki ya da Dosyalar'daki bir klasör ekosistemin dosya gezgininde açılır. {program} kurulu değilse yerine Dosyalar açılır."
 status-strip = "Dock'ta durum"
@@ -285,6 +309,7 @@ not-text = "{name} açılamıyor: adı bir programa verilebilecek bir metin değ
 open-with = "Birlikte aç"
 open-with-editor = "{program}, düzenleyiciniz"
 open-with-reader = "{program}, okumak için"
+set-wallpaper = "Duvar kâğıdı yap"
 
 [status]
 # Dock'un sağındaki durum şeridi: makinenin kısa ölçümleri.
@@ -360,3 +385,11 @@ note-placeholder = "Bir şeyler yaz"
 note-unsaved = "Not kaydedilemedi"
 # Zeminde yeni bir araca yer kalmayınca; {name} aracın türü.
 no-room = "Masaüstünde {name} aracına yer yok"
+
+[wallpaper]
+unshown = "Duvar kâğıdı gösterilemedi"
+refused = "{name} duvar kâğıdı yapılmadı"
+not-text = "Yolu, ayar dosyasının saklayabileceği bir metin değil"
+nowhere = "Resim qdesk'in veri klasörüne konamadı"
+pick-title = "Duvar kâğıdı seçin"
+pick-cancel = "Vazgeç"

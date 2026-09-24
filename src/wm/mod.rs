@@ -432,10 +432,20 @@ impl Windows {
     /// A maximized or snapped window floats again at the size it is now, not at the one it came
     /// from: the edge the person is holding has to be the edge that moves.
     pub fn resize_by(&mut self, id: WindowId, grip: Grip, dx: i32, dy: i32) -> bool {
+        let Some(from) = self.get(id).map(Window::rect) else { return false };
+        self.resize_from(id, from, grip, dx, dy)
+    }
+
+    /// Gives the window `id` the rectangle `from` with the edge or corner `grip` moved by `dx`
+    /// columns and `dy` rows: a drag sizes a window from where the drag began, so an edge that
+    /// stopped at the smallest size or at the screen waits there for the pointer to come back.
+    ///
+    /// Like [`Self::resize_by`], a maximized or snapped window floats again.
+    pub fn resize_from(&mut self, id: WindowId, from: Rect, grip: Grip, dx: i32, dy: i32) -> bool {
         let area = self.area();
         let Some(window) = self.window_mut(id) else { return false };
         window.placement = Placement::Floating;
-        window.rect = layout::resized(window.rect, grip, dx, dy, area);
+        window.rect = layout::resized(from, grip, dx, dy, area);
         true
     }
 
@@ -590,6 +600,7 @@ mod tests {
             launch: Launch::Command(vec![id.to_owned()]),
             folder: None,
             env: Vec::new(),
+            unset: Vec::new(),
             category: Category::Other,
             keywords: Vec::new(),
             single: false,

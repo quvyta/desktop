@@ -15,7 +15,9 @@
 use qframe::icons::IconMode;
 use qframe::prelude::*;
 use qframe::storage::Family;
-use qframe::widgets::{EmptyState, NumberInput, ScrollView, Segmented, Select, SettingRow, SettingsList, Switch};
+use qframe::widgets::{
+    EmptyState, ImageError, NumberInput, ScrollView, Segmented, Select, SettingRow, SettingsList, SettingsRows, Switch,
+};
 
 use super::{
     DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, FloorColor, FloorStyle, Prefs, SCROLLBACK_MOST, frame_cap,
@@ -30,6 +32,9 @@ pub const FRAME_CAP_FIELD: &str = "settings-frame-cap";
 
 /// The widget id of the switch of the ecosystem's update notice.
 pub const UPDATE_NOTICE: &str = "settings-update-notice";
+
+/// The widget id of the button that chooses a picture for the floor.
+pub const CHOOSE_WALLPAPER: &str = "settings-choose-wallpaper";
 
 /// Width of the drop-downs: enough for the longest theme, language and glyph mode name.
 const CONTROL_WIDTH: u16 = 18;
@@ -66,6 +71,12 @@ pub enum Msg {
     Floor(FloorColor),
     /// A pattern was chosen for the floor.
     FloorStyle(FloorStyle),
+    /// "Choose…" beside the wallpaper: a picture of the person's own is to be picked.
+    ChooseWallpaper,
+    /// "Remove" beside the wallpaper: the floor goes back to its colour and pattern.
+    RemoveWallpaper,
+    /// One of qdesk's own pictures was chosen, by its place in [`crate::wallpapers::OURS`].
+    OurWallpaper(usize),
     /// Folders were set to open in the ecosystem's file explorer (`true`) or in Files.
     FoldersInExplorer(bool),
     /// The status strip was shown on the dock (`true`) or taken off it.
@@ -94,6 +105,31 @@ pub enum Request {
     Prefs(Prefs),
     /// Turn the ecosystem's update notice on (`true`) or off in the ecosystem's shared file.
     UpdateNotice(bool),
+    /// Do what was asked about the floor's picture: nothing about it has changed yet, since a
+    /// picture is decoded before it is taken.
+    Wallpaper(Wallpaper),
+}
+
+/// What the Settings screen asks about the floor's picture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wallpaper {
+    /// Open the file picker.
+    Choose,
+    /// Take the picture away.
+    Remove,
+    /// Lay qdesk's own picture of this place in [`crate::wallpapers::OURS`] over the floor.
+    Ours(usize),
+}
+
+/// The floor's picture as the Settings screen shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WallpaperRow {
+    /// The picture's file name, when one is set.
+    pub name: Option<String>,
+    /// Which of qdesk's own pictures it is, when it is one.
+    pub ours: Option<usize>,
+    /// Why the picture set cannot be shown, when it cannot.
+    pub problem: Option<ImageError>,
 }
 
 /// Where the entries of the applications come from and what could not be read there.
@@ -116,6 +152,8 @@ pub struct Screen {
     /// The ecosystem's update notice as the screen shows it, or `None` for a desktop that asks for no
     /// newer version and so shows no switch that would do nothing.
     update_notice: Option<bool>,
+    /// The floor's picture as the application last told it.
+    wallpaper: WallpaperRow,
 }
 
 impl Screen {
@@ -123,7 +161,7 @@ impl Screen {
     /// [`super::Loaded::diagnostics`] held.
     #[must_use]
     pub fn new(problems: Vec<Diagnostic>) -> Self {
-        Self { problems, problems_read: false, failure: None, update_notice: None }
+        Self { problems, problems_read: false, failure: None, update_notice: None, wallpaper: WallpaperRow::default() }
     }
 
     /// The same screen showing the ecosystem's update notice as `on`, or showing no switch at all
@@ -132,6 +170,30 @@ impl Screen {
     pub fn with_update_notice(mut self, on: Option<bool>) -> Self {
         self.update_notice = on;
         self
+    }
+
+    /// Puts `problems` in place of what the settings file could not be read as, after the file was
+    /// read again. New problems are shown again even when the old ones had been put away; the same
+    /// problems stay as they were. Whether anything changed is the answer.
+    pub fn reread(&mut self, problems: Vec<Diagnostic>) -> bool {
+        if self.problems == problems {
+            return false;
+        }
+        self.problems = problems;
+        self.problems_read = false;
+        true
+    }
+
+    /// Shows `row` as the floor's picture: the application tells the screen whenever the picture
+    /// or what became of it changes.
+    pub fn set_wallpaper(&mut self, row: WallpaperRow) {
+        self.wallpaper = row;
+    }
+
+    /// The floor's picture as the screen shows it.
+    #[must_use]
+    pub fn wallpaper(&self) -> &WallpaperRow {
+        &self.wallpaper
     }
 
     /// The ecosystem's update notice as the screen shows it; `None` when it shows no switch.
@@ -159,6 +221,9 @@ pub fn update<M: From<Msg> + Clone + Send + 'static>(
         Msg::Dock(dock) => (Command::none(), Some(Request::Prefs(Prefs { dock, ..*prefs }))),
         Msg::Floor(floor) => (Command::none(), Some(Request::Prefs(Prefs { floor, ..*prefs }))),
         Msg::FloorStyle(floor_style) => (Command::none(), Some(Request::Prefs(Prefs { floor_style, ..*prefs }))),
+        Msg::ChooseWallpaper => (Command::none(), Some(Request::Wallpaper(Wallpaper::Choose))),
+        Msg::RemoveWallpaper => (Command::none(), Some(Request::Wallpaper(Wallpaper::Remove))),
+        Msg::OurWallpaper(index) => (Command::none(), Some(Request::Wallpaper(Wallpaper::Ours(index)))),
         Msg::FoldersInExplorer(folders_in_explorer) => {
             (Command::none(), Some(Request::Prefs(Prefs { folders_in_explorer, ..*prefs })))
         }
@@ -293,6 +358,7 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
                             .on_select(|index| M::from(Msg::FloorStyle(FloorStyle::ALL[index]))),
                     );
                 });
+                wallpaper_rows(&screen.wallpaper, list);
 
                 // The explorer's name is the program's, the one a person installs and would type.
                 let about = t!("settings.folders-in-explorer-text", program = crate::app::EXPLORER);
@@ -362,6 +428,40 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
         .fill_width();
     })
     .fill();
+}
+
+/// The floor's picture: its name with the way to choose another and to take it away, and under it
+/// qdesk's own pictures by name.
+fn wallpaper_rows<M: From<Msg> + Clone + Send + 'static>(row: &WallpaperRow, list: &mut SettingsRows<'_, M>) {
+    let about = match row.problem {
+        Some(problem) => t!("settings.wallpaper-unshown", reason = problem.to_string()),
+        None => t!("settings.wallpaper-text"),
+    };
+    let shown = row.name.clone().unwrap_or_else(|| t!("settings.wallpaper-none"));
+    let set = row.name.is_some();
+    list.row(SettingRow::new(t!("settings.wallpaper")).description(about), |ui| {
+        ui.row(|ui| {
+            ui.add(Text::new(shown).role(if set { "text" } else { "secondary" }).no_wrap());
+            ui.add(Button::new(t!("settings.wallpaper-choose")).on_press(M::from(Msg::ChooseWallpaper)))
+                .id(CHOOSE_WALLPAPER);
+            if set {
+                ui.add(Button::new(t!("settings.wallpaper-remove")).on_press(M::from(Msg::RemoveWallpaper)));
+            }
+        })
+        .gap(1);
+    });
+    let names = crate::wallpapers::OURS.map(|ours| t!(&format!("settings.wallpaper-{}", ours.name)));
+    // A drop-down rather than segments: segments always have one chosen, and a picture of the
+    // person's own is none of these.
+    list.row(SettingRow::new(t!("settings.wallpaper-ours")).nested(true), |ui| {
+        ui.add(
+            Select::new(names)
+                .selected(row.ours)
+                .placeholder(t!("settings.wallpaper-ours-pick"))
+                .on_select(|index| M::from(Msg::OurWallpaper(index))),
+        )
+        .width(Length::Cells(CONTROL_WIDTH));
+    });
 }
 
 /// A number field's value as a whole number, never below zero.

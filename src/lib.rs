@@ -14,6 +14,7 @@ pub mod power;
 pub mod session;
 pub mod settings;
 pub mod status;
+pub mod wallpapers;
 pub mod wm;
 
 pub use app::run;

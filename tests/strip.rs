@@ -272,24 +272,24 @@ fn a_full_memory_says_so_with_a_mark_and_the_themes_warning_and_danger_colours()
 }
 
 #[test]
-fn a_click_on_the_tmux_item_lists_the_sessions_and_one_opens_attached_without_tmux_set() {
+fn a_click_on_the_tmux_item_opens_the_sessions_menu_and_one_opens_attached_without_tmux_set() {
     let scratch = Scratch::new("attach");
     let said = scratch.tmux();
     let mut harness = strip_desk(&scratch, Vec::new(), 120, 24);
     let (x, y) = harness.find("❯ 2").unwrap_or_else(|| panic!("the tmux item:\n{}", dock(&harness)));
     harness.click(x, y);
-    let (x, y) = harness.find("devops").unwrap_or_else(|| panic!("the sessions are listed:\n{}", harness.screen()));
-    assert!(harness.find("tmux sessions").is_some(), "under their heading:\n{}", harness.screen());
+    assert!(harness.find("dev ").is_some(), "the sessions are offered:\n{}", harness.screen());
+    let (x, y) = harness.find("devops").unwrap_or_else(|| panic!("the sessions are offered:\n{}", harness.screen()));
     harness.click(x, y);
     assert_eq!(harness.app().windows().len(), 1, "a window opened:\n{}", harness.screen());
     until(&mut harness, "the attach", |_| said.exists());
     let words = fs::read_to_string(&said).expect("tmux wrote what it was asked");
-    assert_eq!(words, "attach -t =devops\nTMUX=\n", "exactly that session, with TMUX empty");
-    assert!(harness.find("tmux sessions").is_none(), "the list went away:\n{}", harness.screen());
+    assert_eq!(words, "attach -t =devops\nTMUX=unset\n", "exactly that session, with no TMUX at all");
+    assert!(harness.find("dev ").is_none(), "the menu went away:\n{}", harness.screen());
 }
 
 #[test]
-fn a_right_click_on_the_tmux_item_offers_the_sessions_as_a_menu() {
+fn a_right_click_on_the_tmux_item_offers_the_same_menu() {
     let scratch = Scratch::new("menu");
     let said = scratch.tmux();
     let mut harness = strip_desk(&scratch, Vec::new(), 120, 24);
@@ -302,7 +302,24 @@ fn a_right_click_on_the_tmux_item_offers_the_sessions_as_a_menu() {
 }
 
 #[test]
-fn escape_puts_the_list_of_sessions_away() {
+fn a_second_click_on_the_tmux_item_puts_the_sessions_menu_away() {
+    let scratch = Scratch::new("again");
+    scratch.tmux();
+    let mut harness = strip_desk(&scratch, Vec::new(), 120, 24);
+    let (x, y) = harness.find("❯ 2").unwrap_or_else(|| panic!("the tmux item:\n{}", dock(&harness)));
+    harness.click(x, y);
+    assert!(harness.find("devops").is_some(), "the first click opens the menu:\n{}", harness.screen());
+    // The item sits inside its name's tooltip, which takes the pointer itself; the same click
+    // that opened the menu closes it.
+    harness.click(x, y);
+    assert!(harness.find("devops").is_none(), "the second click closes it:\n{}", harness.screen());
+    assert!(harness.app().windows().is_empty(), "and attaches nothing");
+    harness.click(x, y);
+    assert!(harness.find("devops").is_some(), "a third opens it again:\n{}", harness.screen());
+}
+
+#[test]
+fn escape_puts_the_sessions_menu_away() {
     let scratch = Scratch::new("escape");
     scratch.tmux();
     let mut harness = strip_desk(&scratch, Vec::new(), 120, 24);

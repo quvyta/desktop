@@ -3,7 +3,7 @@
 //!
 //! The desktop shares the look of every Quvyta application: the theme, the language and the
 //! glyph mode are the framework's keys, kept beside qdesk's own in one file. qdesk's own keys
-//! say where the dock sits, what colour and pattern the floor has, whether a folder opens in the ecosystem's
+//! say where the dock sits, what colour and pattern the floor has and which picture lies over it, whether a folder opens in the ecosystem's
 //! file explorer, how a window follows the mouse while it is
 //! dragged, how often the screen may be drawn and how many lines a terminal window remembers.
 //!
@@ -36,7 +36,10 @@ use qframe::runtime::FrameLimit;
 use qframe::storage::{Family, Schema, Setting, SettingKind, Settings};
 
 pub use floor_color::{FloorColor, FloorStyle, GLYPHS_READ, NAMES_READ, Palette, Shades, ground, is_dot};
-pub use screen::{Applications, LIST, Msg, Request, Screen, Shared, UPDATE_NOTICE, update, view};
+pub use screen::{
+    Applications, CHOOSE_WALLPAPER, LIST, Msg, Request, Screen, Shared, UPDATE_NOTICE, Wallpaper, WallpaperRow, update,
+    view,
+};
 
 use crate::apps::{Diagnostic, DiagnosticKind, Position};
 
@@ -74,6 +77,9 @@ pub const DOCK_POSITION: &str = "dock-position";
 pub const FLOOR_COLOR: &str = "floor-color";
 /// The key of the floor's pattern: `plain`, `gradient`, `dots` or `gradient-dots`.
 pub const FLOOR_STYLE: &str = "floor-style";
+/// The key of the picture laid over the floor (design 3.9): its absolute path. Without it the
+/// floor has no picture.
+pub const WALLPAPER: &str = "wallpaper";
 /// The key of whether a folder opens in the ecosystem's file explorer when it is on the machine:
 /// `true` or `false`.
 pub const FOLDERS_IN_EXPLORER: &str = "folders-in-explorer";
@@ -232,6 +238,9 @@ impl Prefs {
             .choice(DOCK_POSITION, DockPosition::ALL.map(DockPosition::name), DockPosition::default().name())
             .choice(FLOOR_COLOR, FloorColor::ALL.map(FloorColor::name), FloorColor::default().name())
             .choice(FLOOR_STYLE, FloorStyle::ALL.map(FloorStyle::name), FloorStyle::default().name())
+            // A path read from anywhere else than the folder qdesk happened to start in, so a
+            // relative one is said and left out rather than guessed at.
+            .optional(WALLPAPER, SettingKind::check(|path: &String| Path::new(path).is_absolute()))
             .flag(FOLDERS_IN_EXPLORER, true)
             .flag(STATUS_STRIP, true)
             .choice(DRAG_STYLE, DragStyle::ALL.map(DragStyle::name), DragStyle::default().name())
@@ -301,6 +310,43 @@ impl Prefs {
     }
 }
 
+/// Puts the floor's colour and pattern into `settings`, each only when it is given: what another
+/// program asks for through `qdesk wallpaper`. Nothing else in the file is touched, not even a line
+/// qdesk cannot read, so a value the person wrote by hand stays as they wrote it. A value that is
+/// the default is taken out of the file, as the Settings screen does.
+pub fn set_floor(settings: &mut Settings, floor: Option<FloorColor>, style: Option<FloorStyle>) {
+    if let Some(floor) = floor {
+        store(settings, FLOOR_COLOR, floor.name().to_owned(), floor == FloorColor::default());
+    }
+    if let Some(style) = style {
+        store(settings, FLOOR_STYLE, style.name().to_owned(), style == FloorStyle::default());
+    }
+}
+
+/// The picture `settings` lay over the floor: an absolute path, or `None` for none.
+#[must_use]
+pub fn wallpaper(settings: &Settings) -> Option<PathBuf> {
+    settings.get::<String>(WALLPAPER).map(PathBuf::from).filter(|path| path.is_absolute())
+}
+
+/// Puts the floor's picture into `settings`, or takes it out with `None`. Nothing else in the file
+/// is touched. A path that is not text is not written, since the file is text; `false` says so.
+pub fn set_wallpaper(settings: &mut Settings, picture: Option<&Path>) -> bool {
+    match picture {
+        None => {
+            settings.remove(WALLPAPER);
+            true
+        }
+        Some(path) => match path.to_str() {
+            Some(text) => {
+                settings.set(WALLPAPER, text.to_owned());
+                true
+            }
+            None => false,
+        },
+    }
+}
+
 /// Stores `value` under `key`, or removes the key when the value `is_default`.
 fn store<T: Setting>(settings: &mut Settings, key: &str, value: T, is_default: bool) {
     if is_default {
@@ -317,6 +363,8 @@ pub struct Loaded {
     pub settings: Settings,
     /// What the file says the desktop should be, with defaults where it says nothing usable.
     pub prefs: Prefs,
+    /// The picture the file lays over the floor, when it names one.
+    pub wallpaper: Option<PathBuf>,
     /// What the file could not be read as; each names the file, the line and the column.
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -338,14 +386,22 @@ pub fn load_in(config_dir: &Path) -> Loaded {
     read(Settings::open(config_dir.join(format!("{APP}.conf"))).member_of(&Family::QUVYTA))
 }
 
+/// Reads the settings file at `path` again, as [`load_in`] reads it: for a running desktop whose
+/// file was changed by another program or by hand.
+#[must_use]
+pub fn reread(path: &Path) -> Loaded {
+    read(Settings::open(path).member_of(&Family::QUVYTA))
+}
+
 /// Checks `settings` against the desktop's keys and reads the preferences out of them.
 fn read(settings: Settings) -> Loaded {
     // Not self-healing: the file belongs to the person who wrote it. A value qdesk cannot use is
     // said out loud and the default stands in its place, and the line stays as it was written.
     let settings = settings.schema(Prefs::schema());
     let prefs = Prefs::from_settings(&settings);
+    let wallpaper = wallpaper(&settings);
     let diagnostics = problems(&settings);
-    Loaded { settings, prefs, diagnostics }
+    Loaded { settings, prefs, wallpaper, diagnostics }
 }
 
 /// The problems of the settings file as the desktop's own diagnostics, so the Settings screen

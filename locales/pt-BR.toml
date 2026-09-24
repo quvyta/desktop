@@ -10,8 +10,20 @@ usage = """
 qdesk                 abre a área de trabalho
   -h, --help          este texto
   -V, --version       mostra a versão
+qdesk wallpaper       mostra cor, padrão e imagem do fundo
+  --color NOME        define a cor: theme, deep, mist ou accent
+  --pattern NOME      define o padrão: plain, gradient, dots ou both
+qdesk wallpaper ARQ   põe uma imagem PNG, JPEG, GIF ou WebP sobre o fundo
+  --no-picture        tira a imagem
 Na área de trabalho, ctrl+q sai."""
 unknown-argument = "qdesk: argumento desconhecido {argument}; veja qdesk --help"
+wallpaper-color = "qdesk wallpaper: --color aceita theme, deep, mist ou accent, não {value}"
+wallpaper-pattern = "qdesk wallpaper: --pattern aceita plain, gradient, dots ou both, não {value}"
+wallpaper-missing = "qdesk wallpaper: {option} precisa de um valor; veja qdesk --help"
+wallpaper-picture = "qdesk wallpaper: {file} não pode ser o plano de fundo: {reason}"
+wallpaper-not-text = "o caminho não é texto que o arquivo de configuração possa guardar"
+wallpaper-nowhere = "qdesk wallpaper: não há pasta pessoal para guardar a configuração"
+wallpaper-unsaved = "qdesk wallpaper: não foi possível escrever em {file}: {error}"
 
 [dock]
 workspace = "Espaço de trabalho {n}"
@@ -100,6 +112,7 @@ body = "{id} — {file} — {command}"
 no-viewer = "{name} abre um arquivo, e o qdesk ainda não tem visualizador para ele"
 # A program that could not be started at all: it is not there, or no pseudo-terminal was free.
 start-failed = "Não foi possível iniciar {program}"
+settings-unread = "O arquivo de configurações não pôde ser lido por inteiro"
 # The whole sentence: the system's words with the program they belong to.
 start-failed-why = "Não foi possível iniciar {program}: {reason}"
 install = "Instalando {name}"
@@ -141,7 +154,7 @@ quit = "Sair"
 tile-narrow = "A área de trabalho é estreita demais para colocar janelas lado a lado."
 tile-short = "A área de trabalho tem espaço para {fits} janelas lado a lado, nada mais."
 resize-hint = "As janelas redimensionam pelas bordas"
-resize-hint-body = "Arraste a borda direita ou inferior, ou o canto entre elas. Alt com o botão direito redimensiona a janela de qualquer lugar, e Redimensionar no menu dela na doca faz isso com as setas."
+resize-hint-body = "Arraste qualquer borda ou canto; a faixa de título entre os cantos superiores move a janela. Alt com o botão direito redimensiona a janela de qualquer lugar, e Redimensionar no menu dela na doca faz isso com as setas do teclado."
 
 [mode]
 # The dock's row while the keys are the desktop's.
@@ -158,7 +171,7 @@ leave = "volta"
 back = "voltar"
 release = "soltar"
 far = "{cells} de cada vez"
-drag = "borda"
+drag = "qualquer borda"
 drag-label = "arraste-a"
 workspace = "espaços"
 
@@ -261,6 +274,17 @@ floor-style-plain = "Liso"
 floor-style-gradient = "Gradiente"
 floor-style-dots = "Pontos"
 floor-style-gradient-dots = "Os dois"
+wallpaper = "Plano de fundo"
+wallpaper-text = "Uma imagem sobre o fundo; com 16 cores o fundo mantém sua cor."
+wallpaper-unshown = "{reason}. O fundo mostra sua cor e seu padrão até a imagem voltar."
+wallpaper-none = "Nenhuma"
+wallpaper-choose = "Escolher…"
+wallpaper-remove = "Remover"
+wallpaper-ours = "Imagens incluídas"
+wallpaper-ours-pick = "Escolha uma"
+wallpaper-ember = "Brasa"
+wallpaper-dusk = "Anoitecer"
+wallpaper-tide = "Maré"
 folders-in-explorer = "Abrir pastas com o {program}"
 folders-in-explorer-text = "Uma pasta na área de trabalho ou em Arquivos abre no explorador de arquivos do ecossistema. Quando o {program} não está instalado, Arquivos abre no lugar."
 status-strip = "Status na dock"
@@ -295,6 +319,7 @@ not-text = "Não foi possível abrir {name}: o nome não é texto que um program
 open-with = "Abrir com"
 open-with-editor = "{program}, seu editor"
 open-with-reader = "{program}, para ler"
+set-wallpaper = "Definir como plano de fundo"
 
 [status]
 tmux = "sessões tmux"
@@ -353,3 +378,11 @@ week-start-sunday = "Domingo"
 note-placeholder = "Escreva alguma coisa"
 note-unsaved = "A nota não pôde ser salva"
 no-room = "Não há espaço na área de trabalho para o widget {name}"
+
+[wallpaper]
+unshown = "Não foi possível mostrar o plano de fundo"
+refused = "{name} não pode ser o plano de fundo"
+not-text = "O caminho não é texto que o arquivo de configuração possa guardar"
+nowhere = "Não foi possível guardar a imagem na pasta de dados do qdesk"
+pick-title = "Escolher um plano de fundo"
+pick-cancel = "Cancelar"

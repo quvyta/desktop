@@ -29,7 +29,10 @@ impl App for SettingsApp {
         let (command, request) = settings::update(&mut self.screen, &self.prefs, msg);
         match request {
             Some(settings::Request::Prefs(prefs)) => self.prefs = prefs,
-            Some(settings::Request::Shared(_) | settings::Request::UpdateNotice(_)) | None => {}
+            Some(
+                settings::Request::Shared(_) | settings::Request::UpdateNotice(_) | settings::Request::Wallpaper(_),
+            )
+            | None => {}
         }
         command
     }
@@ -108,11 +111,16 @@ fn decoration(text: &str) -> Option<char> {
 
 #[test]
 fn a_standard_terminal_shows_every_section_and_what_is_in_force() {
-    let harness = screen(80, 24);
+    let mut harness = screen(80, 24);
     let shown = harness.screen();
-    for heading in ["Appearance", "Language", "Theme", "Glyphs", "Desktop", "Dock", "Connection"] {
+    for heading in ["Appearance", "Language", "Theme", "Glyphs", "Desktop", "Dock", "Wallpaper"] {
         assert!(shown.contains(heading), "no `{heading}`:\n{shown}");
     }
+    assert_eq!(decoration(&shown), None, "nothing is drawn with lines or brackets:\n{shown}");
+    // The desktop's own rows fill a standard terminal; the last section is a turn of the wheel
+    // below them.
+    let shown = scrolled_to(&mut harness, "Connection");
+    assert!(shown.contains("Connection"), "no `Connection`:\n{shown}");
     assert_eq!(decoration(&shown), None, "nothing is drawn with lines or brackets:\n{shown}");
 }
 
@@ -209,7 +217,8 @@ fn the_dock_moves_to_the_edge_that_was_chosen() {
 #[test]
 fn a_chosen_frame_cap_opens_a_field_under_it_and_is_held_inside_its_range() {
     let mut harness = screen_of(Prefs::default(), true, Vec::new(), 100, 30);
-    assert!(harness.screen().contains("at most 20 times a second"), "a remote link caps at 20:\n{}", harness.screen());
+    let shown = scrolled_to(&mut harness, "at most 20 times a second");
+    assert!(shown.contains("at most 20 times a second"), "a remote link caps at 20:\n{shown}");
 
     harness.send(Msg::FrameCap(Some(45)));
 
@@ -239,8 +248,8 @@ fn the_scrollback_is_held_inside_its_range() {
 
 #[test]
 fn an_entry_that_could_not_be_read_is_shown_with_its_file_line_and_column() {
-    let harness = screen_of(Prefs::default(), false, problems(), 120, 40);
-    let shown = harness.screen();
+    let mut harness = screen_of(Prefs::default(), false, problems(), 120, 40);
+    let shown = scrolled_to(&mut harness, "logs.toml");
     assert!(shown.contains("should hold two whole numbers"), "the problem is a sentence:\n{shown}");
     assert!(shown.contains("htop.toml:3:8"), "with the place in the file:\n{shown}");
     assert!(shown.contains("This entry has no name"), "{shown}");
@@ -251,7 +260,7 @@ fn an_entry_that_could_not_be_read_is_shown_with_its_file_line_and_column() {
 fn an_entry_that_could_not_be_read_is_shown_in_turkish_too() {
     let mut harness = screen_of(Prefs::default(), false, problems(), 120, 40);
     harness.set_locale("tr").render();
-    let shown = harness.screen();
+    let shown = scrolled_to(&mut harness, "Bu girdinin adı yok");
     assert!(shown.contains("iki tam sayı"), "{shown}");
     assert!(shown.contains("Bu girdinin adı yok"), "{shown}");
 }

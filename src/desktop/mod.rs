@@ -6,7 +6,8 @@
 //! The floor keeps nothing of its own: the application owns the selection, the cursor and the
 //! order, and hears about every change as an [`Action`].
 //!
-//! The floor is bare (VISION §4): no wallpaper, no frame, no line anywhere. A selected icon is
+//! The floor is bare (VISION §4) unless the person lays a picture over it: no frame, no line
+//! anywhere. Over a picture an icon stands on a tile of the theme's card tone. A selected icon is
 //! the raised surface tone with the accent pillar down its left edge, and the band drawn from
 //! empty floor is the accent mixed into the floor, never an outline. So is the cell a dragged icon
 //! would land in, as the snap preview of a window is.
@@ -51,6 +52,9 @@ const DROP_MIX: f32 = 0.20;
 
 /// How much of the text colour a hovered icon lifts its cell by, as a pressable panel does.
 const HOVER_MIX: f32 = 0.08;
+
+/// The rows of an icon's tile over a picture: its glyph and its name, not the empty row under them.
+const TILE_ROWS: u16 = 2;
 
 /// What the person did on the floor. The application decides what each one means.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,13 +165,25 @@ pub struct IconCell {
     name: String,
     selected: bool,
     cursor: bool,
+    backed: bool,
 }
 
 impl IconCell {
     /// An icon drawn with `glyph` and called `name`.
     #[must_use]
     pub fn new(glyph: impl Into<String>, name: impl Into<String>) -> Self {
-        Self { glyph: glyph.into(), name: name.into(), selected: false, cursor: false }
+        Self { glyph: glyph.into(), name: name.into(), selected: false, cursor: false, backed: false }
+    }
+
+    /// Whether the icon stands on a tile of the theme's card tone (`surface`): over a picture,
+    /// where the floor under its name could be any colour. The theme promises the names (`dim`)
+    /// 4.5:1 and the icons (`text`) 7:1 on that tone, so they read whatever the picture is. The
+    /// tile is the cell's two rows beside the pillar's column, so tiles side by side keep a column
+    /// of the picture between them and tiles one above the other a row.
+    #[must_use]
+    pub fn backed(mut self, backed: bool) -> Self {
+        self.backed = backed;
+        self
     }
 
     /// Whether the icon is one of the selected ones.
@@ -196,11 +212,22 @@ impl<Msg: 'static> Widget<Msg> for IconCell {
         }
         cx.register_hit(area);
         let selected = self.selected;
+        // What lights up under the pointer: the whole cell on a bare floor, only the tile over a
+        // picture, which is not the icon's to tint.
+        let mut lit = area;
         if selected {
             cx.clear(area, cx.color("active"));
+        } else if self.backed {
+            lit = Rect::new(
+                area.x + i32::from(grid::PILLAR_WIDTH),
+                area.y,
+                area.width.saturating_sub(grid::PILLAR_WIDTH),
+                area.height.min(TILE_ROWS),
+            );
+            cx.clear(lit, cx.color("surface"));
         }
         if cx.is_hovered() {
-            cx.tint(area, cx.color("text"), HOVER_MIX);
+            cx.tint(lit, cx.color("text"), HOVER_MIX);
         }
         if selected || self.cursor {
             let accent = cx.color("accent");

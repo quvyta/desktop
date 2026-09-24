@@ -368,7 +368,7 @@ pub struct Presses<'a, Msg> {
     pub menu: &'a dyn Fn(&Item) -> Vec<ContextItem<Msg>>,
     /// Pressing an item of the status strip; `None` for an item a press does nothing on.
     pub chip: &'a dyn Fn(&Chip) -> Option<Msg>,
-    /// The rows of the menu a right click on an item of the strip opens; none for most.
+    /// The rows of the menu a click of either button on an item of the strip opens; none for most.
     pub chip_menu: &'a dyn Fn(&Chip) -> Vec<ContextItem<Msg>>,
 }
 
@@ -450,7 +450,8 @@ pub fn view<Msg: Clone + 'static>(plan: &Plan, parts: &Parts<'_>, presses: &Pres
 
 /// Draws one item of the status strip: its text in the secondary tone, or in the theme's warning or
 /// danger tone with the mark that says so in `text`. It answers the pointer only when a press on it
-/// does something; its name comes up under the pointer either way.
+/// does something or it has a menu, which a click of either button opens; its name comes up under
+/// the pointer either way.
 fn chip_view<Msg: Clone + 'static>(chip: &Chip, presses: &Presses<'_, Msg>, ui: &mut View<'_, Msg>) {
     let token = match chip.tone {
         // The colour of the theme's secondary text, the clock's.
@@ -464,7 +465,8 @@ fn chip_view<Msg: Clone + 'static>(chip: &Chip, presses: &Presses<'_, Msg>, ui: 
         if menu.is_empty() {
             ui.add(mark).id(chip_id(chip.kind));
         } else {
-            ui.add_with(ContextMenu::new(menu), |ui| {
+            // An item with a menu is a button for it: a left click opens it as a right click does.
+            ui.add_with(ContextMenu::new(menu).on_left_click(true), |ui| {
                 ui.add(mark).id(chip_id(chip.kind));
             });
         }

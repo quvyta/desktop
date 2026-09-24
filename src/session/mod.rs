@@ -380,8 +380,8 @@ impl Sessions {
     /// `body` is the size the window's body is drawn at, so the program's first drawing already
     /// fits; the widget takes over from there. The program gets `TERM=xterm-256color`,
     /// `COLORTERM=truecolor` and `QDESK=1`, then the entry's own variables, which may replace any
-    /// of them. It starts in the entry's folder, else the home folder, and remembers as many lines
-    /// as the settings allow.
+    /// of them, and none of the entry's `unset` ones. It starts in the entry's folder, else the
+    /// home folder, and remembers as many lines as the settings allow.
     ///
     /// A window that already has a program keeps none: the old one is closed as
     /// [`close`](Self::close) closes it and its later reports become stale.
@@ -408,6 +408,9 @@ impl Sessions {
             .coalesce(self.coalesce);
         for (name, value) in &entry.env {
             builder = builder.env(name, value);
+        }
+        for name in &entry.unset {
+            builder = builder.env_remove(name);
         }
         match builder.spawn() {
             Ok(session) => {

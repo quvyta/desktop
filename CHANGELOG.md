@@ -2,6 +2,25 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.1.7 - 2026-09-24
+
+### Added
+
+- A picture on the floor. **Set as wallpaper** in the menu of a picture in Files or on the desktop, **Settings → Desktop → Wallpaper** with a file picker and three pictures made for qdesk (Ember, Dusk and Tide, CC0), and `qdesk wallpaper FILE` / `qdesk wallpaper --no-picture` from a shell. Drawn with half blocks in any terminal with 256 colours or more; icons stand on tiles of the theme's card tone so their names read on any picture. The first screen costs about 36 bytes a cell over SSH. `desktop.conf` gains a `wallpaper` key.
+- `qdesk wallpaper` sets the floor from another program or a script: `--color`, `--pattern`, a picture file, or `--no-picture`; with nothing, it prints what is set. The ecosystem's file explorer uses it for its own "Set as wallpaper".
+- An open desktop follows its settings file: a change made by `qdesk wallpaper`, another program or a person editing the file shows at once, without a restart.
+
+### Changed
+
+- Every edge and corner of a window resizes it with a plain drag; the title between the top corners still moves it, and the pointer turns into a resize arrow on terminals that can show one. An edge stopped by the smallest size or the screen's edge now waits there until the pointer comes back.
+- The tmux item on the dock opens its sessions in the same menu with a left or a right click, and a second click closes it. The window it opens starts without the outer tmux's `TMUX`, so attaching always works.
+- The note widget looks like paper: it takes the widget's own tone.
+- Built on quvyta-framework 0.1.25, with its picture decoder.
+
+### Fixed
+
+- The theme, language and glyphs chosen in Settings are applied again when qdesk starts; they were saved but not used until changed again.
+
 ## 0.1.6 - 2026-09-24
 
 ### Added

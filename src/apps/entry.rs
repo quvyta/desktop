@@ -109,6 +109,9 @@ pub struct Entry {
     pub folder: Option<PathBuf>,
     /// Extra environment variables for the program, in the order the file gives them.
     pub env: Vec<(String, String)>,
+    /// Variables the program starts without, even when qdesk itself has them and after `env`.
+    /// Set by the desktop for a window of its own; no entry file declares it.
+    pub unset: Vec<String>,
     /// Where the entry sits in the launcher.
     pub category: Category,
     /// More words search matches.
@@ -265,6 +268,7 @@ impl Reader<'_> {
             launch: launch?,
             folder,
             env,
+            unset: Vec::new(),
             category,
             keywords,
             single,

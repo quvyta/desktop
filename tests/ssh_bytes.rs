@@ -678,3 +678,85 @@ fn a_clock_widget_writes_nothing_between_minutes_unless_it_shows_seconds() {
     // Five seconds may cross the turn of a minute once; seconds are drawn every one of them.
     assert!(quiet[1] > quiet[0], "seconds cost more than minutes: {quiet:?}");
 }
+
+/// Writes a picture that looks like a photo to a terminal at `path`: a sky and a sea of soft
+/// gradients, a sun, waves, and a little grain, so neighbouring cells are close in colour but
+/// seldom the same, as they are in a real photo.
+fn photo(path: &Path) {
+    let (width, height) = (640_u32, 360_u32);
+    let mut grain = 0x9e37_79b9_u32;
+    let image = image::RgbImage::from_fn(width, height, |x, y| {
+        grain ^= grain << 13;
+        grain ^= grain >> 17;
+        grain ^= grain << 5;
+        let noise = f64::from(grain % 17) - 8.0;
+        let (u, v) = (f64::from(x) / f64::from(width), f64::from(y) / f64::from(height));
+        let horizon = 0.55 + 0.02 * (u * 9.0).sin();
+        let (mut r, mut g, mut b) = if v < horizon {
+            (40.0 + 180.0 * v, 70.0 + 120.0 * v, 150.0 + 60.0 * v)
+        } else {
+            let wave = (u * 40.0 + v * 90.0).sin() * 18.0;
+            (20.0 + wave, 60.0 + 40.0 * v + wave, 110.0 + wave)
+        };
+        let sun = (-((u - 0.7).powi(2) + (v - 0.35).powi(2)) * 60.0).exp();
+        r += 200.0 * sun;
+        g += 150.0 * sun;
+        b += 60.0 * sun;
+        let channel = |value: f64| (value + noise).clamp(0.0, 255.0) as u8;
+        image::Rgb([channel(r), channel(g), channel(b)])
+    });
+    image.save_with_format(path, image::ImageFormat::Png).expect("the picture is written");
+}
+
+/// What a picture over the floor costs a connection (design 3.9): the first screen at both sizes,
+/// and one step of a window dragged over it, as a ghost (the default) and alive, against the plain
+/// floor.
+///
+/// A picture is the costliest floor there is: every cell is a half block of two colours of its
+/// own, so the first screen carries two colours for nearly every cell, and a window moved over it
+/// uncovers cells that must be sent again in full.
+#[test]
+#[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
+fn a_picture_floor_costs_a_screen_of_colours_and_a_drag_uncovers_it() {
+    for picture in [false, true] {
+        let scratch_with = |name: &str, extra: &str| {
+            let scratch = Scratch::new(name, extra);
+            if picture {
+                let file = scratch.0.join("deniz.png");
+                photo(&file);
+                write(
+                    &scratch.0.join(".config/quvyta/desktop.conf"),
+                    &format!("{extra}wallpaper = \"{}\"\n", file.display()),
+                );
+            }
+            scratch
+        };
+        let mut screens = Vec::new();
+        for size in [SIZE, LARGE] {
+            let mut bytes = Vec::new();
+            for _ in 0..RUNS {
+                let scratch = scratch_with("picture", "");
+                let desktop = Desktop::open(&scratch, size);
+                bytes.push(desktop.written());
+            }
+            screens.push(bytes);
+        }
+        let mut steps = Vec::new();
+        for drag_style in ["ghost", "live"] {
+            let mut bytes = Vec::new();
+            for _ in 0..RUNS {
+                let scratch = scratch_with("picture-drag", &format!("drag-style = \"{drag_style}\"\n"));
+                let mut desktop = Desktop::open(&scratch, SIZE);
+                desktop.open_window("Quiet");
+                let (moving, dropped) = drag(&mut desktop, SIZE.0 / 3, title_row(SIZE.1), 20);
+                bytes.push((moving / 20, dropped));
+            }
+            steps.push(bytes);
+        }
+        let floor = if picture { "photo" } else { "plain" };
+        println!(
+            "floor {floor}: first screen {:?} bytes at {}x{}, {:?} bytes at {}x{}; a drag step at {}x{} (step, drop) {:?} as a ghost, {:?} alive",
+            screens[0], SIZE.0, SIZE.1, screens[1], LARGE.0, LARGE.1, SIZE.0, SIZE.1, steps[0], steps[1],
+        );
+    }
+}

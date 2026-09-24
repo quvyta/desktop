@@ -10,8 +10,20 @@ usage = """
 qdesk                 打开桌面
   -h, --help          显示此帮助
   -V, --version       打印版本号
-在桌面上，ctrl+q 退出。"""
+qdesk wallpaper       打印背景的颜色、图案和图片
+  --color NAME        设置颜色：theme、deep、mist 或 accent
+  --pattern NAME      设置图案：plain、gradient、dots 或 both
+qdesk wallpaper FILE  把 PNG、JPEG、GIF 或 WebP 图片铺在背景上
+  --no-picture        移除图片
+在桌面上按 ctrl+q 退出。"""
 unknown-argument = "qdesk: 未知参数 {argument}；请查看 qdesk --help"
+wallpaper-color = "qdesk wallpaper: --color 只接受 theme、deep、mist 或 accent，而不是 {value}"
+wallpaper-pattern = "qdesk wallpaper: --pattern 只接受 plain、gradient、dots 或 both，而不是 {value}"
+wallpaper-missing = "qdesk wallpaper: {option} 需要一个值；请查看 qdesk --help"
+wallpaper-picture = "qdesk wallpaper: {file} 不能用作壁纸：{reason}"
+wallpaper-not-text = "它的路径不是设置文件能保存的文本"
+wallpaper-nowhere = "qdesk wallpaper: 没有主目录可以保存这个设置"
+wallpaper-unsaved = "qdesk wallpaper: 无法写入 {file}：{error}"
 
 [dock]
 workspace = "工作区 {n}"
@@ -100,6 +112,7 @@ body = "{id} — {file} — {command}"
 no-viewer = "{name} 会打开一个文件，但 qdesk 还没有查看器"
 # A program that could not be started at all: it is not there, or no pseudo-terminal was free.
 start-failed = "{program} 无法启动"
+settings-unread = "设置文件未能完整读取"
 # The whole sentence: the system's words with the program they belong to.
 start-failed-why = "{program} 无法启动：{reason}"
 install = "正在安装 {name}"
@@ -141,7 +154,7 @@ quit = "退出"
 tile-narrow = "桌面太窄，无法并排平铺窗口。"
 tile-short = "桌面最多只能并排平铺 {fits} 个窗口。"
 resize-hint = "窗口可以从边缘调整大小"
-resize-hint-body = "拖动右边或底边，或两者的夹角。按住 Alt 用右键可在任意位置调整窗口大小；在 dock 上的窗口菜单中选择“调整大小”则用方向键来调整。"
+resize-hint-body = "拖动任意边或角即可调整大小；两个上角之间的标题条用于移动窗口。按住 Alt 加右键，可在任意位置调整窗口大小；dock 上菜单中的“调整大小”则可用方向键操作。"
 
 [mode]
 # The dock's row while the keys are the desktop's.
@@ -158,7 +171,7 @@ leave = "返回"
 back = "返回"
 release = "松开"
 far = "每次 {cells} 格"
-drag = "边缘"
+drag = "任意边"
 drag-label = "拖动它"
 workspace = "工作区"
 
@@ -261,6 +274,17 @@ floor-style-plain = "无"
 floor-style-gradient = "渐变"
 floor-style-dots = "圆点"
 floor-style-gradient-dots = "两者兼有"
+wallpaper = "壁纸"
+wallpaper-text = "一张图片铺在背景上；在 16 色下，背景保持原来的颜色。"
+wallpaper-unshown = "{reason}。在图片恢复之前，背景会显示它的颜色和图案。"
+wallpaper-none = "无"
+wallpaper-choose = "选择…"
+wallpaper-remove = "移除"
+wallpaper-ours = "内置图片"
+wallpaper-ours-pick = "选一张"
+wallpaper-ember = "余烬"
+wallpaper-dusk = "暮色"
+wallpaper-tide = "潮汐"
 folders-in-explorer = "用 {program} 打开文件夹"
 folders-in-explorer-text = "桌面上或“文件”中的文件夹会在生态系统的文件管理器中打开。若未安装 {program}，则改为在“文件”中打开。"
 status-strip = "Dock 上的状态栏"
@@ -295,6 +319,7 @@ not-text = "{name} 无法打开：它的名称不是可以传给程序的文本"
 open-with = "打开方式"
 open-with-editor = "{program}，你的编辑器"
 open-with-reader = "{program}，用来阅读"
+set-wallpaper = "设为壁纸"
 
 [status]
 tmux = "tmux 会话"
@@ -353,3 +378,11 @@ week-start-sunday = "星期日"
 note-placeholder = "写点什么"
 note-unsaved = "便签无法保存"
 no-room = "桌面上没有空间放置 {name} 小组件"
+
+[wallpaper]
+unshown = "无法显示壁纸"
+refused = "{name} 不能用作壁纸"
+not-text = "它的路径不是设置文件能保存的文本"
+nowhere = "无法把图片放进 qdesk 的数据文件夹"
+pick-title = "选择壁纸"
+pick-cancel = "取消"

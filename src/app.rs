@@ -1,8 +1,10 @@
 //! The desktop application: the floor with its icons, the launcher, the dock, and the runtime
 //! that drives them.
 
+mod follow;
 mod gadgets;
 mod strip;
+mod wallpaper;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -19,7 +21,8 @@ use qframe::runtime::{ClipboardEvent, Confirm, FrameLimit, Task, Termination, Up
 use qframe::storage::{Family, FolderChanges, FolderWatch, Settings, machine_name};
 use qframe::widgets::{
     BigText, ContextItem, ContextMenu, EmptyState, Field, FileChange, FileManager, FileManagerMsg, FileManagerState,
-    FileView, FolderEntry, Form, HelpLayer, KeyHints, Modal, NameFor, Panel, RowMark, TextInput, Toast, Tooltip,
+    FilePickerMsg, FileView, FolderEntry, Form, HelpLayer, ImageData, ImageError, KeyHints, Modal, NameFor, Panel,
+    RowMark, TextInput, Toast, Tooltip,
 };
 
 use crate::apps::{
@@ -38,9 +41,12 @@ use crate::power::{self, Action, Tools};
 use crate::session::{self, Change, Sessions, Start, Subtitle};
 use crate::settings::{self, DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, Prefs, UpdateFolders};
 use crate::status::{Probe, Status};
+use crate::wallpapers;
 use crate::wm::{self, Exit, Grip, SPACES, TooSmall, Window, WindowId, Windows, layout};
 
+pub use follow::FolderNews;
 pub use gadgets::note_field;
+pub use wallpaper::{PICKER, PICTURE, Purpose, Shown, Wallpaper, can_draw};
 
 /// Below this many columns the desktop cannot be drawn and the screen says so.
 pub const MIN_WIDTH: u16 = 40;
@@ -244,6 +250,8 @@ pub enum Msg {
     SendTo(WindowId, usize),
     /// Something happened on the Settings screen of a window.
     Settings(settings::Msg),
+    /// A wait on the folder of the settings file, on the watch of this run, heard this.
+    SettingsFolder(u64, FolderNews),
     /// Something happened in the file manager of a Files window.
     Files(WindowId, FileManagerMsg),
     /// A Files window draws its folder in another shape, from the window's menu.
@@ -311,13 +319,22 @@ pub enum Msg {
     Second,
     /// The note kept in this file was typed into; this is all it holds now.
     NoteTyped(String, String),
-    /// Show the tmux sessions the status strip counts, or put their list away.
-    TmuxSessions,
     /// Open a new terminal window attached to the tmux session of this name.
     Attach(String),
     /// Open the machine's process monitor, `btop` or `htop`: a press on the processor or the
     /// memory of the status strip.
     Monitor,
+    /// "Set as wallpaper" on a picture's menu: decode it, and lay it over the floor when it
+    /// decodes.
+    SetWallpaper(PathBuf),
+    /// A picture was decoded for the floor, on the decoding of this run, for this purpose.
+    WallpaperDecoded(u64, PathBuf, Purpose, Result<ImageData, ImageError>),
+    /// One of qdesk's own pictures was written into its folder, or why it could not be.
+    OurWallpaper(Result<PathBuf, String>),
+    /// Something happened in the file picker that chooses a picture for the floor.
+    WallpaperPicker(FilePickerMsg),
+    /// The file picker was closed without a choice.
+    CloseWallpaperPicker,
     /// Something arrived for an application that is no longer there.
     Ignore,
 }
@@ -376,6 +393,13 @@ pub struct Desk {
     run: u64,
     stored: Settings,
     prefs: Prefs,
+    /// The watch on the folder of the settings file, so a change another program makes to the
+    /// file is applied while the desktop runs.
+    settings_watch: Option<FolderWatch>,
+    /// Which watch of the settings folder is the current one.
+    settings_run: u64,
+    /// The settings files the desktop wrote itself and has not seen land yet, as text.
+    written: Vec<String>,
     /// Whether the terminal is reached over a network, as the framework's environment says.
     remote: bool,
     screen: settings::Screen,
@@ -422,8 +446,6 @@ pub struct Desk {
     probe: Option<Probe>,
     /// The reading the system gadget and the status strip show.
     status: Status,
-    /// Whether the list of tmux sessions is open.
-    tmux_open: bool,
     /// The process monitor a press on the strip's processor or memory opens, found on the
     /// environment's `PATH`; `None` when the machine has neither `btop` nor `htop`.
     monitor: Option<PathBuf>,
@@ -435,6 +457,8 @@ pub struct Desk {
     notes: BTreeMap<String, String>,
     /// The notes whose files could not be read: never written over.
     unreadable_notes: BTreeSet<String>,
+    /// The picture over the floor, and the dialog that chooses one.
+    wallpaper: Wallpaper,
 }
 
 /// What the lock screen holds while it covers the desktop.
@@ -484,6 +508,9 @@ impl Desk {
             run: 0,
             stored: Settings::in_memory(),
             prefs: Prefs::default(),
+            settings_watch: None,
+            settings_run: 0,
+            written: Vec::new(),
             remote: false,
             screen: settings::Screen::default(),
             // The terminal says how large it is before the first frame; until then the desktop
@@ -508,12 +535,12 @@ impl Desk {
             lock: None,
             probe: None,
             status: Status::default(),
-            tmux_open: false,
             monitor: None,
             ticking: false,
             notes_dir: None,
             notes: BTreeMap::new(),
             unreadable_notes: BTreeSet::new(),
+            wallpaper: Wallpaper::default(),
         }
     }
 
@@ -539,6 +566,8 @@ impl Desk {
         // The switch of the update notice is kept, in whichever order the two were given.
         self.screen = settings::Screen::new(problems).with_update_notice(self.screen.update_notice());
         self.programs.set_prefs(self.prefs, self.remote);
+        let picture = settings::wallpaper(&self.stored);
+        self.name_wallpaper(picture);
         self
     }
 
@@ -694,6 +723,19 @@ impl Desk {
     #[must_use]
     pub fn prefs(&self) -> Prefs {
         self.prefs
+    }
+
+    /// The picture over the floor: which one the settings name, what became of it, and whether
+    /// its file picker is open.
+    #[must_use]
+    pub fn wallpaper(&self) -> &Wallpaper {
+        &self.wallpaper
+    }
+
+    /// The Settings screen's state, as the next frame shows it.
+    #[must_use]
+    pub fn settings_screen(&self) -> &settings::Screen {
+        &self.screen
     }
 
     /// The ids of the selected icons.
@@ -1143,6 +1185,7 @@ impl Desk {
             launch,
             folder: None,
             env: Vec::new(),
+            unset: Vec::new(),
             category,
             keywords: Vec::new(),
             single: false,
@@ -1493,9 +1536,7 @@ impl Desk {
                 Command::none()
             }
             wm::Action::Resize { id, grip, dx, dy } => {
-                if self.windows.resize_by(id, grip, dx, dy) {
-                    self.dragging = Some(wm::Dragging::Sizing(id));
-                }
+                self.drag_size(id, grip, dx, dy);
                 Command::none()
             }
             wm::Action::Dropped(id) => {
@@ -1539,6 +1580,27 @@ impl Desk {
             return;
         };
         self.dragging = Some(wm::Dragging::Ghosting { id, from, rect: layout::moved(rect, dx, dy, area) });
+    }
+
+    /// One step of a drag of the edge or corner `grip` of the window `id`.
+    ///
+    /// The steps are added up and the window is sized from the rectangle it had when the drag
+    /// began, so the held edge stays under the pointer: one that stopped at the smallest size or
+    /// at the screen does not start back until the pointer is over it again.
+    fn drag_size(&mut self, id: WindowId, grip: Grip, dx: i32, dy: i32) {
+        let running = match self.dragging {
+            Some(wm::Dragging::Sizing { id: held, grip: holding, from, by }) if held == id && holding == grip => {
+                Some((from, by))
+            }
+            _ => None,
+        };
+        let Some((from, by)) = running.or_else(|| Some((self.windows.get(id)?.rect(), (0, 0)))) else {
+            return;
+        };
+        let by = (by.0.saturating_add(dx), by.1.saturating_add(dy));
+        if self.windows.resize_from(id, from, grip, by.0, by.1) {
+            self.dragging = Some(wm::Dragging::Sizing { id, grip, from, by });
+        }
     }
 
     /// The end of a drag: a ghost lands, and a window that was moved against an edge snaps to it.
@@ -1606,7 +1668,6 @@ impl Desk {
             return self.body_focus();
         }
         self.more = false;
-        self.tmux_open = false;
         self.inbox.read();
         // The keys land on the first notice that leads somewhere, so the list is walked and
         // answered without a mouse. A list of notices that lead nowhere takes no focus of its own.
@@ -1673,8 +1734,8 @@ impl Desk {
                 }
             }
             Keys::Resize => {
-                // The right and the bottom edge are the ones the keys move: they are the two the
-                // mouse holds as well, and a window keeps its corner while it is sized.
+                // The keys move the right and the bottom edge, so a window sized from the keys
+                // keeps its top left corner; the mouse can hold any edge or corner instead.
                 if let Some(id) = self.windows.focus() {
                     let grip = if dx == 0 { Grip::Bottom } else { Grip::Right };
                     self.windows.resize_by(id, grip, dx, dy);
@@ -1697,10 +1758,6 @@ impl Desk {
         if self.more {
             self.more = false;
             return Command::none();
-        }
-        if self.tmux_open {
-            self.tmux_open = false;
-            return self.body_focus();
         }
         if self.inbox_open {
             self.inbox_open = false;
@@ -1740,6 +1797,7 @@ impl Desk {
                 self.store()
             }
             Some(settings::Request::UpdateNotice(on)) => self.store_update_notice(on),
+            Some(settings::Request::Wallpaper(asked)) => self.on_wallpaper_asked(asked),
             None => Command::none(),
         };
         Command::batch([applied, stored])
@@ -1775,8 +1833,10 @@ impl Desk {
         })
     }
 
-    /// Writes the settings on a background thread, so a slow disk never holds up drawing.
-    fn store(&self) -> Command<Msg> {
+    /// Writes the settings on a background thread, so a slow disk never holds up drawing. The
+    /// text is remembered, so the watch on the file knows the change as the desktop's own.
+    fn store(&mut self) -> Command<Msg> {
+        self.remember_write();
         self.stored.save_command(|result| Msg::Settings(settings::Msg::Stored(result)))
     }
 
@@ -1839,7 +1899,6 @@ impl Desk {
                 self.help = false;
                 self.more = false;
                 self.inbox_open = false;
-                self.tmux_open = false;
                 Command::focus(LOCK_FIELD)
             }
             // Logging out is leaving qdesk, with the question leaving asks when programs run.
@@ -1944,7 +2003,7 @@ impl Desk {
             | Msg::Sampled(..)
             | Msg::Second
             | Msg::NoteTyped(..)) => self.on_gadget(msg),
-            msg @ (Msg::TmuxSessions | Msg::Attach(_) | Msg::Monitor) => self.on_strip(msg),
+            msg @ (Msg::Attach(_) | Msg::Monitor) => self.on_strip(msg),
             Msg::OpenLauncher => {
                 self.launcher = Some(Launcher::default());
                 Command::focus(launcher::SEARCH)
@@ -1985,7 +2044,6 @@ impl Desk {
             Msg::MoreWindows => {
                 self.more = !self.more;
                 self.inbox_open = false;
-                self.tmux_open = false;
                 Command::none()
             }
             Msg::Notices => self.on_notices(),
@@ -2012,6 +2070,7 @@ impl Desk {
             Msg::Workspace(space) => self.switch(space),
             Msg::SendTo(id, space) => self.send_to(id, space),
             Msg::Settings(message) => self.on_settings(message),
+            Msg::SettingsFolder(run, news) => self.on_settings_folder(run, news),
             Msg::Files(id, message) => self.on_files(id, message),
             Msg::OpenFile(file) => self.open_file(&file),
             Msg::OpenWith(file, program) => self.open_with(&file, program.as_deref()),
@@ -2020,6 +2079,13 @@ impl Desk {
             Msg::DesktopFolder(message) => self.on_folder(message),
             Msg::NewFolder => self.ask_name(FileManagerMsg::NewFolder(String::new())),
             Msg::RenameEntry(name) => self.ask_name(FileManagerMsg::Rename(name)),
+            Msg::SetWallpaper(path) => self.choose_wallpaper(path),
+            Msg::WallpaperDecoded(run, path, purpose, decoded) => {
+                self.on_wallpaper_decoded(run, path, purpose, decoded)
+            }
+            Msg::OurWallpaper(written) => self.on_our_wallpaper(written),
+            Msg::WallpaperPicker(message) => self.on_wallpaper_picker(message),
+            Msg::CloseWallpaperPicker => self.close_wallpaper_picker(),
             Msg::FilesView(id, view) => {
                 if let Some(window) = self.files.get_mut(&id) {
                     window.view = view;
@@ -2174,8 +2240,13 @@ impl Desk {
     fn body(&self, items: &[dock::Item], plan: &dock::Plan, ui: &mut View<'_, Msg>) {
         ui.stack(|ui| {
             // The floor's colour and pattern from the settings, under the icons; the windows keep
-            // the theme.
-            settings::ground(self.prefs.floor, self.prefs.floor_style, ui);
+            // the theme. A picture covers the whole floor, so nothing is laid under it, and its
+            // colour and pattern are what shows wherever the picture cannot be.
+            if self.wallpaper_drawn(ui.env()) {
+                self.wallpaper_view(ui);
+            } else {
+                settings::ground(self.prefs.floor, self.prefs.floor_style, ui);
+            }
             self.floor(ui);
             self.windows_view(ui);
             if self.more && plan.hidden > 0 {
@@ -2183,9 +2254,6 @@ impl Desk {
             }
             if self.inbox_open {
                 self.notices_view(ui);
-            }
-            if self.sessions_shown() {
-                self.sessions_view(ui);
             }
             if let Some(launcher) = &self.launcher {
                 self.launcher_view(launcher, ui);
@@ -2199,6 +2267,7 @@ impl Desk {
             if self.help {
                 self.help_view(ui);
             }
+            self.wallpaper_picker_view(ui);
         })
         .fill();
     }
@@ -2312,7 +2381,12 @@ impl Desk {
                 if key.is_empty() || folders.contains(key) {
                     vec![ContextItem::new(t!("files.open-new-window"), Msg::FilesHere(path))]
                 } else {
-                    vec![Self::open_with_menu(&openers, editor.as_deref(), path)]
+                    let picture = wallpapers::is_picture(key.rsplit('/').next().unwrap_or(key));
+                    let mut items = vec![Self::open_with_menu(&openers, editor.as_deref(), path.clone())];
+                    if picture {
+                        items.push(ContextItem::new(t!("files.set-wallpaper"), Msg::SetWallpaper(path)));
+                    }
+                    items
                 }
             })
             .row_mark(move |key| marks.get(key).cloned().unwrap_or_else(RowMark::new))
@@ -2587,12 +2661,12 @@ impl Desk {
         if let Some(folder) = &self.folder {
             for entry in self.folder_entries() {
                 let path = folder.root().join(&entry.name);
-                let open = if entry.folder { Msg::FilesHere(path) } else { Msg::OpenFile(path) };
+                let open = if entry.folder { Msg::FilesHere(path.clone()) } else { Msg::OpenFile(path.clone()) };
                 shown.push(FloorIcon {
                     id: file_id(&entry.name),
                     name: entry.name.clone(),
                     glyph: icons.glyph(desktop::kind_icon(&entry.name, entry.folder, entry.executable)).into_owned(),
-                    menu: Self::entry_items(&entry.name, &open),
+                    menu: Self::entry_items(&entry.name, &open, (!entry.folder).then_some(&path)),
                     open,
                 });
             }
@@ -2609,8 +2683,11 @@ impl Desk {
         // In desktop mode the arrows pick a window, so the floor lets them through; while a name
         // is asked for, the keys are the dialog's.
         let naming = self.folder.as_ref().is_some_and(|folder| folder.naming().is_some());
-        let keys = self.launcher.is_none() && self.keys.is_none() && !naming;
+        let keys = self.launcher.is_none() && self.keys.is_none() && !naming && !self.wallpaper.picking();
         let opening: Vec<Msg> = shown.iter().map(|icon| icon.open.clone()).collect();
+        // Over a picture every icon stands on a tile of the theme's card tone, so its name reads
+        // whatever the picture is under it.
+        let backed = self.wallpaper_drawn(ui.env());
         let hidden = Self::narrow(ui.size());
         let hint = hidden.then(|| Self::narrow_hint(ui));
         ui.add_with(ContextMenu::new(self.floor_items(&language)), |ui| {
@@ -2634,7 +2711,8 @@ impl Desk {
                 for (index, icon) in shown.into_iter().enumerate() {
                     let cell = IconCell::new(icon.glyph, icon.name.clone())
                         .selected(self.selection.contains(&icon.id))
-                        .cursor(cursor == Some(index));
+                        .cursor(cursor == Some(index))
+                        .backed(backed);
                     let menu = ContextMenu::new(icon.menu);
                     let shortened = grid::shown_name(&icon.name) != icon.name;
                     if shortened {
@@ -2733,12 +2811,17 @@ impl Desk {
         items
     }
 
-    /// The rows of the menu of an entry of the Desktop folder called `name`, which `open` opens.
-    fn entry_items(name: &str, open: &Msg) -> Vec<ContextItem<Msg>> {
-        vec![
+    /// The rows of the menu of an entry of the Desktop folder called `name`, which `open` opens;
+    /// `file` is where it is when it is a file, and a picture among them can be the wallpaper.
+    fn entry_items(name: &str, open: &Msg, file: Option<&PathBuf>) -> Vec<ContextItem<Msg>> {
+        let mut items = vec![
             ContextItem::new(t!("icon.open"), open.clone()),
             ContextItem::new(t!("icon.rename"), Msg::RenameEntry(name.to_owned())),
-        ]
+        ];
+        if let Some(file) = file.filter(|_| wallpapers::is_picture(name)) {
+            items.push(ContextItem::new(t!("files.set-wallpaper"), Msg::SetWallpaper(file.clone())));
+        }
+        items
     }
 
     /// The rows of the empty floor's menu.
@@ -2901,14 +2984,30 @@ impl App for Desk {
         let problems = self.notices.clone();
         let notices: Vec<Command<Msg>> = problems.iter().map(|problem| self.told(problem)).collect();
         let watching = self.watch();
+        let following = self.watch_settings();
+        // The theme, the language and the rest every Quvyta application shares, as the file says
+        // them, before the first frame is drawn.
+        let shared = self.stored.apply();
         let reading = self.read_folder();
+        let picture = self.start_wallpaper();
         let asked = self.ask_for_update();
         let notes = self.read_notes();
         let ticks = self.gadget_ticks();
         Command::batch(
-            [self.next_minute(), watching, reading, Command::focus(FLOOR), asked, notes, ticks]
-                .into_iter()
-                .chain(notices),
+            [
+                self.next_minute(),
+                shared,
+                watching,
+                following,
+                reading,
+                picture,
+                Command::focus(FLOOR),
+                asked,
+                notes,
+                ticks,
+            ]
+            .into_iter()
+            .chain(notices),
         )
     }
 

@@ -1,4 +1,4 @@
-//! The `qdesk` command: `--help` and `--version` answer and exit, no argument opens the desktop.
+//! The `qdesk` command: `--help`, `--version` and `wallpaper` answer and exit, no argument opens the desktop.
 
 use std::process::ExitCode;
 

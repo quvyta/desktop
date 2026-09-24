@@ -1,4 +1,4 @@
-//! The `quvyta-desktop` command, the long name of `qdesk`: `--help` and `--version` answer and exit, no argument opens the desktop.
+//! The `quvyta-desktop` command, the long name of `qdesk`: `--help`, `--version` and `wallpaper` answer and exit, no argument opens the desktop.
 
 use std::process::ExitCode;
 

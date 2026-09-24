@@ -75,7 +75,15 @@ fn env() -> Env {
         }),
         ..AssetDirs::default()
     };
-    Env::load(&dirs).expect("the built-in files load")
+    // The machine's language and region stay out: a test that starts from the machine's `LANG`
+    // would see the week begin on Monday on a Turkish machine and on Sunday elsewhere. The
+    // terminal is the one qdesk gives its own windows, whatever the test was started in.
+    let terminal = |name: &str| match name {
+        "TERM" => Some("xterm-256color".to_owned()),
+        "COLORTERM" => Some("truecolor".to_owned()),
+        _ => None,
+    };
+    Env::load_with(&dirs, terminal).expect("the built-in files load")
 }
 
 /// One entry written for the tests.
@@ -256,6 +264,31 @@ pub fn base(clock: qdesk::app::WallClock) -> Desk {
 /// test draws in.
 #[must_use]
 pub fn draw(app: Desk, width: u16, height: u16) -> Harness<Desk> {
+    let mut harness = Harness::with_env(app, env(), width, height);
+    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
+    harness
+}
+
+/// A desktop with `icons` on its floor in the environment `apps`, reading and writing its settings
+/// in `config`, a folder the test made: for a test that needs a home, a data folder or a Desktop
+/// folder of its own as well as a settings file.
+#[must_use]
+pub fn desk_at(config: &Path, apps: Environment, icons: &[&str], width: u16, height: u16) -> Harness<Desk> {
+    let loaded = qdesk::settings::load_in(config);
+    let clock = Box::new(|| MOMENT * 1_000);
+    let desktop = Desktop {
+        icons: icons.iter().map(|id| (*id).to_owned()).collect(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        resize_hint_seen: true,
+        ..Desktop::default()
+    };
+    let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), clock)
+        .apps(apps)
+        .catalog(catalog())
+        .desktop(desktop)
+        .settings(loaded.settings, loaded.prefs, loaded.diagnostics)
+        .watch_within(PATIENCE);
     let mut harness = Harness::with_env(app, env(), width, height);
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
     harness

@@ -145,6 +145,156 @@ fn alt_and_the_right_button_size_the_window_from_whichever_edge_or_corner_is_nea
     }
 }
 
+/// Presses at `at`, drags through every point of `path` and lets go at the last one.
+fn drag_through(harness: &mut Harness<Desk>, at: (i32, i32), path: &[(i32, i32)]) {
+    harness.mouse(MouseKind::Down(MouseButton::Left), at.0, at.1);
+    for &(x, y) in path {
+        harness.mouse(MouseKind::Drag(MouseButton::Left), x, y);
+    }
+    let (x, y) = path.last().copied().unwrap_or(at);
+    harness.mouse(MouseKind::Up(MouseButton::Left), x, y);
+}
+
+/// The seven handles a plain drag holds on the first window, and the rectangle a drag of three
+/// columns left and two rows up leaves it at. The left edge is the pillar's column; the top side
+/// is the title strip, so only its two end cells size the window and the cells between move it.
+fn handles() -> [(&'static str, (i32, i32), Rect); 7] {
+    let (x, y, w, h) = (FIRST.x, FIRST.y, FIRST.width, FIRST.height);
+    let (right, bottom) = (FIRST.right() - 1, FIRST.bottom() - 1);
+    let (middle_x, middle_y) = (x + i32::from(w) / 2, y + i32::from(h) / 2);
+    [
+        ("left edge", (x, middle_y), Rect::new(x - 3, y, w + 3, h)),
+        ("right edge", (right, middle_y), Rect::new(x, y, w - 3, h)),
+        ("bottom edge", (middle_x, bottom), Rect::new(x, y, w, h - 2)),
+        ("top left corner", (x, y), Rect::new(x - 3, y - 2, w + 3, h + 2)),
+        ("top right corner", (right, y), Rect::new(x, y - 2, w - 3, h + 2)),
+        ("bottom left corner", (x, bottom), Rect::new(x - 3, y, w + 3, h - 2)),
+        ("bottom right corner", (right, bottom), Rect::new(x, y, w - 3, h - 2)),
+    ]
+}
+
+/// A folder of a test's own, removed when dropped.
+struct Folder(std::path::PathBuf);
+
+impl Drop for Folder {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// The Settings window opened as [`with_settings`] opens it, on a desktop whose settings file
+/// chose `style` for dragging a window; `Ghost` is the untouched default and writes no file. The
+/// file lives in the folder handed back, named by `name`, for as long as the test keeps it: the
+/// desktop follows its settings file, and a file taken away would put the default back.
+fn with_settings_dragging(style: DragStyle, name: &str) -> (Harness<Desk>, Option<Folder>) {
+    if style == DragStyle::Ghost {
+        return (with_settings(80, 24), None);
+    }
+    let folder = Folder(std::env::temp_dir().join(format!("qdesk-test-drag-{name}-{}", std::process::id())));
+    let _ = std::fs::remove_dir_all(&folder.0);
+    std::fs::create_dir_all(&folder.0).expect("a folder of the test's own");
+    std::fs::write(folder.0.join("desktop.conf"), "drag-style = \"live\"\n").expect("a settings file");
+    let mut harness = support::desk_in(&folder.0, 80, 24);
+    assert_eq!(harness.app().prefs().drag, style, "the file chose it");
+    harness.click(3, 4);
+    harness.click(3, 4);
+    assert_eq!(harness.app().windows().len(), 1, "the window opened:\n{}", harness.screen());
+    (harness, Some(folder))
+}
+
+#[test]
+fn a_plain_drag_on_every_edge_and_corner_sizes_the_window_in_either_drag_style() {
+    for style in [DragStyle::Ghost, DragStyle::Live] {
+        for (handle, at, expected) in handles() {
+            let (mut harness, _folder) = with_settings_dragging(style, "edges");
+            drag(&mut harness, at, (-3, -2));
+            assert_eq!(rect(&harness), expected, "a drag on the {handle}, {style:?}:\n{}", harness.screen());
+            assert_eq!(harness.app().prefs().drag, style, "still dragging {style:?}");
+        }
+        // The top side has no row of its own: between its corners the title moves the window.
+        let (mut harness, _folder) = with_settings_dragging(style, "title");
+        drag(&mut harness, (FIRST.x + 1, FIRST.y), (-3, -2));
+        assert_eq!(rect(&harness), Rect::new(FIRST.x - 3, FIRST.y - 2, FIRST.width, FIRST.height), "{style:?}");
+    }
+}
+
+#[test]
+fn a_held_edge_stops_at_the_smallest_size_and_waits_there_for_the_pointer_to_come_back() {
+    let mut harness = with_settings(80, 24);
+    let middle = FIRST.y + 5;
+    // The left edge pulled far past the right one leaves the smallest window; coming back by five
+    // columns still leaves the pointer far right of the edge, which has to stay where it stopped.
+    drag_through(&mut harness, (FIRST.x, middle), &[(FIRST.x + 60, middle), (FIRST.x + 55, middle)]);
+    assert_eq!(rect(&harness), Rect::new(FIRST.right() - 20, FIRST.y, 20, FIRST.height), "{}", harness.screen());
+    // The top left corner pulled down and right past the smallest size, then back up a little.
+    let mut harness = with_settings(80, 24);
+    drag_through(&mut harness, (FIRST.x, FIRST.y), &[(FIRST.x + 50, FIRST.y + 20), (FIRST.x + 48, FIRST.y + 18)]);
+    assert_eq!(rect(&harness), Rect::new(FIRST.right() - 20, FIRST.bottom() - 5, 20, 5), "{}", harness.screen());
+    // And back all the way: once the pointer is over where the edge started, the window is whole.
+    let mut harness = with_settings(80, 24);
+    drag_through(&mut harness, (FIRST.x, middle), &[(FIRST.x + 60, middle), (FIRST.x, middle)]);
+    assert_eq!(rect(&harness), FIRST, "{}", harness.screen());
+}
+
+#[test]
+fn a_held_edge_stops_at_the_screen_and_at_the_dock_s_row() {
+    let mut harness = with_settings(80, 24);
+    // The top left corner goes as far as the screen's corner and keeps the other corner.
+    drag(&mut harness, (FIRST.x, FIRST.y), (-FIRST.x, -FIRST.y));
+    assert_eq!(rect(&harness), Rect::new(0, 0, 66, 18), "{}", harness.screen());
+    // The bottom edge goes down to the last row above the dock and no further. The pointer can
+    // go on onto the dock's row; coming back from there to the row the edge stopped at leaves it
+    // where it is, since that is the row the edge's handle is on.
+    let mut harness = with_settings(80, 24);
+    let bottom = FIRST.bottom() - 1;
+    drag_through(&mut harness, (FIRST.x + 10, bottom), &[(FIRST.x + 10, 23), (FIRST.x + 10, 22)]);
+    assert_eq!(rect(&harness).bottom(), 23, "the dock's row stays the dock's:\n{}", harness.screen());
+    assert!(harness.screen().lines().last().is_some_and(|dock| dock.contains("sunucu-1")), "{}", harness.screen());
+}
+
+#[test]
+fn a_filled_or_snapped_window_is_sized_from_its_edges_and_floats_at_that_size() {
+    let mut harness = with_settings(80, 24);
+    let title = (FIRST.x + 4, FIRST.y);
+    harness.click(title.0, title.1);
+    harness.click(title.0, title.1);
+    assert_eq!(rect(&harness), Rect::new(0, 0, 80, 23), "the window fills the desktop");
+    drag(&mut harness, (0, 10), (10, 0));
+    assert_eq!(rect(&harness), Rect::new(10, 0, 70, 23), "its left edge came in:\n{}", harness.screen());
+    assert!(!front(&harness).is_maximized(), "and it floats at that size");
+
+    let mut harness = with_settings(80, 24);
+    drag(&mut harness, title, (-40, 0));
+    assert_eq!(rect(&harness), Rect::new(0, 0, 40, 23), "it took the left half");
+    drag(&mut harness, (0, 0), (3, 2));
+    assert_eq!(rect(&harness), Rect::new(3, 2, 37, 21), "its top left corner came in:\n{}", harness.screen());
+    drag(&mut harness, (3 + 36, 10), (5, 0));
+    assert_eq!(rect(&harness), Rect::new(3, 2, 42, 21), "and the right edge went out from there");
+}
+
+#[test]
+fn the_pointer_asks_for_a_resize_arrow_over_every_edge_and_corner() {
+    use qframe::widget::PointerShape;
+    let mut harness = with_settings(80, 24);
+    let (right, bottom) = (FIRST.right() - 1, FIRST.bottom() - 1);
+    let middle = FIRST.y + 5;
+    let cases = [
+        ((FIRST.x, middle), PointerShape::EwResize),
+        ((right, middle), PointerShape::EwResize),
+        ((FIRST.x + 10, bottom), PointerShape::NsResize),
+        ((FIRST.x, FIRST.y), PointerShape::NwseResize),
+        ((right, bottom), PointerShape::NwseResize),
+        ((right, FIRST.y), PointerShape::NeswResize),
+        ((FIRST.x, bottom), PointerShape::NeswResize),
+        ((FIRST.x + 10, FIRST.y), PointerShape::Default),
+        ((FIRST.x + 10, middle), PointerShape::Default),
+    ];
+    for ((x, y), shape) in cases {
+        harness.hover(x, y);
+        assert_eq!(harness.pointer_shape(), shape, "over ({x}, {y})");
+    }
+}
+
 #[test]
 fn a_window_dragged_against_the_left_edge_shows_where_it_would_land_and_takes_that_half() {
     let mut harness = with_settings(80, 24);
@@ -426,7 +576,7 @@ fn resize_on_the_window_menu_lets_the_arrows_size_it_and_the_dock_says_the_mouse
     from_the_window_menu(&mut harness, "Settings", "Resize");
     assert_eq!(harness.app().keys(), Some(Keys::Resize), "the sizing step is open");
     let hints = harness.screen().lines().last().expect("the dock row").to_owned();
-    for said in ["size", "enter", "esc", "edge", "drag it"] {
+    for said in ["size", "enter", "esc", "any edge", "drag it"] {
         assert!(hints.contains(said), "{said} is missing from {hints}");
     }
     assert_eq!(decoration(&harness.screen()), None, "{}", harness.screen());
@@ -465,6 +615,7 @@ fn the_first_window_says_once_how_windows_are_resized_and_a_restart_remembers() 
     assert_eq!(harness.app().windows().len(), 1, "the window opened:\n{}", harness.screen());
     let shown = harness.screen();
     assert!(shown.contains("Windows resize from their edges"), "the note is said:\n{shown}");
+    assert!(shown.contains("Drag any edge or corner"), "every side sizes a window, not two:\n{shown}");
     assert_eq!(decoration(&shown), None, "{shown}");
     let written = std::fs::read_to_string(&file).expect("the desktop file is written");
     assert!(written.contains("resize_hint_seen = true"), "{written}");

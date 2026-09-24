@@ -147,6 +147,8 @@ fn rows(harness: &Harness<Desk>, from: usize, to: usize) -> Vec<String> {
 /// A clock added at 120 by 40 stands in the top right corner: its surface at column 90, the
 /// digits in its middle and the date under them.
 const DATE: &str = "Saturday, September 19";
+/// The calendar's weekdays in Turkish, where the week starts on Monday.
+const TURKISH_WEEK: &str = "Pt Sa Ça Pe Cu Ct Pz";
 
 #[test]
 fn the_floors_menu_adds_a_clock_in_the_top_right_corner() {
@@ -352,10 +354,9 @@ fn the_calendar_shows_this_month_with_today_in_the_accent() {
     let (mut harness, _wall) = desk(vec![Gadget::new(Kind::Calendar, (9, 0), "")], 120, 40);
     harness.set_theme("amber");
     assert!(harness.find("September 2026").is_some(), "{}", harness.screen());
-    // The weeks start on the language's own first day until the person picks one.
-    let first = harness.env().i18n().first_weekday();
-    let header = if first == qframe::date::Weekday::Sunday { "Su Mo Tu We Th Fr Sa" } else { "Mo Tu We Th Fr Sa Su" };
-    assert!(harness.find(header).is_some(), "{}", harness.screen());
+    // The weeks start on the language's own first day until the person picks one: Sunday in
+    // English, whatever the machine running the test is set to.
+    assert!(harness.find("Su Mo Tu We Th Fr Sa").is_some(), "{}", harness.screen());
     let (x, y) = harness.find("19").expect("today is on it");
     let theme = harness.env().theme().clone();
     let (x, y) = (u16::try_from(x).unwrap_or(0), u16::try_from(y).unwrap_or(0));
@@ -373,6 +374,11 @@ fn the_calendar_shows_this_month_with_today_in_the_accent() {
     harness.click_text("Monday");
     assert_eq!(harness.app().gadgets()[0].shows, Shows::Calendar(WeekStart::Monday));
     assert!(harness.find("Mo Tu We Th Fr Sa Su").is_some(), "{}", harness.screen());
+    // In Turkish they start on Monday.
+    let (mut harness, _wall) = desk(vec![Gadget::new(Kind::Calendar, (9, 0), "")], 120, 40);
+    harness.set_locale("tr");
+    assert!(harness.find("Eylül 2026").is_some(), "{}", harness.screen());
+    assert!(harness.find(TURKISH_WEEK).is_some(), "{}", harness.screen());
     // The day after the month turns, the calendar shows the next one.
     let (mut harness, wall) = desk(vec![Gadget::new(Kind::Calendar, (9, 0), "")], 120, 40);
     wall.pass(&mut harness, Duration::from_secs(12 * 24 * 3600));
@@ -479,6 +485,29 @@ fn a_note_is_written_by_clicking_into_it_and_typing_and_kept_in_its_file() {
     let app = base(clock).desktop(desktop(vec![note])).notes_folder(scratch.notes());
     let harness = draw(app, 120, 40);
     assert!(harness.find("milk").is_some(), "{}", harness.screen());
+}
+
+#[test]
+fn a_note_is_written_on_the_widgets_own_surface_like_paper() {
+    let scratch = Scratch::new("paper");
+    let (_wall, clock) = Wall::new();
+    let note = Gadget::new(Kind::Note, (9, 0), "notes.txt");
+    let app = base(clock).desktop(desktop(vec![note])).notes_folder(scratch.notes());
+    let mut harness = draw(app, 120, 40);
+    harness.set_theme("amber");
+    let theme = harness.env().theme().clone();
+    let tone = |widget: &str| theme.style(widget, None, &[]).paint("bg").map(|paint| paint.at(0.0));
+    // The widget's surface is the panel's tone, as every widget's is.
+    let surface = tone("panel").or_else(|| theme.color("surface"));
+    let field = tone("text-area");
+    assert!(field.is_some() && field != surface, "the theme raises a text area: {field:?} on {surface:?}");
+    let (x, y) = harness.find("Write something").expect("an empty note");
+    let (column, row) = (u16::try_from(x).unwrap_or(0), u16::try_from(y).unwrap_or(0));
+    // The placeholder's row and the empty row under it are the widget's own tone.
+    assert_eq!(harness.bg(column, row), surface, "the note's text stands on the widget:\n{}", harness.screen());
+    assert_eq!(harness.bg(column, row + 1), surface, "and so does its empty room");
+    harness.click(x, y);
+    assert_eq!(harness.bg(column + 2, row + 1), surface, "being written in, it is still paper");
 }
 
 #[test]

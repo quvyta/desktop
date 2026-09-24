@@ -353,12 +353,14 @@ impl Desk {
         });
     }
 
-    /// The note gadget: the framework's text area over the whole surface inside its padding.
+    /// The note gadget: the framework's text area over the whole surface inside its padding, in
+    /// its plain look, so the note is the widget's own paper and not a field raised on it.
     fn note_face(&self, file: &str, ui: &mut View<'_, Msg>) {
         let text = self.notes.get(file).cloned().unwrap_or_default();
         let kept = file.to_owned();
         ui.add_with(Surface::filled(), |ui| {
             let area = TextArea::new(text)
+                .variant("plain")
                 .placeholder(t!("widget.note-placeholder"))
                 .on_change(move |text| Msg::NoteTyped(kept.clone(), text));
             ui.add(area).id(note_field(file)).fill();

@@ -7,11 +7,23 @@ fallback = "en"
 
 [cli]
 usage = """
-qdesk                 Desktop öffnen
+qdesk                 öffnet den Desktop
   -h, --help          dieser Text
-  -V, --version       Version ausgeben
+  -V, --version       gibt die Version aus
+qdesk wallpaper       zeigt Farbe, Muster und Bild des Bodens
+  --color NAME        setzt die Farbe: theme, deep, mist oder accent
+  --pattern NAME      setzt das Muster: plain, gradient, dots oder both
+qdesk wallpaper FILE  legt ein PNG-, JPEG-, GIF- oder WebP-Bild auf den Boden
+  --no-picture        nimmt das Bild weg
 Auf dem Desktop beendet ctrl+q."""
 unknown-argument = "qdesk: unbekanntes Argument {argument}; siehe qdesk --help"
+wallpaper-color = "qdesk wallpaper: --color nimmt theme, deep, mist oder accent, nicht {value}"
+wallpaper-pattern = "qdesk wallpaper: --pattern nimmt plain, gradient, dots oder both, nicht {value}"
+wallpaper-missing = "qdesk wallpaper: {option} braucht einen Wert; siehe qdesk --help"
+wallpaper-picture = "qdesk wallpaper: {file} kann nicht das Hintergrundbild sein: {reason}"
+wallpaper-not-text = "sein Pfad ist kein Text, den die Einstellungsdatei speichern kann"
+wallpaper-nowhere = "qdesk wallpaper: es gibt keinen Home-Ordner, um die Einstellung zu speichern"
+wallpaper-unsaved = "qdesk wallpaper: {file} konnte nicht geschrieben werden: {error}"
 
 [dock]
 workspace = "Arbeitsfläche {n}"
@@ -100,6 +112,7 @@ body = "{id} — {file} — {command}"
 no-viewer = "{name} öffnet eine Datei, und qdesk hat dafür noch keine Ansicht"
 # A program that could not be started at all: it is not there, or no pseudo-terminal was free.
 start-failed = "{program} konnte nicht gestartet werden"
+settings-unread = "Die Einstellungsdatei konnte nicht vollständig gelesen werden"
 # The whole sentence: the system's words with the program they belong to.
 start-failed-why = "{program} konnte nicht gestartet werden: {reason}"
 install = "{name} wird installiert"
@@ -141,7 +154,7 @@ quit = "Beenden"
 tile-narrow = "Der Desktop ist zu schmal, um Fenster nebeneinander anzuordnen."
 tile-short = "Auf dem Desktop ist Platz für {fits} angeordnete Fenster, mehr nicht."
 resize-hint = "Fenster ändern ihre Größe über die Ränder"
-resize-hint-body = "Zieh am rechten oder unteren Rand oder an der Ecke dazwischen. Alt mit der rechten Taste ändert die Größe von überall aus, und Größe ändern im Menü im Dock erledigt das mit den Pfeiltasten."
+resize-hint-body = "Zieh an einem beliebigen Rand oder einer Ecke; der Titelstreifen zwischen den oberen Ecken bewegt das Fenster. Alt mit der rechten Taste ändert die Größe von überall aus, und Größe ändern im Menü im Dock erledigt das mit den Pfeiltasten."
 
 [mode]
 # The dock's row while the keys are the desktop's.
@@ -158,7 +171,7 @@ leave = "zurück"
 back = "zurück"
 release = "loslassen"
 far = "{cells} auf einmal"
-drag = "Rand"
+drag = "jeder Rand"
 drag-label = "ziehen"
 workspace = "Flächen"
 
@@ -261,6 +274,17 @@ floor-style-plain = "Einfach"
 floor-style-gradient = "Verlauf"
 floor-style-dots = "Punkte"
 floor-style-gradient-dots = "Beides"
+wallpaper = "Hintergrundbild"
+wallpaper-text = "Ein Bild auf dem Boden; bei 16 Farben behält der Boden seine Farbe."
+wallpaper-unshown = "{reason}. Der Boden zeigt seine Farbe und sein Muster, bis das Bild zurück ist."
+wallpaper-none = "Keins"
+wallpaper-choose = "Auswählen…"
+wallpaper-remove = "Entfernen"
+wallpaper-ours = "Mitgelieferte Bilder"
+wallpaper-ours-pick = "Eins auswählen"
+wallpaper-ember = "Glut"
+wallpaper-dusk = "Dämmerung"
+wallpaper-tide = "Gezeiten"
 folders-in-explorer = "Ordner mit {program} öffnen"
 folders-in-explorer-text = "Ein Ordner auf dem Desktop oder in Dateien öffnet sich im Datei-Explorer des Ökosystems. Ist {program} nicht installiert, öffnet stattdessen Dateien."
 status-strip = "Status im Dock"
@@ -295,6 +319,7 @@ not-text = "{name} kann nicht geöffnet werden: der Name ist kein Text, den man 
 open-with = "Öffnen mit"
 open-with-editor = "{program}, dein Editor"
 open-with-reader = "{program}, zum Lesen"
+set-wallpaper = "Als Hintergrundbild setzen"
 
 [status]
 tmux = "tmux-Sitzungen"
@@ -353,3 +378,11 @@ week-start-sunday = "Sonntag"
 note-placeholder = "Schreib etwas"
 note-unsaved = "Die Notiz konnte nicht gespeichert werden"
 no-room = "Auf dem Desktop ist kein Platz für das {name}-Widget"
+
+[wallpaper]
+unshown = "Das Hintergrundbild konnte nicht angezeigt werden"
+refused = "{name} ist nicht das Hintergrundbild geworden"
+not-text = "Sein Pfad ist kein Text, den die Einstellungsdatei speichern kann"
+nowhere = "Das Bild konnte nicht in den Datenordner von qdesk gelegt werden"
+pick-title = "Hintergrundbild auswählen"
+pick-cancel = "Abbrechen"

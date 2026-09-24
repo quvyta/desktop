@@ -87,7 +87,21 @@ pub enum Dragging {
     },
     /// An edge or a corner of the window follows the pointer. A resize never snaps: a window
     /// whose edge is pulled to the screen's edge is being sized, not thrown against it.
-    Sizing(WindowId),
+    ///
+    /// The window is sized from where it began by everything the pointer has gone since, not a
+    /// step at a time from where the last step left it: an edge stopped by the smallest size or by
+    /// the screen stays under the pointer's way back instead of starting back as soon as the
+    /// pointer turns, however far past the stop the pointer went.
+    Sizing {
+        /// The window.
+        id: WindowId,
+        /// The edge or corner held.
+        grip: Grip,
+        /// The rectangle the window had when the drag began.
+        from: Rect,
+        /// Columns and rows the pointer has gone since then.
+        by: (i32, i32),
+    },
 }
 
 impl Dragging {
@@ -95,7 +109,7 @@ impl Dragging {
     #[must_use]
     pub fn id(self) -> WindowId {
         match self {
-            Self::Moving(id) | Self::Ghosting { id, .. } | Self::Sizing(id) => id,
+            Self::Moving(id) | Self::Ghosting { id, .. } | Self::Sizing { id, .. } => id,
         }
     }
 }
@@ -189,7 +203,7 @@ pub fn preview(windows: &Windows, dragging: Option<Dragging>) -> Option<Preview>
         Dragging::Ghosting { rect, .. } => {
             Some(snap::target(rect, windows.area()).map_or(Preview::Ghost(rect), |snap| Preview::Snap(snap.rect)))
         }
-        Dragging::Sizing(_) => None,
+        Dragging::Sizing { .. } => None,
     }
 }
 
@@ -378,7 +392,8 @@ mod tests {
         let id = desk.open(&entry("one"));
         desk.move_by(id, -100, 5);
         assert_eq!(preview(&desk, None), None);
-        assert_eq!(preview(&desk, Some(Dragging::Sizing(id))), None, "a resize never snaps");
+        let sizing = Dragging::Sizing { id, grip: Grip::Left, from: desk.area(), by: (0, 0) };
+        assert_eq!(preview(&desk, Some(sizing)), None, "a resize never snaps");
     }
 
     #[test]
@@ -465,7 +480,7 @@ mod tests {
         let id = WindowId::first();
         let rect = Rect::new(0, 0, 20, 5);
         assert_eq!(Dragging::Moving(id).id(), id);
-        assert_eq!(Dragging::Sizing(id).id(), id);
+        assert_eq!(Dragging::Sizing { id, grip: Grip::Right, from: rect, by: (1, 0) }.id(), id);
         assert_eq!(Dragging::Ghosting { id, from: rect, rect }.id(), id);
     }
 

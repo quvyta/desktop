@@ -621,6 +621,7 @@ mod tests {
             launch,
             folder: None,
             env: Vec::new(),
+            unset: Vec::new(),
             category: Category::Other,
             keywords: Vec::new(),
             single: false,

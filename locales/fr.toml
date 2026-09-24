@@ -10,8 +10,20 @@ usage = """
 qdesk                 ouvrir le bureau
   -h, --help          ce texte
   -V, --version       afficher la version
+qdesk wallpaper       afficher la couleur, le motif et l'image du fond
+  --color NAME        régler la couleur : theme, deep, mist ou accent
+  --pattern NAME      régler le motif : plain, gradient, dots ou both
+qdesk wallpaper FILE  poser une image PNG, JPEG, GIF ou WebP sur le fond
+  --no-picture        retirer l'image
 Sur le bureau, ctrl+q quitte."""
 unknown-argument = "qdesk : argument inconnu {argument} ; consultez qdesk --help"
+wallpaper-color = "qdesk wallpaper : --color attend theme, deep, mist ou accent, et non {value}"
+wallpaper-pattern = "qdesk wallpaper : --pattern attend plain, gradient, dots ou both, et non {value}"
+wallpaper-missing = "qdesk wallpaper : {option} exige une valeur ; consultez qdesk --help"
+wallpaper-picture = "qdesk wallpaper : {file} ne peut pas être le fond d'écran : {reason}"
+wallpaper-not-text = "son chemin n'est pas du texte que le fichier de réglages peut conserver"
+wallpaper-nowhere = "qdesk wallpaper : aucun dossier personnel où enregistrer le réglage"
+wallpaper-unsaved = "qdesk wallpaper : impossible d'écrire {file} : {error}"
 
 [dock]
 workspace = "Espace de travail {n}"
@@ -100,6 +112,7 @@ body = "{id} — {file} — {command}"
 no-viewer = "{name} ouvre un fichier, et qdesk n'a pas encore de visionneuse pour ce fichier"
 # A program that could not be started at all: it is not there, or no pseudo-terminal was free.
 start-failed = "{program} n'a pas pu être lancé"
+settings-unread = "Le fichier de paramètres n'a pas pu être lu entièrement"
 # The whole sentence: the system's words with the program they belong to.
 start-failed-why = "{program} n'a pas pu être lancé : {reason}"
 install = "Installation de {name}"
@@ -141,7 +154,7 @@ quit = "Quitter"
 tile-narrow = "Le bureau est trop étroit pour placer les fenêtres côte à côte."
 tile-short = "Le bureau n'a de la place que pour {fits} fenêtres en mosaïque, pas plus."
 resize-hint = "Les fenêtres se redimensionnent par leurs bords"
-resize-hint-body = "Faites glisser le bord droit ou le bord bas, ou l'angle entre les deux. Alt avec le bouton droit redimensionne une fenêtre depuis n'importe où, et Redimensionner dans son menu sur le dock le fait avec les touches fléchées."
+resize-hint-body = "Faites glisser n'importe quel bord ou angle ; la bande de titre entre les coins supérieurs déplace la fenêtre. Alt avec le bouton droit redimensionne une fenêtre depuis n'importe où, et Redimensionner dans son menu sur le dock le fait avec les touches fléchées."
 
 [mode]
 # The dock's row while the keys are the desktop's.
@@ -158,7 +171,7 @@ leave = "retour"
 back = "retour"
 release = "relâcher"
 far = "{cells} à la fois"
-drag = "bord"
+drag = "n'importe quel bord"
 drag-label = "glisser"
 workspace = "espaces"
 
@@ -261,6 +274,17 @@ floor-style-plain = "Uni"
 floor-style-gradient = "Dégradé"
 floor-style-dots = "Points"
 floor-style-gradient-dots = "Les deux"
+wallpaper = "Fond d'écran"
+wallpaper-text = "Une image par-dessus le fond ; avec 16 couleurs, le fond garde sa couleur."
+wallpaper-unshown = "{reason}. Le fond affiche sa couleur et son motif tant que l'image n'est pas de retour."
+wallpaper-none = "Aucun"
+wallpaper-choose = "Choisir…"
+wallpaper-remove = "Retirer"
+wallpaper-ours = "Images fournies"
+wallpaper-ours-pick = "En choisir une"
+wallpaper-ember = "Braise"
+wallpaper-dusk = "Crépuscule"
+wallpaper-tide = "Marée"
 folders-in-explorer = "Ouvrir les dossiers avec {program}"
 folders-in-explorer-text = "Un dossier du bureau ou de Fichiers s'ouvre dans l'explorateur de fichiers de l'écosystème. Si {program} n'est pas installé, Fichiers s'ouvre à la place."
 status-strip = "État sur le dock"
@@ -295,6 +319,7 @@ not-text = "{name} ne peut pas être ouvert : son nom n'est pas un texte qu'on p
 open-with = "Ouvrir avec"
 open-with-editor = "{program}, votre éditeur"
 open-with-reader = "{program}, pour lire"
+set-wallpaper = "Définir comme fond d'écran"
 
 [status]
 tmux = "sessions tmux"
@@ -353,3 +378,11 @@ week-start-sunday = "Dimanche"
 note-placeholder = "Écrivez quelque chose"
 note-unsaved = "La note n'a pas pu être enregistrée"
 no-room = "Il n'y a plus de place sur le bureau pour le widget {name}"
+
+[wallpaper]
+unshown = "Impossible d'afficher le fond d'écran"
+refused = "{name} n'est pas le fond d'écran"
+not-text = "Son chemin n'est pas du texte que le fichier de réglages peut conserver"
+nowhere = "Impossible de placer l'image dans le dossier de données de qdesk"
+pick-title = "Choisir un fond d'écran"
+pick-cancel = "Annuler"

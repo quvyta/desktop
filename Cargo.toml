@@ -6,13 +6,24 @@ homepage = "https://quvyta.com/qdesk/"
 readme = "README.md"
 keywords = ["tui", "terminal", "desktop", "window-manager", "ssh"]
 categories = ["command-line-utilities"]
-version = "0.1.6"
+version = "0.1.7"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
 # Only what the program is built from goes into the package; the rest of the repository is for
 # working on it.
-include = ["/src/**", "/locales/**", "/keymaps/**", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE"]
+# The wallpapers qdesk offers are built into it, so they go too; the script that makes them does not.
+include = [
+    "/src/**",
+    "/locales/**",
+    "/keymaps/**",
+    "/assets/wallpapers/*.png",
+    "/assets/wallpapers/README.md",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/LICENSE",
+]
 
 [lib]
 name = "qdesk"
@@ -28,7 +39,7 @@ name = "quvyta-desktop"
 path = "src/bin/quvyta-desktop.rs"
 
 [dependencies]
-quvyta-framework = { version = "0.1.23", features = ["pty", "updates"] }
+quvyta-framework = { version = "0.1.25", features = ["pty", "updates", "image"] }
 toml = { version = "1.1.6", default-features = false, features = ["std", "parse", "display", "preserve_order"] }
 
 [dev-dependencies]
@@ -42,6 +53,9 @@ portable-pty = "0.9.0"
 # on both, so they bring nothing new into the program.
 ratatui-core = "0.1.2"
 ratatui-crossterm = "0.1.2"
+# Only for the tests that make pictures to set as the wallpaper. The framework decodes pictures with
+# the same crate, so it brings nothing new into the program.
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 [lints.rust]
 unsafe_code = "forbid"

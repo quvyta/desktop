@@ -10,8 +10,20 @@ usage = """
 qdesk                 открыть рабочий стол
   -h, --help          этот текст
   -V, --version       показать версию
+qdesk wallpaper       показать цвет, узор и картинку фона
+  --color NAME        задать цвет: theme, deep, mist или accent
+  --pattern NAME      задать узор: plain, gradient, dots или both
+qdesk wallpaper FILE  положить картинку PNG, JPEG, GIF или WebP поверх фона
+  --no-picture        убрать картинку
 На рабочем столе ctrl+q завершает работу."""
 unknown-argument = "qdesk: неизвестный аргумент {argument}; см. qdesk --help"
+wallpaper-color = "qdesk wallpaper: --color принимает theme, deep, mist или accent, а не {value}"
+wallpaper-pattern = "qdesk wallpaper: --pattern принимает plain, gradient, dots или both, а не {value}"
+wallpaper-missing = "qdesk wallpaper: у {option} нет значения; см. qdesk --help"
+wallpaper-picture = "qdesk wallpaper: {file} не может быть обоями: {reason}"
+wallpaper-not-text = "его путь — не текст, который может хранить файл настроек"
+wallpaper-nowhere = "qdesk wallpaper: нет домашней папки, чтобы сохранить настройку"
+wallpaper-unsaved = "qdesk wallpaper: не удалось записать {file}: {error}"
 
 [dock]
 workspace = "Рабочая область {n}"
@@ -100,6 +112,7 @@ body = "{id} — {file} — {command}"
 no-viewer = "{name} открывает файл, а просмотрщика для него в qdesk пока нет"
 # A program that could not be started at all: it is not there, or no pseudo-terminal was free.
 start-failed = "Не удалось запустить {program}"
+settings-unread = "Не удалось прочитать файл настроек полностью"
 # The whole sentence: the system's words with the program they belong to.
 start-failed-why = "Не удалось запустить {program}: {reason}"
 install = "Установка {name}"
@@ -141,7 +154,7 @@ quit = "Выйти"
 tile-narrow = "Экран слишком узкий, чтобы расставить окна рядом."
 tile-short = "На экране помещается {fits} окон плиткой — не больше."
 resize-hint = "Окна меняют размер за края"
-resize-hint-body = "Потяните за правый или нижний край, либо за угол между ними. Alt с правой кнопкой мыши меняет размер окна из любой точки, а «Изменить размер» в его меню на доке делает это стрелками."
+resize-hint-body = "Потяните за любой край или угол; полоса заголовка между верхними углами перемещает окно. Alt с правой кнопкой меняет размер окна отовсюду, а «Изменить размер» в его меню на доке делает это стрелками."
 
 [mode]
 # The dock's row while the keys are the desktop's.
@@ -158,7 +171,7 @@ leave = "назад"
 back = "назад"
 release = "отпустить"
 far = "{cells} за раз"
-drag = "край"
+drag = "любой край"
 drag-label = "потянуть"
 workspace = "области"
 
@@ -261,6 +274,17 @@ floor-style-plain = "Без узора"
 floor-style-gradient = "Градиент"
 floor-style-dots = "Точки"
 floor-style-gradient-dots = "Оба"
+wallpaper = "Обои"
+wallpaper-text = "Картинка поверх фона; при 16 цветах фон сохраняет свой цвет."
+wallpaper-unshown = "{reason}. Фон показывает свой цвет и узор, пока картинка не вернётся."
+wallpaper-none = "Нет"
+wallpaper-choose = "Выбрать…"
+wallpaper-remove = "Убрать"
+wallpaper-ours = "Встроенные картинки"
+wallpaper-ours-pick = "Выберите одну"
+wallpaper-ember = "Жар"
+wallpaper-dusk = "Сумерки"
+wallpaper-tide = "Прилив"
 folders-in-explorer = "Открывать папки через {program}"
 folders-in-explorer-text = "Папка на рабочем столе или в разделе Файлы открывается в файловом менеджере экосистемы. Если {program} не установлен, вместо него открываются Файлы."
 status-strip = "Состояние в доке"
@@ -295,6 +319,7 @@ not-text = "{name} не открывается: имя файла не явля�
 open-with = "Открыть с помощью"
 open-with-editor = "{program}, ваш редактор"
 open-with-reader = "{program}, для чтения"
+set-wallpaper = "Сделать обоями"
 
 [status]
 tmux = "tmux-сессии"
@@ -353,3 +378,11 @@ week-start-sunday = "Воскресенье"
 note-placeholder = "Напишите что-нибудь"
 note-unsaved = "Не удалось сохранить заметку"
 no-room = "На рабочем столе нет места для виджета {name}"
+
+[wallpaper]
+unshown = "Не удалось показать обои"
+refused = "{name} не может быть обоями"
+not-text = "Его путь — не текст, который может хранить файл настроек"
+nowhere = "Не удалось положить картинку в папку данных qdesk"
+pick-title = "Выберите обои"
+pick-cancel = "Отмена"

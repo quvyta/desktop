@@ -8,8 +8,23 @@ code = "en"
 usage = """qdesk                 open the desktop
   -h, --help          this text
   -V, --version       print the version
+qdesk wallpaper       print the floor's colour, pattern and picture
+  --color NAME        set the colour: theme, deep, mist or accent
+  --pattern NAME      set the pattern: plain, gradient, dots or both
+qdesk wallpaper FILE  lay a PNG, JPEG, GIF or WebP picture over the floor
+  --no-picture        take the picture away
 On the desktop, ctrl+q quits."""
 unknown-argument = "qdesk: unknown argument {argument}; see qdesk --help"
+# qdesk wallpaper refuses a value: one line, then the command ends with status 2.
+wallpaper-color = "qdesk wallpaper: --color takes theme, deep, mist or accent, not {value}"
+wallpaper-pattern = "qdesk wallpaper: --pattern takes plain, gradient, dots or both, not {value}"
+wallpaper-missing = "qdesk wallpaper: {option} needs a value; see qdesk --help"
+# A file was given that cannot be the picture; {reason} is the decoder's sentence, such as "This picture is damaged".
+wallpaper-picture = "qdesk wallpaper: {file} cannot be the wallpaper: {reason}"
+wallpaper-not-text = "its path is not text the settings file can keep"
+# There is no home folder, so the setting has nowhere to be kept.
+wallpaper-nowhere = "qdesk wallpaper: there is no home folder to keep the setting in"
+wallpaper-unsaved = "qdesk wallpaper: {file} could not be written: {error}"
 
 [dock]
 # The marks of the workspaces beside the launcher button, and the number that stands for them on a
@@ -101,6 +116,8 @@ body = "{id} — {file} — {command}"
 no-viewer = "{name} opens a file, and qdesk has no viewer for it yet"
 # A program that could not be started at all: it is not there, or no pseudo-terminal was free.
 start-failed = "{program} could not be started"
+# The settings file was changed while the desktop runs and part of it cannot be used.
+settings-unread = "The settings file could not be read in full"
 # The whole sentence: the system's words with the program they belong to.
 start-failed-why = "{program} could not be started: {reason}"
 install = "Installing {name}"
@@ -144,7 +161,7 @@ tile-narrow = "The desktop is too narrow to tile windows side by side."
 tile-short = "The desktop has room for {fits} tiled windows, no more."
 # Said once, when the first window opens.
 resize-hint = "Windows resize from their edges"
-resize-hint-body = "Drag the right or the bottom edge, or the corner between them. Alt with the right button sizes a window from anywhere, and Resize in its menu on the dock does it with the arrow keys."
+resize-hint-body = "Drag any edge or corner; the title strip between the top corners moves the window. Alt with the right button sizes a window from anywhere, and Resize in its menu on the dock does it with the arrow keys."
 
 [mode]
 # The dock's row while the keys are the desktop's.
@@ -162,7 +179,7 @@ back = "back"
 release = "let go"
 far = "{cells} at a time"
 # The mouse sizes a window too: the key is what is dragged, the label what dragging it does.
-drag = "edge"
+drag = "any edge"
 drag-label = "drag it"
 workspace = "spaces"
 
@@ -266,6 +283,19 @@ floor-style-gradient = "Gradient"
 floor-style-dots = "Dots"
 # Gradient and dots together.
 floor-style-gradient-dots = "Both"
+wallpaper = "Wallpaper"
+wallpaper-text = "A picture over the floor; with 16 colours the floor keeps its colour."
+# {reason} is the decoder's sentence, such as "This picture does not exist".
+wallpaper-unshown = "{reason}. The floor shows its colour and pattern until the picture is back."
+wallpaper-none = "None"
+wallpaper-choose = "Choose…"
+wallpaper-remove = "Remove"
+# The pictures that come with qdesk.
+wallpaper-ours = "Included pictures"
+wallpaper-ours-pick = "Pick one"
+wallpaper-ember = "Ember"
+wallpaper-dusk = "Dusk"
+wallpaper-tide = "Tide"
 folders-in-explorer = "Open folders with {program}"
 folders-in-explorer-text = "A folder on the desktop or in Files opens in the ecosystem's file explorer. When {program} is not installed, Files opens instead."
 status-strip = "Status on the dock"
@@ -300,6 +330,7 @@ not-text = "{name} cannot be opened: its name is not text a program can be given
 open-with = "Open with"
 open-with-editor = "{program}, your editor"
 open-with-reader = "{program}, to read"
+set-wallpaper = "Set as wallpaper"
 
 [status]
 # The status strip on the dock's right side: short readings of the machine.
@@ -376,3 +407,14 @@ note-placeholder = "Write something"
 note-unsaved = "The note could not be saved"
 # When the floor has no room left for a new widget; {name} is its kind.
 no-room = "There is no room on the desktop for the {name} widget"
+
+[wallpaper]
+# The picture the settings name could not be shown; the body names the file and the reason.
+unshown = "The wallpaper could not be shown"
+# A picture that was chosen could not be used; the body says why.
+refused = "{name} is not the wallpaper"
+not-text = "Its path is not text the settings file can keep"
+# There is no data folder to put the included picture in.
+nowhere = "The picture could not be put in qdesk's data folder"
+pick-title = "Choose a wallpaper"
+pick-cancel = "Cancel"
