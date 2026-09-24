@@ -70,8 +70,12 @@ impl Scratch {
             "name = \"Loud\"\ncommand = [\"/bin/sh\", \"-c\", \"i=0; while :; do i=$((i+1)); \
              echo $i the quick brown fox jumps over the lazy dog; done\"]\ncategory = \"system\"\n",
         );
-        // An empty floor and no welcome line, so the opening screen is the same every run.
-        write(&path.join(".config/quvyta/desktop/desktop.toml"), "icons = []\nwelcome_seen = true\n");
+        // An empty floor, no welcome line and no note on resizing, so the opening screen and the first
+        // window are the same every run.
+        write(
+            &path.join(".config/quvyta/desktop/desktop.toml"),
+            "icons = []\nwelcome_seen = true\nresize_hint_seen = true\n",
+        );
         write(&path.join(".config/quvyta/desktop.conf"), settings);
         Self(path)
     }
@@ -576,4 +580,101 @@ fn memory_with_ten_windows_whose_scrollback_is_full() {
             desktop.resident_kib() as f64 / 1024.0,
         );
     }
+}
+
+/// Going to another workspace and back: one frame each way (design 3.10).
+///
+/// Two quiet windows stand on the first workspace. Going to the empty second one takes them off
+/// the screen and puts the floor there instead; coming back draws them again. The digit is
+/// measured on its own: the key that takes the keys to the desktop draws the hint row, and that
+/// is desktop mode's cost, not the switch's.
+#[test]
+#[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
+fn going_to_another_workspace_and_back_is_one_frame_each_way() {
+    let scratch = Scratch::new("spaces", "");
+    let mut desktop = Desktop::open(&scratch, SIZE);
+    let screen = desktop.written();
+    desktop.open_window("Quiet");
+    desktop.open_window("Quiet");
+    desktop.settle();
+    desktop.send(b"\x1b\x00"); // ctrl+alt+space
+    desktop.settle();
+    desktop.send(b"2");
+    let away = desktop.settle();
+    desktop.send(b"\x1b\x00");
+    desktop.settle();
+    desktop.send(b"1");
+    let back = desktop.settle();
+    println!(
+        "workspaces {}x{}: going to an empty one {away} bytes, coming back to two windows {back} bytes; \
+         the whole first screen was {screen} bytes",
+        SIZE.0, SIZE.1
+    );
+    assert!(away > 0 && back > 0, "both switches drew something");
+    assert!(away < screen * 2 && back < screen * 2, "a switch costs about a screen at most");
+}
+
+/// What the floor's pattern costs a connection (design 3.9): the first screen at both sizes, and
+/// one step of a window dragged over the floor, as a ghost (the default) and alive.
+///
+/// The floor is drawn again only where something on it changes, so a drag over a patterned floor
+/// pays for the cells it uncovers and nothing more: the gradient a colour change on each row the
+/// window leaves, the dots a mark where a blank would have been.
+#[test]
+#[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
+fn the_floor_pattern_costs_little_on_the_first_screen_and_on_a_drag() {
+    let mut plain = Vec::new();
+    for style in ["plain", "gradient", "dots", "gradient-dots"] {
+        let setting = if style == "plain" { String::new() } else { format!("floor-style = \"{style}\"\n") };
+        let mut screens = Vec::new();
+        for size in [SIZE, LARGE] {
+            let scratch = Scratch::new("floor", &setting);
+            let desktop = Desktop::open(&scratch, size);
+            screens.push(desktop.written());
+        }
+        let mut steps = Vec::new();
+        for drag_style in ["ghost", "live"] {
+            let scratch = Scratch::new("floor-drag", &format!("{setting}drag-style = \"{drag_style}\"\n"));
+            let mut desktop = Desktop::open(&scratch, SIZE);
+            desktop.open_window("Quiet");
+            let (moving, _) = drag(&mut desktop, SIZE.0 / 3, title_row(SIZE.1), 20);
+            steps.push(moving / 20);
+        }
+        println!(
+            "floor {style}: first screen {} bytes at {}x{}, {} bytes at {}x{}; a drag step at {}x{} {} bytes as a ghost, {} alive",
+            screens[0], SIZE.0, SIZE.1, screens[1], LARGE.0, LARGE.1, SIZE.0, SIZE.1, steps[0], steps[1],
+        );
+        if style == "plain" {
+            plain = screens.clone();
+        } else {
+            // A pattern is a few colour changes and marks, never a second screen.
+            assert!(screens[0] < plain[0] * 2, "{style} at {}x{}: {} against {}", SIZE.0, SIZE.1, screens[0], plain[0]);
+        }
+    }
+}
+
+#[test]
+#[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
+fn a_clock_widget_writes_nothing_between_minutes_unless_it_shows_seconds() {
+    // Only clocks: the system widget would read this machine's /proc, and a test reads nothing of
+    // the machine it runs on. What the system widget costs is measured in tests/widgets.rs over a
+    // /proc the test writes.
+    let mut quiet = Vec::new();
+    for (name, options) in [("clock", ""), ("clock with seconds", "seconds = true\n")] {
+        let scratch = Scratch::new("clock", "");
+        write(
+            &scratch.0.join(".config/quvyta/desktop/desktop.toml"),
+            &format!(
+                "icons = []\nwelcome_seen = true\nresize_hint_seen = true\n\
+                 [[widgets]]\nkind = \"clock\"\nplace = [6, 0]\n{options}"
+            ),
+        );
+        let desktop = Desktop::open(&scratch, SIZE);
+        let span = Duration::from_secs(5);
+        let written = desktop.over(span);
+        println!("{name}: {written} bytes in {} seconds idle at {}x{}", span.as_secs(), SIZE.0, SIZE.1);
+        quiet.push(written);
+    }
+    // Five seconds may cross the turn of a minute once; seconds are drawn every one of them.
+    assert!(quiet[1] > quiet[0], "seconds cost more than minutes: {quiet:?}");
 }

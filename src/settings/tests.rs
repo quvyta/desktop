@@ -174,6 +174,7 @@ fn two_saves_in_a_row_leave_a_file_that_reads_back_the_same() {
     let chosen = Prefs {
         dock: DockPosition::Top,
         floor: FloorColor::Mist,
+        floor_style: FloorStyle::Dots,
         folders_in_explorer: false,
         drag: DragStyle::Live,
         frame_cap: Some(45),
@@ -300,4 +301,83 @@ fn every_floor_tone_keeps_the_icon_names_readable_in_every_theme() {
             assert!(!tones[..index].contains(tone), "{id}: two tones are the same colour");
         }
     }
+}
+
+#[test]
+fn the_floor_pattern_is_read_written_and_left_out_at_its_default() {
+    assert_eq!(parse("floor-style = \"gradient-dots\"\n").prefs.floor_style, FloorStyle::GradientDots);
+    let unknown = parse("floor-style = \"tartan\"\n");
+    assert_eq!(unknown.prefs.floor_style, FloorStyle::Plain, "a pattern the desktop does not know leaves it plain");
+    assert_eq!(unknown.diagnostics.len(), 1, "{:?}", unknown.diagnostics);
+
+    let folder = temp("floor-style");
+    let mut loaded = load_in(&folder);
+    Prefs { floor_style: FloorStyle::Gradient, ..Prefs::default() }.write(&mut loaded.settings);
+    loaded.settings.save().expect("saved");
+    assert!(read(&folder).contains("floor-style = \"gradient\""), "{}", read(&folder));
+    assert_eq!(load_in(&folder).prefs.floor_style, FloorStyle::Gradient);
+
+    Prefs::default().write(&mut loaded.settings);
+    loaded.settings.save().expect("saved");
+    assert!(!read(&folder).contains("floor-style"), "the default is not written: {}", read(&folder));
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn every_row_of_every_floor_pattern_keeps_the_icon_names_readable_in_every_theme() {
+    use qframe::color::ColorDepth;
+    let registry = qframe::theme::ThemeRegistry::builtin();
+    for (id, _) in registry.list() {
+        let theme = registry.resolve(&id).theme.expect("a built-in theme builds");
+        let palette = Palette::of(&theme).expect("the theme has a canvas");
+        for tone in FloorColor::ALL {
+            for style in FloorStyle::ALL {
+                let shades = Shades::new(tone, style, palette, ColorDepth::TrueColor);
+                let rows = 29;
+                for row in [0, rows / 2, rows - 1] {
+                    let ground = shades.row(row, rows);
+                    let names = palette.dim.contrast_ratio(ground);
+                    assert!(names >= NAMES_READ, "{id} {tone:?} {style:?} row {row}: names at {names:.2}:1");
+                    let glyphs = palette.text.contrast_ratio(ground);
+                    assert!(glyphs >= GLYPHS_READ, "{id} {tone:?} {style:?} row {row}: glyphs at {glyphs:.2}:1");
+                    if shades.dots() {
+                        // A dot is seen when looked for and never read as a mark: a little off its
+                        // ground, far quieter than the names.
+                        let dot = shades.dot(ground).contrast_ratio(ground);
+                        assert!((1.15..2.5).contains(&dot), "{id} {tone:?} {style:?} row {row}: dot at {dot:.2}:1");
+                    }
+                }
+                assert_eq!(
+                    shades.flat(),
+                    !style.gradient(),
+                    "{id} {tone:?} {style:?}: the gradient shows in full colour"
+                );
+                assert_eq!(shades.dots(), style.dots());
+            }
+        }
+    }
+}
+
+#[test]
+fn sixteen_colours_draw_the_floor_flat_and_without_dots() {
+    use qframe::color::ColorDepth;
+    let registry = qframe::theme::ThemeRegistry::builtin();
+    let theme = registry.resolve("iris").theme.expect("a built-in theme builds");
+    let palette = Palette::of(&theme).expect("the theme has a canvas");
+    for style in FloorStyle::ALL {
+        let shades = Shades::new(FloorColor::Deep, style, palette, ColorDepth::Ansi16);
+        assert!(shades.flat() && !shades.dots(), "{style:?}");
+        let rich = Shades::new(FloorColor::Deep, style, palette, ColorDepth::Ansi256);
+        assert_eq!(rich.dots(), style.dots(), "256 colours keep the dots: {style:?}");
+    }
+}
+
+#[test]
+fn the_dots_sit_on_the_corners_of_the_icon_grid_in_its_free_rows() {
+    use crate::desktop::grid::{CELL_HEIGHT, CELL_WIDTH};
+    assert!(is_dot(0, CELL_HEIGHT - 1));
+    assert!(is_dot(CELL_WIDTH, 2 * CELL_HEIGHT - 1));
+    assert!(!is_dot(0, 0), "never on an icon's glyph row");
+    assert!(!is_dot(0, 1), "nor on its name row");
+    assert!(!is_dot(1, CELL_HEIGHT - 1), "only on a corner");
 }

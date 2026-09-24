@@ -388,3 +388,94 @@ fn a_window_keeps_its_place_in_every_glyph_mode_and_colour_depth() {
         }
     }
 }
+
+/// Right-clicks the window item `label` on the dock's row and picks `row` from its menu.
+fn from_the_window_menu(harness: &mut Harness<Desk>, label: &str, row: &str) {
+    let rows: Vec<String> = harness.screen().lines().map(str::to_owned).collect();
+    let y = rows.len() - 1;
+    let at = rows[y].find(label).unwrap_or_else(|| panic!("no {label} on the dock: {}", rows[y]));
+    let x = i32::from(qframe::text::width(&rows[y][..at])) + 1;
+    let y = i32::try_from(y).expect("a row on screen");
+    harness.mouse(MouseKind::Down(MouseButton::Right), x, y);
+    harness.mouse(MouseKind::Up(MouseButton::Right), x, y);
+    assert!(harness.screen().contains(row), "the menu has {row}:\n{}", harness.screen());
+    harness.click_text(row);
+}
+
+#[test]
+fn the_edges_that_size_a_window_light_up_under_the_pointer() {
+    let mut harness = with_settings(80, 24);
+    let window = rect(&harness);
+    let (right, middle) = (window.right() - 1, window.y + i32::from(window.height) / 2);
+    let (x, y) = (u16::try_from(right).expect("on screen"), u16::try_from(middle).expect("on screen"));
+    harness.hover(70, 22);
+    let resting = harness.bg(x, y);
+    harness.hover(right, middle);
+    assert_ne!(harness.bg(x, y), resting, "the right edge lights under the pointer:\n{}", harness.screen());
+    let bottom = u16::try_from(window.bottom() - 1).expect("on screen");
+    harness.hover(window.x + 10, window.bottom() - 1);
+    assert_ne!(harness.bg(u16::try_from(window.x + 10).expect("on screen"), bottom), resting, "and so does the bottom");
+    // Where the pointer does not size anything, nothing lights.
+    harness.hover(window.x + 10, middle);
+    assert_eq!(harness.bg(x, y), resting);
+}
+
+#[test]
+fn resize_on_the_window_menu_lets_the_arrows_size_it_and_the_dock_says_the_mouse_does_too() {
+    let mut harness = with_settings(80, 24);
+    from_the_window_menu(&mut harness, "Settings", "Resize");
+    assert_eq!(harness.app().keys(), Some(Keys::Resize), "the sizing step is open");
+    let hints = harness.screen().lines().last().expect("the dock row").to_owned();
+    for said in ["size", "enter", "esc", "edge", "drag it"] {
+        assert!(hints.contains(said), "{said} is missing from {hints}");
+    }
+    assert_eq!(decoration(&harness.screen()), None, "{}", harness.screen());
+    harness.press("right").press("down");
+    assert_eq!(rect(&harness), Rect::new(FIRST.x, FIRST.y, FIRST.width + 1, FIRST.height + 1));
+    harness.press("enter");
+    assert_eq!(harness.app().keys(), Some(Keys::Pick), "enter lets go, as in desktop mode");
+}
+
+#[test]
+fn resize_on_the_menu_of_a_window_on_the_dock_brings_it_back_first() {
+    let mut harness = with_settings(80, 24);
+    harness.press("ctrl+alt+space").press("n");
+    assert!(front_of(&harness).is_none(), "the window is on the dock");
+    harness.press("esc");
+    from_the_window_menu(&mut harness, "Settings", "Resize");
+    assert!(front_of(&harness).is_some(), "it came back to be sized:\n{}", harness.screen());
+    assert_eq!(harness.app().keys(), Some(Keys::Resize));
+}
+
+#[test]
+fn the_first_window_says_once_how_windows_are_resized_and_a_restart_remembers() {
+    let folder = std::env::temp_dir().join(format!("qdesk-test-resize-hint-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("a folder of the test's own");
+    let file = folder.join("desktop.toml");
+    let first = qdesk::desktop::Desktop {
+        icons: support::ICONS.map(str::to_owned).to_vec(),
+        welcome_seen: true,
+        ..qdesk::desktop::Desktop::default()
+    };
+    let mut harness = support::desk_writing(&file, first);
+    assert!(!harness.screen().contains("resize from their edges"), "nothing is said before a window");
+    harness.click(3, 4);
+    harness.click(3, 4);
+    assert_eq!(harness.app().windows().len(), 1, "the window opened:\n{}", harness.screen());
+    let shown = harness.screen();
+    assert!(shown.contains("Windows resize from their edges"), "the note is said:\n{shown}");
+    assert_eq!(decoration(&shown), None, "{shown}");
+    let written = std::fs::read_to_string(&file).expect("the desktop file is written");
+    assert!(written.contains("resize_hint_seen = true"), "{written}");
+
+    // The next start reads the file and says nothing more when a window opens.
+    let (desktop, problems) = qdesk::desktop::Desktop::load(&file);
+    assert!(problems.is_empty(), "{problems:?}");
+    let mut again = support::desk_writing(&file, desktop);
+    again.click(3, 4);
+    again.click(3, 4);
+    assert_eq!(again.app().windows().len(), 1);
+    assert!(!again.screen().contains("resize from their edges"), "said once only:\n{}", again.screen());
+    let _ = std::fs::remove_dir_all(&folder);
+}

@@ -113,7 +113,6 @@ fn installing_tells_the_person_the_command_that_does_it() {
     let mut harness = desk(80, 24);
     harness.press("space");
     harness.click_text("Installable");
-    harness.click_text("btop");
     let (x, y) = harness.find("btop").expect("btop is on the shelf");
     harness.mouse(MouseKind::Down(MouseButton::Right), x, y);
     assert!(harness.screen().contains("Install btop with qpac"), "{}", harness.screen());
@@ -128,7 +127,6 @@ fn a_quvyta_application_is_installed_through_quvyta_with_the_command_that_shows_
     let mut harness = desk(80, 24);
     harness.press("space");
     harness.click_text("Installable");
-    harness.click_text("qfocus");
     let (x, y) = harness.find("qfocus").expect("qfocus is on the shelf");
     harness.mouse(MouseKind::Down(MouseButton::Right), x, y);
     let menu = harness.screen();
@@ -144,7 +142,6 @@ fn a_quvyta_application_is_installed_through_quvyta_with_the_command_that_shows_
 fn an_application_can_be_put_on_the_desktop_from_the_launcher_and_taken_off_again() {
     let mut harness = desk(80, 24);
     harness.press("space");
-    harness.click_text("Vim");
     let (x, y) = harness.find("Vim").expect("Vim is on a card");
     harness.mouse(MouseKind::Down(MouseButton::Right), x, y);
     harness.click_text("Put Vim on the desktop");
@@ -152,7 +149,6 @@ fn an_application_can_be_put_on_the_desktop_from_the_launcher_and_taken_off_agai
     harness.press("esc");
     assert_eq!(harness.find("Vim"), Some((4, 10)), "it stands on the floor now");
     harness.press("space");
-    harness.click_text("Vim");
     let (x, y) = harness.find("Vim").expect("Vim is on a card");
     harness.mouse(MouseKind::Down(MouseButton::Right), x, y);
     harness.click_text("Take Vim off the desktop");
@@ -293,23 +289,135 @@ fn in_desktop_mode_space_opens_the_launcher_and_space_closes_it() {
     assert!(harness.app().launcher().is_none(), "{}", harness.screen());
 }
 
+/// The rows of the launcher on screen: the search row and the hint row, and the column of the close
+/// mark at its right end.
+fn bounds(harness: &Harness<qdesk::app::Desk>) -> (usize, usize, usize) {
+    let rows = screen(harness);
+    // The search glyph leads the search row whatever is typed in it.
+    let top = rows.iter().position(|row| row.contains('⌕')).expect("the search row");
+    let hints = rows.iter().rposition(|row| row.contains("open") && row.contains("close")).expect("the hint row");
+    let close = rows[top].chars().position(|c| c == '×').expect("the close mark");
+    (top, hints, close)
+}
+
 #[test]
-fn the_launcher_is_a_compact_menu_in_the_corner_of_every_screen() {
+fn the_launcher_is_one_fixed_size_in_the_corner_of_every_screen() {
     for (width, height) in [(80_u16, 24_u16), (120, 40), (200, 50)] {
         let mut harness = desk(width, height);
         harness.press("space");
-        let rows = screen(&harness);
-        let top = rows.iter().position(|row| row.contains("Search")).expect("the search row");
-        let hints = rows.iter().rposition(|row| row.contains("open") && row.contains("close")).expect("the hint row");
-        let close = rows[top].chars().position(|c| c == '×').expect("the close mark");
-        // A Start menu: narrower than the old strip of 72 columns, and as tall as what it holds
-        // rather than stretched over the screen.
-        assert!(close < 64, "{width}x{height}: the launcher reaches column {close}:\n{}", harness.screen());
-        assert!(hints - top <= 12, "{width}x{height}: {} rows for seven shelves:\n{}", hints - top, harness.screen());
-        // It stands on the dock: its last row is the one above the dock's.
+        let (top, hints, close) = bounds(&harness);
+        // Seventy-two columns and twenty rows, standing on the dock: its last row is the one above
+        // the dock's, and its first is twenty rows up.
+        assert_eq!(close, 67, "{width}x{height}: the close mark stands at column {close}:\n{}", harness.screen());
         assert_eq!(hints + 2, usize::from(height) - 1, "{width}x{height}:\n{}", harness.screen());
-        // Every application is on one row with what it does beside it.
-        let terminal = rows.iter().find(|row| row.contains("Terminal") && row.contains("Your shell"));
-        assert!(terminal.is_some(), "{width}x{height}: the description stands beside the name:\n{}", harness.screen());
+        assert_eq!(usize::from(height) - 1 - top, 19, "{width}x{height}:\n{}", harness.screen());
     }
+}
+
+#[test]
+fn the_launcher_keeps_its_size_whatever_it_shows() {
+    let mut harness = desk(120, 40);
+    harness.press("space");
+    let everything = bounds(&harness);
+    // A shorter shelf, a search of one, and a search of none: the menu does not jump.
+    harness.click_text("Development");
+    assert!(!harness.screen().contains("■ lf"), "the shelf holds fewer:\n{}", harness.screen());
+    assert_eq!(bounds(&harness), everything, "the Development shelf:\n{}", harness.screen());
+    harness.click_text("Search");
+    harness.type_text("vim");
+    assert_eq!(bounds(&harness), everything, "one hit:\n{}", harness.screen());
+    harness.type_text("zzz");
+    assert!(harness.screen().contains("Nothing matches"), "{}", harness.screen());
+    assert_eq!(bounds(&harness), everything, "no hit:\n{}", harness.screen());
+}
+
+#[test]
+fn the_applications_are_cards_with_what_they_do_under_their_names() {
+    let mut harness = desk(80, 24);
+    harness.press("space");
+    let rows = screen(&harness);
+    // The floor has a Terminal icon too; the card's name follows its glyph on one row.
+    let (x, y) = harness.find("❯ Terminal").expect("the Terminal card");
+    let under = &rows[usize::try_from(y + 1).unwrap_or(0)];
+    let column = usize::try_from(x).unwrap_or(0);
+    assert!(
+        under.chars().skip(column).collect::<String>().starts_with("Your shell"),
+        "what it does stands under its name:\n{}",
+        harness.screen()
+    );
+    // Two cards side by side: Terminal and Settings share a row.
+    let (_, settings) = harness.find("▤ Settings").expect("the Settings card");
+    let (_, files) = harness.find("■ Files").expect("the Files card");
+    let (_, lf) = harness.find("■ lf").expect("the lf card");
+    assert_eq!(files, lf, "two cards to a row:\n{}", harness.screen());
+    assert_eq!(settings, y, "two cards to a row:\n{}", harness.screen());
+    // A card is a surface of its own tone, not a frame of lines.
+    let theme = harness.env().theme();
+    let card = theme.style("card", None, &[]).paint("bg").map(|paint| paint.at(0.0));
+    let (tx, ty) = (u16::try_from(x).unwrap_or(0), u16::try_from(y).unwrap_or(0));
+    assert!(card.is_some() && harness.bg(tx, ty) == card, "the card's own tone:\n{}", harness.screen());
+    assert_eq!(decoration(&harness.screen()), None, "{}", harness.screen());
+}
+
+#[test]
+fn one_click_on_a_card_opens_its_application() {
+    let mut harness = desk(80, 24);
+    harness.press("space");
+    let (x, y) = harness.find("Vim").expect("Vim is on a card");
+    harness.click(x, y);
+    assert!(harness.app().launcher().is_none(), "opening puts the launcher away:\n{}", harness.screen());
+    assert_eq!(harness.app().order().recents, ["vim"]);
+    assert_eq!(harness.app().windows().len(), 1, "Vim opened in a window:\n{}", harness.screen());
+}
+
+#[test]
+fn one_click_on_a_card_of_an_application_that_is_not_installed_shows_how_it_arrives() {
+    let mut harness = desk(80, 24);
+    harness.press("space");
+    harness.click_text("Installable");
+    let (x, y) = harness.find("btop").expect("btop is on the shelf");
+    harness.click(x, y);
+    let screen = harness.screen();
+    assert!(screen.contains("Installing btop"), "{screen}");
+    assert!(harness.app().windows().is_empty(), "no btop was started:\n{screen}");
+}
+
+#[test]
+fn the_arrows_choose_a_card_and_enter_opens_it() {
+    let mut harness = desk(80, 24);
+    harness.press("space");
+    // From the search, Tab walks to the cards.
+    for _ in 0..4 {
+        if harness.is_focused(qdesk::launcher::CARDS) {
+            break;
+        }
+        harness.press("tab");
+    }
+    assert!(harness.is_focused(qdesk::launcher::CARDS), "Tab reaches the cards:\n{}", harness.screen());
+    harness.press("down").press("right");
+    let chosen = harness.app().launcher().and_then(|launcher| launcher.selected);
+    assert!(chosen.is_some(), "the arrows chose a card:\n{}", harness.screen());
+    assert!(harness.app().launcher().is_some(), "choosing is not opening");
+    assert!(harness.app().order().recents.is_empty());
+    harness.press("enter");
+    assert!(harness.app().launcher().is_none(), "Enter opened it:\n{}", harness.screen());
+    assert_eq!(harness.app().order().recents.len(), 1, "{}", harness.screen());
+}
+
+#[test]
+fn a_right_click_opens_the_menu_of_the_card_it_lands_on_not_of_the_chosen_one() {
+    let mut harness = desk(80, 24);
+    harness.press("space");
+    for _ in 0..4 {
+        if harness.is_focused(qdesk::launcher::CARDS) {
+            break;
+        }
+        harness.press("tab");
+    }
+    harness.press("down");
+    let (x, y) = harness.find("Vim").expect("Vim is on a card");
+    harness.mouse(MouseKind::Down(MouseButton::Right), x, y);
+    let screen = harness.screen();
+    assert!(screen.contains("Open Vim"), "the menu is Vim's:\n{screen}");
+    assert!(harness.app().windows().is_empty(), "a right click opens nothing:\n{screen}");
 }

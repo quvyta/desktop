@@ -17,7 +17,9 @@ use qframe::prelude::*;
 use qframe::storage::Family;
 use qframe::widgets::{EmptyState, NumberInput, ScrollView, Segmented, Select, SettingRow, SettingsList, Switch};
 
-use super::{DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, FloorColor, Prefs, SCROLLBACK_MOST, frame_cap};
+use super::{
+    DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, FloorColor, FloorStyle, Prefs, SCROLLBACK_MOST, frame_cap,
+};
 use crate::apps::{Diagnostic, Folders};
 
 /// The widget id of the list of settings, which takes the keyboard when the screen opens.
@@ -62,6 +64,8 @@ pub enum Msg {
     Dock(DockPosition),
     /// A colour was chosen for the floor.
     Floor(FloorColor),
+    /// A pattern was chosen for the floor.
+    FloorStyle(FloorStyle),
     /// Folders were set to open in the ecosystem's file explorer (`true`) or in Files.
     FoldersInExplorer(bool),
     /// A drag style was chosen.
@@ -152,6 +156,7 @@ pub fn update<M: From<Msg> + Clone + Send + 'static>(
         }
         Msg::Dock(dock) => (Command::none(), Some(Request::Prefs(Prefs { dock, ..*prefs }))),
         Msg::Floor(floor) => (Command::none(), Some(Request::Prefs(Prefs { floor, ..*prefs }))),
+        Msg::FloorStyle(floor_style) => (Command::none(), Some(Request::Prefs(Prefs { floor_style, ..*prefs }))),
         Msg::FoldersInExplorer(folders_in_explorer) => {
             (Command::none(), Some(Request::Prefs(Prefs { folders_in_explorer, ..*prefs })))
         }
@@ -272,6 +277,17 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
                         Segmented::new(tones)
                             .selected(chosen)
                             .on_select(|index| M::from(Msg::Floor(FloorColor::ALL[index]))),
+                    );
+                });
+                // The pattern beside the colour, and like it shown at once on the floor around.
+                let styles = FloorStyle::ALL.map(|style| t!(&format!("settings.floor-style-{}", style.name())));
+                let chosen = FloorStyle::ALL.iter().position(|style| *style == prefs.floor_style).unwrap_or(0);
+                let row = SettingRow::new(t!("settings.floor-style")).description(t!("settings.floor-style-text"));
+                list.row(row, |ui| {
+                    ui.add(
+                        Segmented::new(styles)
+                            .selected(chosen)
+                            .on_select(|index| M::from(Msg::FloorStyle(FloorStyle::ALL[index]))),
                     );
                 });
 

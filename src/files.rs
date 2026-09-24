@@ -5,10 +5,18 @@
 //! none of it. What lives here is what only the desktop knows: which folder a window starts in,
 //! the shape each window draws its folder in, where a deleted entry goes, what a file is opened
 //! with, and which folders the other windows' programs stand in.
+//!
+//! Which program opens a file is the desktop's own databases' to say, read by the framework's
+//! [`qframe::desktop`]. Every window of qdesk is a terminal, so only a terminal program is ever
+//! taken from them; a graphical one could show nothing over SSH or on a console.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::Duration;
 
+use qframe::desktop::{Choices, DesktopApp, Openers, XdgDirs};
 use qframe::widgets::{FileManagerState, FileView, RowMark};
 
 /// What a file is opened with when the person has named no editor: it only reads, so opening a
@@ -39,14 +47,21 @@ impl FilesWindow {
     /// `/var/log` as anything under the home folder, and the desktop is the person's own. Deleting
     /// puts entries in the trash under `data_home` — the desktop's own data folder, the one the
     /// freedesktop trash lives in — and in the person's trash as the framework finds it when the
-    /// desktop was given none. `following` keeps the folders on screen in step with what other
-    /// programs do to them.
+    /// desktop was given none.
+    ///
+    /// The folders on screen are kept in step with what other programs do to them. `patience`
+    /// bounds each wait for such a change, for a screen test, which runs the wait where it stands;
+    /// `None` is the unbounded wait the running desktop makes on a thread of its own.
     ///
     /// The list is the first shape: on a server what is wanted of a folder is sizes, dates and
     /// permissions, which only the list shows.
     #[must_use]
-    pub fn new(root: PathBuf, data_home: Option<&Path>, following: bool) -> Self {
-        let manager = FileManagerState::new(root).following(following);
+    pub fn new(root: PathBuf, data_home: Option<&Path>, patience: Option<Duration>) -> Self {
+        let manager = FileManagerState::new(root);
+        let manager = match patience {
+            Some(bound) => manager.following_within(bound),
+            None => manager.following(true),
+        };
         let manager = match data_home {
             Some(data) => manager.trashing_in(data.join("Trash")),
             None => manager.trashing(),
@@ -69,6 +84,97 @@ pub fn opener(editor: Option<&str>, file: &Path) -> Option<Vec<String>> {
     }
     words.push(file.to_str()?.to_owned());
     Some(words)
+}
+
+/// The command that opens `file` with the program `app`, program first, as text; `None` when its
+/// `Exec` line gives no command or a word of it is not text.
+///
+/// The line is split by the framework and never handed to a shell, so the file is one word
+/// whatever its name holds.
+#[must_use]
+pub fn with_program(app: &DesktopApp, file: &Path) -> Option<Vec<String>> {
+    app.command(file)?.into_iter().map(OsString::into_string).collect::<Result<_, _>>().ok()
+}
+
+/// The programs of `choices` a window of qdesk can hold: the terminal ones, the default first
+/// when it is one of them, the rest in the order the databases rank them.
+#[must_use]
+pub fn terminal_programs(choices: &Choices) -> Vec<&DesktopApp> {
+    let default = choices.default.and_then(|at| choices.apps.get(at));
+    let mut programs: Vec<&DesktopApp> = default.filter(|app| app.terminal).into_iter().collect();
+    for app in &choices.apps {
+        if app.terminal && !programs.iter().any(|known| known.id == app.id) {
+            programs.push(app);
+        }
+    }
+    programs
+}
+
+/// The command that opens `file` when nothing else is asked for.
+///
+/// When the program the databases choose for the file's kind is a terminal program, it is that
+/// program; when it is a graphical one, or there is none, it is [`opener`]: the person's editor,
+/// else [`READER`]. A graphical program is never started, not even the only one there is: over
+/// SSH and on a console it would have no screen to open on. `None` when the file's name is not
+/// text.
+#[must_use]
+pub fn default_command(choices: &Choices, editor: Option<&str>, file: &Path) -> Option<Vec<String>> {
+    choices
+        .default
+        .and_then(|at| choices.apps.get(at))
+        .filter(|app| app.terminal)
+        .and_then(|app| with_program(app, file))
+        .or_else(|| opener(editor, file))
+}
+
+/// The name the editor fallback goes by on a menu: the program of `editor` without its folder,
+/// else [`READER`].
+#[must_use]
+pub fn editor_name(editor: Option<&str>) -> String {
+    editor
+        .and_then(|editor| editor.split_whitespace().next())
+        .map(|program| Path::new(program).file_name().map_or(program, |name| name.to_str().unwrap_or(program)))
+        .unwrap_or(READER)
+        .to_owned()
+}
+
+/// The desktop's databases of kinds and programs, read the first time a file is opened or its menu
+/// asks which programs open it, and kept until the programs change.
+///
+/// Reading them takes every desktop entry of the machine, which a desktop that never opens a file
+/// has no reason to pay for at start; kept, the second file opens without reading them again.
+#[derive(Debug)]
+pub struct Programs {
+    dirs: XdgDirs,
+    lang: String,
+    path: Option<OsString>,
+    read: OnceLock<Openers>,
+}
+
+impl Programs {
+    /// The databases of the folders `dirs`, with program names in `lang` (`tr_TR.UTF-8`) and only
+    /// the programs found on `path`; nothing is read yet.
+    #[must_use]
+    pub fn new(dirs: XdgDirs, lang: Option<&str>, path: Option<OsString>) -> Self {
+        Self { dirs, lang: lang.unwrap_or_default().to_owned(), path, read: OnceLock::new() }
+    }
+
+    /// The databases, read now if they have not been.
+    pub fn get(&self) -> &Openers {
+        self.read.get_or_init(|| Openers::load(&self.dirs, &self.lang, self.path.as_deref()))
+    }
+
+    /// The kind of `file` and the programs that open it.
+    #[must_use]
+    pub fn for_file(&self, file: &Path) -> Choices {
+        self.get().for_file(file)
+    }
+
+    /// The program of the desktop file id `id`, when it is installed and runs in a terminal.
+    #[must_use]
+    pub fn terminal_program(&self, id: &str) -> Option<&DesktopApp> {
+        self.get().apps.get(id).filter(|app| app.terminal)
+    }
 }
 
 /// The key of the folder `folder` in a file manager rooted at `root`: `""` for the root itself,
@@ -161,7 +267,7 @@ mod tests {
 
     #[test]
     fn a_window_starts_as_a_list_that_deletes_into_the_trash_and_can_leave_its_folder() {
-        let window = FilesWindow::new(PathBuf::from("/srv"), Some(Path::new("/nowhere/share")), true);
+        let window = FilesWindow::new(PathBuf::from("/srv"), Some(Path::new("/nowhere/share")), None);
         assert_eq!(window.view, FileView::List);
         assert!(window.manager.is_trashing());
         assert!(!window.manager.is_confined());
@@ -170,9 +276,67 @@ mod tests {
     }
 
     #[test]
-    fn a_window_follows_the_disk_only_when_asked() {
-        let window = FilesWindow::new(PathBuf::from("/srv"), None, false);
-        assert!(!window.manager.follows_changes());
+    fn a_window_follows_the_disk_with_a_bounded_wait_too() {
+        let window = FilesWindow::new(PathBuf::from("/srv"), None, Some(Duration::from_millis(20)));
+        assert!(window.manager.follows_changes());
         assert!(window.manager.is_trashing());
+    }
+
+    fn program(id: &str, exec: &str, terminal: bool) -> DesktopApp {
+        DesktopApp {
+            id: id.to_owned(),
+            name: id.trim_end_matches(".desktop").to_owned(),
+            exec: exec.to_owned(),
+            terminal,
+            mime_types: vec!["text/plain".to_owned()],
+            path: PathBuf::from(format!("/apps/{id}")),
+            icon: None,
+        }
+    }
+
+    fn choices(apps: Vec<DesktopApp>, default: Option<usize>) -> Choices {
+        Choices { mime: "text/plain".to_owned(), apps, default }
+    }
+
+    #[test]
+    fn a_terminal_program_chosen_for_the_kind_opens_the_file_as_one_word() {
+        let file = Path::new("/srv/my \"odd\" notes.txt");
+        let chosen = choices(vec![program("kedi.desktop", "kedi --read %f", true)], Some(0));
+        assert_eq!(
+            default_command(&chosen, Some("nano"), file),
+            Some(vec!["kedi".into(), "--read".into(), "/srv/my \"odd\" notes.txt".into()])
+        );
+    }
+
+    #[test]
+    fn a_graphical_program_or_none_leaves_the_file_to_the_editor() {
+        let file = Path::new("/srv/notes.txt");
+        let graphical = choices(vec![program("gedit.desktop", "gedit %U", false)], Some(0));
+        assert_eq!(default_command(&graphical, Some("nano"), file), Some(vec!["nano".into(), "/srv/notes.txt".into()]));
+        assert_eq!(
+            default_command(&choices(Vec::new(), None), None, file),
+            Some(vec![READER.into(), "/srv/notes.txt".into()])
+        );
+    }
+
+    #[test]
+    fn only_terminal_programs_are_offered_the_default_first() {
+        let offered = choices(
+            vec![
+                program("gedit.desktop", "gedit %U", false),
+                program("vi.desktop", "vi %f", true),
+                program("kedi.desktop", "kedi %f", true),
+            ],
+            Some(2),
+        );
+        let ids: Vec<&str> = terminal_programs(&offered).iter().map(|app| app.id.as_str()).collect();
+        assert_eq!(ids, ["kedi.desktop", "vi.desktop"]);
+    }
+
+    #[test]
+    fn the_editor_goes_by_its_program_s_name() {
+        assert_eq!(editor_name(Some("/usr/bin/emacs -nw")), "emacs");
+        assert_eq!(editor_name(Some("  ")), READER);
+        assert_eq!(editor_name(None), READER);
     }
 }

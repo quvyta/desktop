@@ -5,6 +5,9 @@ use std::ffi::{OsStr, OsString};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use qframe::desktop::XdgDirs;
+use qframe::storage::{UserDir, user_dir_in};
+
 use super::builtin;
 use super::desktop_file::{DesktopFile, parse_desktop_file};
 use super::diagnostic::{Diagnostic, DiagnosticKind};
@@ -33,6 +36,25 @@ pub struct Environment {
     /// folder the XDG user directories name for it, in the language of the system (`~/Desktop`,
     /// `~/Masaüstü`). `None` shows the applications alone.
     pub desktop: Option<PathBuf>,
+    /// The person's login name, from `USER`, else `LOGNAME`: whose password the lock screen asks
+    /// for. `None` offers no lock.
+    pub user: Option<String>,
+    /// Folders of the system's own programs looked in after `PATH` for the helpers of the session
+    /// actions. The one that checks a password, `unix_chkpwd`, lives in `/usr/sbin` on Debian,
+    /// which a person's `PATH` leaves out. Empty in a test, so it finds only what it wrote.
+    pub system_bin: Vec<PathBuf>,
+    /// The person's configuration folder, `XDG_CONFIG_HOME`, else `~/.config`: where their
+    /// `mimeapps.list`, the choice of which program opens which kind of file, is read.
+    pub config_home: Option<PathBuf>,
+    /// The system's configuration folders, `XDG_CONFIG_DIRS`, else `/etc/xdg`, most important
+    /// first. Empty in a test, so it reads only the choices it wrote.
+    pub config_dirs: Vec<PathBuf>,
+    /// The desktops the person runs, from `XDG_CURRENT_DESKTOP`, lowercased: one may keep a
+    /// `mimeapps.list` of its own.
+    pub desktops: Vec<String>,
+    /// The person's language as the system names it (`tr_TR.UTF-8`), from `LC_ALL`, else
+    /// `LC_MESSAGES`, else `LANG`: the names of the programs that open a file are read in it.
+    pub lang: Option<String>,
 }
 
 impl Environment {
@@ -59,6 +81,16 @@ impl Environment {
         if data_dirs.is_empty() {
             data_dirs = vec![PathBuf::from("/usr/local/share"), PathBuf::from("/usr/share")];
         }
+        // The Desktop folder is not an environment variable: the XDG user directories name it in a
+        // file of their own, in the system's language (`~/Masaüstü`, `~/Schreibtisch`), which the
+        // framework reads. A machine without one, as most servers are, shows the applications alone
+        // on the floor: nothing makes the folder behind the person's back.
+        // The configuration folders are named as the framework names them for its own readers.
+        let xdg = XdgDirs::from_env(|name| lookup(name).and_then(|value| value.into_string().ok()));
+        let desktop = home.as_ref().and_then(|home| {
+            let config = lookup("XDG_CONFIG_HOME").and_then(absolute).unwrap_or_else(|| home.join(".config"));
+            Some(user_dir_in(UserDir::Desktop, home, &config)).filter(|folder| folder.is_dir())
+        });
         Self {
             home,
             data_home,
@@ -69,12 +101,41 @@ impl Environment {
                 .into_iter()
                 .filter_map(|name| lookup(name)?.into_string().ok())
                 .find(|editor| !editor.trim().is_empty()),
-            // The Desktop folder is not an environment variable: the XDG user directories name it
-            // in a file of their own, in the system's language. Reading that file is the
-            // framework's to do (request F13, `user_dir(UserDir::Desktop)`), so until it does the
-            // floor shows the applications alone.
-            desktop: None,
+            desktop,
+            user: ["USER", "LOGNAME"]
+                .into_iter()
+                .filter_map(|name| lookup(name)?.into_string().ok())
+                .find(|user| !user.is_empty()),
+            system_bin: vec![PathBuf::from("/usr/sbin"), PathBuf::from("/sbin")],
+            config_home: xdg.config_home,
+            config_dirs: xdg.config_dirs,
+            desktops: xdg.desktops,
+            lang: ["LC_ALL", "LC_MESSAGES", "LANG"]
+                .into_iter()
+                .filter_map(|name| lookup(name)?.into_string().ok())
+                .find(|lang| !lang.is_empty()),
         }
+    }
+
+    /// The folders the desktop's own databases are read from — which kind a file is, which
+    /// programs open it and which one the person chose — as the framework takes them.
+    #[must_use]
+    pub fn xdg(&self) -> XdgDirs {
+        XdgDirs {
+            data_home: self.data_home.clone(),
+            data_dirs: self.data_dirs.clone(),
+            config_home: self.config_home.clone(),
+            config_dirs: self.config_dirs.clone(),
+            desktops: self.desktops.clone(),
+        }
+    }
+
+    /// Finds `program` on `PATH`, and then in the folders of the system's own programs.
+    #[must_use]
+    pub fn find_tool(&self, program: &str) -> Option<PathBuf> {
+        find_program(program, self.path.as_deref(), is_executable).or_else(|| {
+            self.system_bin.iter().map(|folder| folder.join(program)).find(|candidate| is_executable(candidate))
+        })
     }
 
     /// The folders entries are read from.
@@ -268,7 +329,36 @@ mod tests {
             shell: None,
             editor: None,
             desktop: None,
+            user: None,
+            system_bin: Vec::new(),
+            config_home: None,
+            config_dirs: Vec::new(),
+            desktops: Vec::new(),
+            lang: None,
         }
+    }
+
+    #[test]
+    fn the_desktop_folder_is_the_one_the_user_dirs_file_names_in_the_persons_language() {
+        let scratch = Scratch::new();
+        let home = scratch.0.join("ev");
+        std::fs::create_dir_all(home.join("Masaüstü")).expect("the folder is made");
+        std::fs::create_dir_all(home.join(".config")).expect("the config folder is made");
+        std::fs::write(home.join(".config/user-dirs.dirs"), "XDG_DESKTOP_DIR=\"$HOME/Masaüstü\"\n")
+            .expect("the file is written");
+        let home_text = home.to_string_lossy().into_owned();
+        let env = vars(&[("HOME", home_text.as_str())]);
+        assert_eq!(env.desktop, Some(home.join("Masaüstü")));
+    }
+
+    #[test]
+    fn a_home_without_a_desktop_folder_shows_the_applications_alone() {
+        let scratch = Scratch::new();
+        let home = scratch.0.join("sunucu");
+        std::fs::create_dir_all(&home).expect("the home is made");
+        let home_text = home.to_string_lossy().into_owned();
+        assert_eq!(vars(&[("HOME", home_text.as_str())]).desktop, None, "nothing is made behind the person's back");
+        assert!(!home.join("Desktop").exists());
     }
 
     const USER: &str = "home/.local/share/quvyta/desktop/apps";
@@ -307,6 +397,28 @@ mod tests {
     }
 
     #[test]
+    fn the_choices_of_programs_are_read_where_the_variables_say_in_the_person_s_language() {
+        let env = vars(&[
+            ("HOME", "/home/ada"),
+            ("XDG_CONFIG_HOME", "/ayar"),
+            ("XDG_CONFIG_DIRS", "/sistem/xdg"),
+            ("XDG_CURRENT_DESKTOP", "Quvyta:GNOME"),
+            ("LANG", "en_GB.UTF-8"),
+            ("LC_MESSAGES", "tr_TR.UTF-8"),
+        ]);
+        let xdg = env.xdg();
+        assert_eq!(xdg.config_home, Some(PathBuf::from("/ayar")));
+        assert_eq!(xdg.config_dirs, vec![PathBuf::from("/sistem/xdg")]);
+        assert_eq!(xdg.desktops, vec!["quvyta".to_owned(), "gnome".to_owned()]);
+        assert_eq!(xdg.data_home, env.data_home);
+        assert_eq!(env.lang.as_deref(), Some("tr_TR.UTF-8"), "the language of messages wins over LANG");
+        let bare = vars(&[("HOME", "/home/ada")]);
+        assert_eq!(bare.config_home, Some(PathBuf::from("/home/ada/.config")));
+        assert_eq!(bare.lang, None);
+        assert_eq!(Environment::default().xdg().config_dirs, Vec::<PathBuf>::new(), "a test reads no system folder");
+    }
+
+    #[test]
     fn the_editor_is_visual_else_editor_and_never_an_empty_one() {
         assert_eq!(vars(&[("VISUAL", "nvim"), ("EDITOR", "nano")]).editor.as_deref(), Some("nvim"));
         assert_eq!(vars(&[("VISUAL", " "), ("EDITOR", "emacs -nw")]).editor.as_deref(), Some("emacs -nw"));
@@ -321,6 +433,26 @@ mod tests {
         let homeless = vars(&[("HOME", "ada")]);
         assert_eq!((&homeless.home, &homeless.data_home), (&None, &None));
         assert_eq!(homeless.folders().user, None);
+    }
+
+    #[test]
+    fn the_user_is_user_else_logname_and_never_an_empty_one() {
+        assert_eq!(vars(&[("USER", "ada"), ("LOGNAME", "root")]).user.as_deref(), Some("ada"));
+        assert_eq!(vars(&[("USER", ""), ("LOGNAME", "ada")]).user.as_deref(), Some("ada"));
+        assert_eq!(vars(&[]).user, None);
+    }
+
+    #[test]
+    fn a_tool_is_looked_for_on_the_path_and_then_in_the_system_folders() {
+        let scratch = Scratch::new();
+        let on_path = scratch.program("bin/systemctl", 0o755);
+        let in_system = scratch.program("sbin/unix_chkpwd", 0o755);
+        let env = Environment { system_bin: vec![scratch.0.join("sbin")], ..scratch_env(&scratch) };
+        assert_eq!(env.find_tool("systemctl"), Some(on_path));
+        assert_eq!(env.find_tool("unix_chkpwd"), Some(in_system), "not on PATH, but in a system folder");
+        assert_eq!(env.find_tool("reboot"), None);
+        let bare = Environment { system_bin: Vec::new(), ..scratch_env(&scratch) };
+        assert_eq!(bare.find_tool("unix_chkpwd"), None, "without system folders only PATH is looked in");
     }
 
     #[test]

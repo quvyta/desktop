@@ -25,6 +25,7 @@ use qframe::text;
 use qframe::widget::{Container, EventCx, MeasureCx, Node, PaintCx, Widget};
 
 use crate::apps::{Category, Entry};
+use crate::gadgets::{self, Spot, face};
 
 pub use grid::{CELL_HEIGHT, CELL_WIDTH, Cell, Grid, Step};
 pub use order::Desktop;
@@ -61,6 +62,9 @@ pub enum Action {
         /// Whether it joins the selection instead of replacing it.
         add: bool,
     },
+    /// An icon was clicked with shift held: every icon from the cursor to it, in the floor's
+    /// order, is selected.
+    Extend(usize),
     /// A band was drawn from empty floor over these icons.
     Band(Vec<usize>),
     /// Empty floor was clicked: nothing is selected any more.
@@ -69,16 +73,25 @@ pub enum Action {
     Cursor(usize),
     /// An icon was opened: a double click, or Enter on the cursor.
     Open(usize),
-    /// An icon was put into another cell: dropped there with the mouse, or moved with shift and
-    /// an arrow key.
+    /// Icons were put into other cells: one dropped there with the mouse or moved with shift and
+    /// an arrow key, or a selection dragged together by one of its icons.
     Place {
-        /// The icon.
+        /// The icon that was held: the one dragged, or the one under the cursor.
         index: usize,
-        /// The cell it was put into, which may hold another icon.
-        cell: Cell,
+        /// Every icon that moves, with the cell it is put into, which may hold another icon. The
+        /// held one is among them.
+        moves: Vec<(usize, Cell)>,
         /// The cell every icon was drawn in when it happened, in their order: where the others
         /// stand, which is what the move is made against.
         layout: Vec<Option<Cell>>,
+    },
+    /// A gadget was dragged to another spot of the floor: `at` is its new top left cell. A drop
+    /// that would take it off the floor or over another gadget is never reported.
+    PlaceGadget {
+        /// The gadget, in the order given to [`Floor::gadgets`].
+        index: usize,
+        /// The cell its top left corner goes to.
+        at: Cell,
     },
 }
 
@@ -116,6 +129,15 @@ pub fn icon_name<'a>(entry: &'a Entry, icons: &Icons) -> &'a str {
         Some(named) if icons.contains(named) => named,
         _ => category_icon(entry.category, icons),
     }
+}
+
+/// The name of the icon an entry of a folder is drawn with, by its kind: the Rust logo on a Rust
+/// file, a zipper on an archive, a program's icon on a file that may be run whose name says
+/// nothing else. The kind is told from the name alone by the framework, as its file manager tells
+/// it, so the floor and a Files window draw a file alike.
+#[must_use]
+pub fn kind_icon(name: &str, folder: bool, executable: bool) -> &'static str {
+    qframe::icons::file_kind(name, folder, executable).icon()
 }
 
 /// The icon of a category, by name.
@@ -232,16 +254,26 @@ struct FloorMemory {
     clicked: Option<(usize, Duration)>,
     /// The icon the last typed letter found, so the same letter walks on.
     typed: Option<usize>,
+    /// Where every gadget was drawn last, in their order.
+    spots: Vec<Option<Spot>>,
+    /// The gadget the left button went down on, with the cell of it that was held, counted from
+    /// its top left cell, and the top left cell it would land in while the button is held.
+    gadget: Option<(usize, (u16, u16))>,
+    gadget_target: Option<Cell>,
 }
 
-/// The floor: the icon cells laid out on the grid, the band, and the keys of the desktop.
+/// The floor: the icon cells laid out on the grid, the gadgets standing among them, the band, and
+/// the keys of the desktop.
 ///
 /// Add the cells with [`View::add_with`](qframe::widget::View::add_with), one per icon in the
 /// order they stand in; each may be wrapped in its own [`ContextMenu`](qframe::widgets::ContextMenu)
-/// and [`Tooltip`](qframe::widgets::Tooltip).
+/// and [`Tooltip`](qframe::widgets::Tooltip). After them come the gadgets, one node each in the
+/// order of [`Floor::gadgets`], each drawn over the cells it takes.
 pub struct Floor<Msg> {
     names: Vec<String>,
     places: Vec<Option<Cell>>,
+    gadgets: Vec<Spot>,
+    selected: Vec<usize>,
     cursor: Option<usize>,
     keys: bool,
     on: Box<dyn Fn(Action) -> Msg>,
@@ -253,7 +285,35 @@ impl<Msg: 'static> Floor<Msg> {
     /// through `on`.
     #[must_use]
     pub fn new(names: Vec<String>, on: impl Fn(Action) -> Msg + 'static) -> Self {
-        Self { names, places: Vec::new(), cursor: None, keys: true, on: Box::new(on), cells: Vec::new() }
+        Self {
+            names,
+            places: Vec::new(),
+            gadgets: Vec::new(),
+            selected: Vec::new(),
+            cursor: None,
+            keys: true,
+            on: Box::new(on),
+            cells: Vec::new(),
+        }
+    }
+
+    /// The icons that are selected, by their index: dragging any of them carries them all.
+    #[must_use]
+    pub fn selected(mut self, selected: Vec<usize>) -> Self {
+        self.selected = selected;
+        self
+    }
+
+    /// Where the icons land when the one at `index` is dragged into `cell`: the whole selection
+    /// carried as far as that icon went, when it is one of several selected, else that icon alone.
+    fn landing(&self, grid: &Grid, index: usize, cell: Cell) -> Vec<(usize, Cell)> {
+        let Some(from) = grid.cell(index) else { return Vec::new() };
+        let carried = self.selected.iter().filter(|selected| grid.cell(**selected).is_some()).count();
+        if carried < 2 || !self.selected.contains(&index) {
+            return vec![(index, cell)];
+        }
+        let by = (i32::from(cell.0) - i32::from(from.0), i32::from(cell.1) - i32::from(from.1));
+        grid.shifted(&self.selected, by)
     }
 
     /// The cells the icons want, in their order; an icon with no place of its own, or past the
@@ -264,11 +324,79 @@ impl<Msg: 'static> Floor<Msg> {
         self
     }
 
-    /// The grid the icons make in `area`.
-    fn grid(&self, area: Size) -> Grid {
+    /// The spots the gadgets want, in the order their nodes come after the icons' cells.
+    #[must_use]
+    pub fn gadgets(mut self, gadgets: Vec<Spot>) -> Self {
+        self.gadgets = gadgets;
+        self
+    }
+
+    /// How many of the children are icon cells: the rest are gadgets.
+    fn icon_count(&self) -> usize {
+        self.cells.len().saturating_sub(self.gadgets.len())
+    }
+
+    /// The grid the icons make in `area`, around the gadgets, and where each gadget stands.
+    fn layout(&self, area: Size) -> (Grid, Vec<Option<Spot>>) {
+        let spots = gadgets::arrange(area.width / CELL_WIDTH, area.height / CELL_HEIGHT, &self.gadgets);
+        let blocked: Vec<Cell> = spots.iter().flatten().flat_map(|spot| spot.cells()).collect();
         let mut wanted = self.places.clone();
-        wanted.resize(self.cells.len(), None);
-        Grid::placed(area, &wanted)
+        wanted.resize(self.icon_count(), None);
+        (Grid::placed_around(area, &wanted, &blocked), spots)
+    }
+
+    /// Where the icons land when the one at `index` is dropped into `cell`, or `None` when any of
+    /// them would land on a gadget: a group lands whole or not at all.
+    fn lands(&self, grid: &Grid, index: usize, cell: Cell) -> Option<Vec<(usize, Cell)>> {
+        let moves = self.landing(grid, index, cell);
+        (!moves.iter().any(|(_, to)| grid.is_blocked(*to))).then_some(moves)
+    }
+
+    /// The screen rectangle of the surface of a gadget standing in `spot`.
+    fn surface(spot: Spot, area: Rect) -> Rect {
+        let x = area.x + i32::from(spot.at.0) * i32::from(CELL_WIDTH);
+        let y = area.y + i32::from(spot.at.1) * i32::from(CELL_HEIGHT);
+        face::surface_rect(x, y, spot.size)
+    }
+
+    /// The gadget whose surface holds the screen cell `x`, `y`.
+    fn gadget_at(spots: &[Option<Spot>], area: Rect, x: i32, y: i32) -> Option<usize> {
+        spots.iter().position(|spot| {
+            spot.is_some_and(|spot| {
+                let rect = Self::surface(spot, area);
+                x >= rect.x && x < rect.x + i32::from(rect.width) && y >= rect.y && y < rect.y + i32::from(rect.height)
+            })
+        })
+    }
+
+    /// Where the gadget at `index` would land with the pointer at `(x, y)`, holding it by `grab`:
+    /// its top left cell, kept on the floor the way a window stops at the screen's edge. `None`
+    /// when that spot is its own or overlaps another gadget.
+    fn gadget_landing(
+        &self,
+        grid: &Grid,
+        spots: &[Option<Spot>],
+        area: Rect,
+        index: usize,
+        grab: (u16, u16),
+        (x, y): (i32, i32),
+    ) -> Option<Cell> {
+        let spot = spots.get(index).copied().flatten()?;
+        let column = (x - area.x).div_euclid(i32::from(CELL_WIDTH)) - i32::from(grab.0);
+        let row = (y - area.y).div_euclid(i32::from(CELL_HEIGHT)) - i32::from(grab.1);
+        let last_column = i32::from(grid.columns()) - i32::from(spot.size.0);
+        let last_row = i32::from(grid.rows()) - i32::from(spot.size.1);
+        if last_column < 0 || last_row < 0 {
+            return None;
+        }
+        let at = (u16::try_from(column.clamp(0, last_column)).ok()?, u16::try_from(row.clamp(0, last_row)).ok()?);
+        let moved = spot.moved(at);
+        let clear = spots
+            .iter()
+            .enumerate()
+            .filter(|(other, _)| *other != index)
+            .all(|(_, other)| other.is_none_or(|other| !other.overlaps(moved)));
+        (at != spot.at && clear).then_some(at)
     }
 
     /// Where the keyboard cursor is.
@@ -292,6 +420,11 @@ impl<Msg: 'static> Floor<Msg> {
         memory.grid.clone().map(|grid| (grid, memory.area))
     }
 
+    /// Where the gadgets stood in the last frame.
+    fn last_spots(cx: &mut EventCx<'_, Msg>) -> Vec<Option<Spot>> {
+        cx.memory::<FloorMemory>().spots.clone()
+    }
+
     /// The icon at a screen cell.
     fn icon_at(grid: &Grid, area: Rect, x: i32, y: i32) -> Option<usize> {
         grid.at(x - area.x, y - area.y)
@@ -312,7 +445,11 @@ impl<Msg: 'static> Floor<Msg> {
         {
             let Some(index) = self.cursor else { return false };
             let Some(cell) = grid.cell(index).and_then(|from| grid.beside(from, step)) else { return false };
-            cx.emit((self.on)(Action::Place { index, cell, layout: grid.cells().to_vec() }));
+            if grid.is_blocked(cell) {
+                // A gadget stands there: the icon stays, as it does against the floor's edge.
+                return true;
+            }
+            cx.emit((self.on)(Action::Place { index, moves: vec![(index, cell)], layout: grid.cells().to_vec() }));
             return true;
         }
         if let Some((_, step)) = steps.into_iter().find(|(chord, _)| key.is_plain(*chord)) {
@@ -351,6 +488,7 @@ impl<Msg: 'static> Floor<Msg> {
     fn on_mouse(&self, cx: &mut EventCx<'_, Msg>, mouse: &MouseEvent) -> bool {
         let Some((grid, area)) = Self::last(cx) else { return false };
         let under = Self::icon_at(&grid, area, mouse.x, mouse.y);
+        let spots = Self::last_spots(cx);
         match mouse.kind {
             MouseKind::Down(MouseButton::Right) => {
                 // An icon's own menu belongs to its cell; the floor's menu is the one wrapping
@@ -361,7 +499,22 @@ impl<Msg: 'static> Floor<Msg> {
             }
             MouseKind::Down(MouseButton::Left) => {
                 cx.capture_pointer();
+                // A press on a gadget that its content did not take holds the gadget, to carry it.
+                let held = under.is_none().then(|| Self::gadget_at(&spots, area, mouse.x, mouse.y)).flatten();
                 let memory = cx.memory::<FloorMemory>();
+                memory.gadget = held.and_then(|index| {
+                    let spot = spots.get(index).copied().flatten()?;
+                    let column = (mouse.x - area.x).div_euclid(i32::from(CELL_WIDTH)) - i32::from(spot.at.0);
+                    let row = (mouse.y - area.y).div_euclid(i32::from(CELL_HEIGHT)) - i32::from(spot.at.1);
+                    Some((index, (u16::try_from(column).ok()?, u16::try_from(row).ok()?)))
+                });
+                memory.gadget_target = None;
+                if memory.gadget.is_some() {
+                    memory.pressed = None;
+                    memory.band_from = None;
+                    memory.band = None;
+                    return true;
+                }
                 memory.pressed = under;
                 memory.target = None;
                 memory.band_from = under.is_none().then_some((mouse.x, mouse.y));
@@ -369,6 +522,11 @@ impl<Msg: 'static> Floor<Msg> {
                 true
             }
             MouseKind::Drag(MouseButton::Left) => {
+                if let Some((index, grab)) = cx.memory::<FloorMemory>().gadget {
+                    let target = self.gadget_landing(&grid, &spots, area, index, grab, (mouse.x, mouse.y));
+                    cx.memory::<FloorMemory>().gadget_target = target;
+                    return true;
+                }
                 let memory = cx.memory::<FloorMemory>();
                 if let Some(from) = memory.band_from {
                     memory.band = Some(band(from, (mouse.x, mouse.y)));
@@ -381,6 +539,16 @@ impl<Msg: 'static> Floor<Msg> {
                 false
             }
             MouseKind::Up(MouseButton::Left) => {
+                let (gadget, landing) = {
+                    let memory = cx.memory::<FloorMemory>();
+                    (memory.gadget.take(), memory.gadget_target.take())
+                };
+                if let Some((index, _)) = gadget {
+                    if let Some(at) = landing {
+                        cx.emit((self.on)(Action::PlaceGadget { index, at }));
+                    }
+                    return true;
+                }
                 let now = cx.now();
                 let (pressed, target, from, drawn, clicked) = {
                     let memory = cx.memory::<FloorMemory>();
@@ -394,12 +562,23 @@ impl<Msg: 'static> Floor<Msg> {
                 };
                 if let Some(index) = pressed {
                     let action = match target.filter(|cell| grid.cell(index) != Some(*cell)) {
-                        Some(cell) => Action::Place { index, cell, layout: grid.cells().to_vec() },
+                        Some(cell) => {
+                            // A drop on a gadget, or of a group part of which would land on one,
+                            // is refused: no icon ever stands under a gadget.
+                            let Some(moves) = self.lands(&grid, index, cell) else { return true };
+                            // A group already against the edge it was pulled towards goes
+                            // nowhere; the drop is not a click either, so the selection stays.
+                            if moves.iter().all(|(moved, to)| grid.cell(*moved) == Some(*to)) {
+                                return true;
+                            }
+                            Action::Place { index, moves, layout: grid.cells().to_vec() }
+                        }
                         None if clicked
                             .is_some_and(|(last, at)| last == index && now.saturating_sub(at) <= DOUBLE_CLICK) =>
                         {
                             Action::Open(index)
                         }
+                        None if mouse.mods.shift => Action::Extend(index),
                         None => Action::Select { index, add: mouse.mods.ctrl },
                     };
                     cx.emit((self.on)(action));
@@ -420,7 +599,7 @@ impl<Msg: 'static> Floor<Msg> {
     /// The node and screen rectangle of the icon at `index`.
     fn cell_of(&self, index: usize, grid: &Grid, area: Rect) -> Option<(&Node<Msg>, Rect)> {
         let rect = grid.rect(index)?;
-        let node = self.cells.get(index)?;
+        let node = self.cells.get(index).filter(|_| index < self.icon_count())?;
         Some((node, Rect::new(area.x + rect.x, area.y + rect.y, rect.width, rect.height)))
     }
 }
@@ -450,12 +629,13 @@ impl<Msg: 'static> Widget<Msg> for Floor<Msg> {
     }
 
     fn paint(&self, cx: &mut PaintCx<'_>, area: Rect) {
-        let grid = self.grid(area.size());
-        let (pressed, target) = {
+        let (grid, spots) = self.layout(area.size());
+        let (pressed, target, gadget_target) = {
             let memory = cx.memory::<FloorMemory>();
             memory.grid = Some(grid.clone());
             memory.area = area;
-            (memory.pressed, memory.target)
+            memory.spots.clone_from(&spots);
+            (memory.pressed, memory.target, memory.gadget_target)
         };
         if area.is_empty() {
             return;
@@ -464,19 +644,36 @@ impl<Msg: 'static> Widget<Msg> for Floor<Msg> {
         if self.keys {
             cx.register_focusable();
         }
-        for index in 0..self.cells.len() {
+        let icons = self.icon_count();
+        for (index, spot) in spots.iter().enumerate() {
+            if let (Some(spot), Some(node)) = (spot, self.cells.get(icons + index)) {
+                cx.paint_child(node, Self::surface(*spot, area));
+            }
+        }
+        for index in 0..icons {
             if let Some((node, rect)) = self.cell_of(index, &grid, area) {
                 cx.paint_child(node, rect);
             }
         }
-        // Where a dragged icon would land: a tone over the whole cell, over the icon standing
-        // there too, since the two will change places.
+        // Where a dragged gadget would land: the same tone over the surface it would have there.
+        let held = cx.memory::<FloorMemory>().gadget;
+        if let (Some((index, _)), Some(at)) = (held, gadget_target)
+            && let Some(spot) = spots.get(index).copied().flatten()
+        {
+            cx.tint(Self::surface(spot.moved(at), area).intersect(area), cx.color("accent"), DROP_MIX);
+        }
+        // Where a dragged icon would land, or every icon of the selection it carries: a tone
+        // over each whole cell, over an icon standing there too, since it will make way. A drop a
+        // gadget would refuse lights nothing.
         if let (Some(index), Some(cell)) = (pressed, target)
             && grid.cell(index) != Some(cell)
+            && let Some(moves) = self.lands(&grid, index, cell)
         {
-            let rect = Grid::cell_rect(cell);
-            let rect = Rect::new(area.x + rect.x, area.y + rect.y, rect.width, rect.height);
-            cx.tint(rect.intersect(area), cx.color("accent"), DROP_MIX);
+            for (_, cell) in moves {
+                let rect = Grid::cell_rect(cell);
+                let rect = Rect::new(area.x + rect.x, area.y + rect.y, rect.width, rect.height);
+                cx.tint(rect.intersect(area), cx.color("accent"), DROP_MIX);
+            }
         }
         let band = cx.memory::<FloorMemory>().band;
         if let Some(band) = band {

@@ -12,6 +12,10 @@ On the desktop, ctrl+q quits."""
 unknown-argument = "qdesk: unknown argument {argument}; see qdesk --help"
 
 [dock]
+# The marks of the workspaces beside the launcher button, and the number that stands for them on a
+# narrow row.
+workspace = "Workspace {n}"
+workspace-next = "Workspace {n}; click for the next one"
 # The clock when the local time zone is unknown: the time shown is UTC and says so.
 clock-utc = "{time} UTC"
 # Stands in for the machine name when the system gives none.
@@ -118,8 +122,11 @@ bell = "rang the bell"
 paste-nowhere = "This window's program has ended, so the pasted text went nowhere"
 
 [window]
+send-to = "Move to workspace {n}"
 minimize = "Minimize"
 maximize = "Maximize"
+# Takes the window forward and lets the arrow keys size it.
+resize = "Resize"
 tile = "Tile the windows"
 close = "Close"
 restart = "Restart"
@@ -135,6 +142,9 @@ quit-running = { one = "{n} program is still running. Quitting ends it.", other 
 quit = "Quit"
 tile-narrow = "The desktop is too narrow to tile windows side by side."
 tile-short = "The desktop has room for {fits} tiled windows, no more."
+# Said once, when the first window opens.
+resize-hint = "Windows resize from their edges"
+resize-hint-body = "Drag the right or the bottom edge, or the corner between them. Alt with the right button sizes a window from anywhere, and Resize in its menu on the dock does it with the arrow keys."
 
 [mode]
 # The dock's row while the keys are the desktop's.
@@ -151,11 +161,23 @@ leave = "back"
 back = "back"
 release = "let go"
 far = "{cells} at a time"
+# The mouse sizes a window too: the key is what is dragged, the label what dragging it does.
+drag = "edge"
+drag-label = "drag it"
+workspace = "spaces"
 
 # The help layer names every key of qdesk by its action. The keys of desktop mode say so: they
 # answer only while the desktop has them, and a line that did not say it would be a promise the
 # key does not keep.
 [keys]
+workspace-1 = "Desktop mode: go to workspace 1"
+workspace-2 = "Desktop mode: go to workspace 2"
+workspace-3 = "Desktop mode: go to workspace 3"
+workspace-4 = "Desktop mode: go to workspace 4"
+send-to-1 = "Desktop mode: send the window to workspace 1"
+send-to-2 = "Desktop mode: send the window to workspace 2"
+send-to-3 = "Desktop mode: send the window to workspace 3"
+send-to-4 = "Desktop mode: send the window to workspace 4"
 launcher = "Open the launcher"
 close = "Close what is open: the launcher, a list, then desktop mode"
 desktop-mode = "Take the keys out of the window to the desktop, and back"
@@ -237,6 +259,13 @@ floor-color-theme = "Theme"
 floor-color-deep = "Deep"
 floor-color-mist = "Mist"
 floor-color-accent = "Accent"
+floor-style = "Floor pattern"
+floor-style-text = "Warming towards the accent at the bottom, a faint dot on the corners of the icon grid, or both."
+floor-style-plain = "Plain"
+floor-style-gradient = "Gradient"
+floor-style-dots = "Dots"
+# Gradient and dots together.
+floor-style-gradient-dots = "Both"
 folders-in-explorer = "Open folders with {program}"
 folders-in-explorer-text = "A folder on the desktop or in Files opens in the ecosystem's file explorer. When {program} is not installed, Files opens instead."
 
@@ -266,3 +295,82 @@ view-tree = "Show as a tree"
 view-icons = "Show as icons"
 open-new-window = "Open in a new window"
 not-text = "{name} cannot be opened: its name is not text a program can be given"
+open-with = "Open with"
+open-with-editor = "{program}, your editor"
+open-with-reader = "{program}, to read"
+
+[status]
+# The status strip on the dock's right side: short readings of the machine.
+tmux = "tmux sessions"
+network = "Network"
+cpu = "Processor"
+memory = "Memory"
+battery = "Battery"
+# A share in the strip, rounded: {value} is a whole number.
+percent = "{value}%"
+# Network rates in the strip, kept as short as they can be read: {value} is a number.
+rate-bytes = "{value}B/s"
+rate-kilo = "{value}K/s"
+rate-mega = "{value}M/s"
+rate-giga = "{value}G/s"
+
+[power]
+# The session actions at the foot of the launcher.
+lock = "Lock"
+log-out = "Log out"
+restart = "Restart"
+power-off = "Power off"
+restart-title = "Restart this machine?"
+restart-text = "Everything on it stops and starts again."
+restart-running = { one = "{n} program is still running. Restarting ends it.", other = "{n} programs are still running. Restarting ends them." }
+restart-failed = "The machine could not be restarted"
+power-off-title = "Power off this machine?"
+power-off-text = "Everything on it stops."
+power-off-running = { one = "{n} program is still running. Powering off ends it.", other = "{n} programs are still running. Powering off ends them." }
+power-off-failed = "The machine could not be powered off"
+# Why a request to the system failed when the program said nothing about it.
+exit-code = "It ended with code {code}."
+killed = "It was stopped before it could answer."
+# The lock screen. {user} is the login name whose password unlocks it.
+lock-password = "Password for {user}"
+lock-checking = "Checking…"
+lock-wrong = "That is not the password. Try again."
+lock-hint = "Type the password and press enter"
+
+[widget]
+# Widgets stand on the desktop floor beside the icons. The four kinds, in the floor's menu and
+# the widget's own.
+clock = "Clock"
+calendar = "Calendar"
+system = "System"
+note = "Note"
+# The floor's menu: a submenu of the four kinds, and one of the widgets already there.
+add = "Add a widget"
+remove-one = "Remove a widget"
+# The last row of a widget's own menu.
+remove = "Remove widget"
+# The clock's options.
+hours-24 = "24-hour clock"
+hours-12 = "12-hour clock"
+seconds = "Show seconds"
+color = "Colour"
+color-accent = "Accent"
+color-text = "Plain"
+color-gradient = "Gradient"
+# Beside the digits of a 12-hour clock.
+am = "AM"
+pm = "PM"
+# Under the clock's digits: {weekday} is the whole name of the day, {date} the day and the month
+# as the language writes them.
+clock-date = "{weekday}, {date}"
+# The calendar's option, and its three choices.
+week-start = "Week starts on"
+week-start-language = "The language's day"
+week-start-monday = "Monday"
+week-start-sunday = "Sunday"
+# In an empty note.
+note-placeholder = "Write something"
+# When a note cannot be read or written; the body names the file and the reason.
+note-unsaved = "The note could not be saved"
+# When the floor has no room left for a new widget; {name} is its kind.
+no-room = "There is no room on the desktop for the {name} widget"

@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use qframe::geometry::{Rect, Size};
 
 use super::tests::entry;
-use super::{Edge, Grip, Placement, Window, WindowId, Windows};
+use super::{Edge, Grip, Placement, SPACES, Window, WindowId, Windows};
 
 /// A small deterministic generator: xorshift64 with a final multiply. It only has to spread the
 /// choices of the sequences evenly, which it does, and it adds no dependency.
@@ -63,7 +63,7 @@ const GRIPS: [Grip; 8] = [
 const EDGES: [Edge; 3] = [Edge::Left, Edge::Right, Edge::Top];
 
 /// How many kinds of operation a sequence draws from.
-const OPERATIONS: u64 = 18;
+const OPERATIONS: u64 = 21;
 
 /// Whether `rect` lies whole inside `area`. The edges are compared rather than the overlap,
 /// because a rectangle of no cells overlaps nothing and would look as if it were outside.
@@ -98,6 +98,7 @@ fn check(desk: &Windows, seed: u64, step: usize) -> Vec<WindowId> {
         Some(focus) => {
             let window = desk.get(focus).expect("the focused window is open");
             assert!(!window.is_minimized(), "seed {seed}, step {step}: the focus is on a minimized window");
+            assert_eq!(window.space(), desk.current(), "seed {seed}, step {step}: the focus is off the workspace");
         }
         None => assert_eq!(desk.visible().count(), 0, "seed {seed}, step {step}: a drawn window has no focus"),
     }
@@ -188,6 +189,19 @@ fn step(desk: &mut Windows, rng: &mut Rng, ids: &[WindowId], handed: &mut HashSe
         16 => {
             let _ = desk.tile();
         }
+        17 => {
+            desk.switch(rng.below(u64::try_from(SPACES).unwrap_or(1)));
+        }
+        18 => {
+            if let Some(id) = pick(rng) {
+                desk.send(id, rng.below(u64::try_from(SPACES).unwrap_or(1)));
+            }
+        }
+        19 => {
+            if let Some(id) = pick(rng) {
+                desk.bring(id);
+            }
+        }
         _ => {
             let width = u16::try_from(rng.between(1, 200)).unwrap_or(1);
             let height = u16::try_from(rng.between(1, 60)).unwrap_or(1);
@@ -219,8 +233,10 @@ fn every_sequence_of_operations_keeps_the_promises() {
 #[test]
 fn the_sequences_do_reach_every_state_a_window_can_be_in() {
     let mut counts = (0_u32, 0_u32, 0_u32, 0_u32);
+    let mut spaces = [0_u32; SPACES];
     for seed in 1..=60 {
         for window in sequence(seed, 200).iter() {
+            spaces[window.space()] += 1;
             match window.placement() {
                 Placement::Floating => counts.0 += 1,
                 Placement::Maximized { .. } => counts.1 += 1,
@@ -232,6 +248,7 @@ fn the_sequences_do_reach_every_state_a_window_can_be_in() {
         }
     }
     assert!(counts.0 > 0 && counts.1 > 0 && counts.2 > 0 && counts.3 > 0, "some state was never reached: {counts:?}");
+    assert!(spaces.iter().all(|count| *count > 0), "some workspace was never reached: {spaces:?}");
 }
 
 #[test]

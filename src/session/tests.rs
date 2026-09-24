@@ -79,6 +79,12 @@ fn environment(home: &Path) -> Environment {
         shell: Some(PathBuf::from("/bin/sh")),
         editor: None,
         desktop: None,
+        user: None,
+        system_bin: Vec::new(),
+        config_home: None,
+        config_dirs: Vec::new(),
+        desktops: Vec::new(),
+        lang: None,
     }
 }
 

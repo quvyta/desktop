@@ -119,6 +119,7 @@ pub fn desk_with(icons: &[&str], width: u16, height: u16) -> Harness<Desk> {
         icons: icons.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        resize_hint_seen: true,
         ..Desktop::default()
     };
     harness(desktop, width, height)
@@ -157,6 +158,7 @@ pub fn desk_over_ssh(width: u16, height: u16) -> Harness<Desk> {
         icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        resize_hint_seen: true,
         ..Desktop::default()
     };
     built(catalog(), desktop, width, height, true)
@@ -200,6 +202,7 @@ pub fn desk_in(config: &Path, width: u16, height: u16) -> Harness<Desk> {
         icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        resize_hint_seen: true,
         ..Desktop::default()
     };
     let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), clock)
@@ -208,6 +211,51 @@ pub fn desk_in(config: &Path, width: u16, height: u16) -> Harness<Desk> {
         .desktop(desktop)
         .settings(loaded.settings, loaded.prefs, loaded.diagnostics)
         .watch_within(PATIENCE);
+    let mut harness = Harness::with_env(app, env(), width, height);
+    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
+    harness
+}
+
+/// A desktop as `desktop` says, on an 80 by 24 terminal, writing its desktop file to `file` as
+/// the running desktop does: what one run changes, the next run built from that file reads back.
+#[must_use]
+pub fn desk_writing(file: &Path, desktop: Desktop) -> Harness<Desk> {
+    let clock = Box::new(|| MOMENT * 1_000);
+    let apps = Environment { shell: Some(PathBuf::from(HARMLESS)), ..Environment::default() };
+    let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), clock)
+        .apps(apps)
+        .catalog(catalog())
+        .desktop(desktop)
+        .config(Some(file.to_path_buf()))
+        .watch_within(PATIENCE);
+    let mut harness = Harness::with_env(app, env(), 80, 24);
+    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
+    harness
+}
+
+/// The pretend machine's desktop with the usual icons, reading the wall clock from `clock`, not
+/// drawn yet: a test adds what it needs before [`draw`] puts it on a terminal.
+#[must_use]
+pub fn base(clock: qdesk::app::WallClock) -> Desk {
+    let apps = Environment { shell: Some(PathBuf::from(HARMLESS)), ..Environment::default() };
+    let desktop = Desktop {
+        icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        resize_hint_seen: true,
+        ..Desktop::default()
+    };
+    Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), clock)
+        .apps(apps)
+        .catalog(catalog())
+        .desktop(desktop)
+        .watch_within(PATIENCE)
+}
+
+/// `app` on a terminal of `width` by `height`, in the language, glyphs and motion every screen
+/// test draws in.
+#[must_use]
+pub fn draw(app: Desk, width: u16, height: u16) -> Harness<Desk> {
     let mut harness = Harness::with_env(app, env(), width, height);
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
     harness

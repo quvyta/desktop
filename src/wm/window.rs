@@ -102,6 +102,8 @@ pub struct Window {
     pub(super) rect: Rect,
     pub(super) placement: Placement,
     pub(super) minimized: bool,
+    /// The workspace the window belongs to, from 0; see [`SPACES`](super::SPACES).
+    pub(super) space: usize,
 }
 
 impl Window {
@@ -192,5 +194,11 @@ impl Window {
     #[must_use]
     pub fn is_minimized(&self) -> bool {
         self.minimized
+    }
+
+    /// The workspace the window belongs to, counted from 0.
+    #[must_use]
+    pub fn space(&self) -> usize {
+        self.space
     }
 }

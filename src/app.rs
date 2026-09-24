@@ -1,20 +1,24 @@
 //! The desktop application: the floor with its icons, the launcher, the dock, and the runtime
 //! that drives them.
 
+mod gadgets;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use qframe::date::{DateTime, local_offset};
+use qframe::desktop::XdgDirs;
 use qframe::env::{AssetDirs, Env};
 use qframe::keymap::Scope;
 use qframe::prelude::*;
-use qframe::runtime::{ClipboardEvent, Confirm, FrameLimit, Task, Update, UpdateCheck};
+use qframe::runtime::{ClipboardEvent, Confirm, FrameLimit, Task, Termination, Update, UpdateCheck};
 use qframe::storage::{Family, FolderChanges, FolderWatch, Settings, machine_name};
 use qframe::widgets::{
-    ContextItem, ContextMenu, EmptyState, Field, FileChange, FileManager, FileManagerMsg, FileManagerState, FileView,
-    FolderEntry, Form, HelpLayer, KeyHints, Modal, NameFor, Panel, RowMark, TextInput, Toast, Tooltip,
+    BigText, ContextItem, ContextMenu, EmptyState, Field, FileChange, FileManager, FileManagerMsg, FileManagerState,
+    FileView, FolderEntry, Form, HelpLayer, KeyHints, Modal, NameFor, Panel, RowMark, TextInput, Toast, Tooltip,
 };
 
 use crate::apps::{
@@ -24,13 +28,18 @@ use crate::apps::{
 use crate::desktop::order::file_id;
 use crate::desktop::{self, Cell, Desktop, Floor, IconCell, grid};
 use crate::dock;
-use crate::files::{self, FilesWindow};
+use crate::files::{self, FilesWindow, Programs};
+use crate::gadgets::{Gadget, Kind};
 use crate::inbox::{Inbox, Notice};
 use crate::launcher::{self, Launcher, Shelf, Way};
 use crate::notice;
+use crate::power::{self, Action, Tools};
 use crate::session::{self, Change, Sessions, Start, Subtitle};
 use crate::settings::{self, DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, Prefs, UpdateFolders};
-use crate::wm::{self, Exit, Grip, TooSmall, Window, WindowId, Windows, layout};
+use crate::status::{Probe, Status};
+use crate::wm::{self, Exit, Grip, SPACES, TooSmall, Window, WindowId, Windows, layout};
+
+pub use gadgets::note_field;
 
 /// Below this many columns the desktop cannot be drawn and the screen says so.
 pub const MIN_WIDTH: u16 = 40;
@@ -44,6 +53,10 @@ pub const NARROW_HEIGHT: u16 = 16;
 /// The name of the floor, so the keys go back to it when a surface above it closes.
 pub const FLOOR: &str = "floor";
 
+/// The name of the password field of the lock screen, so the keys are in it the moment the screen
+/// locks and after a wrong password.
+pub const LOCK_FIELD: &str = "lock-password";
+
 /// The name of the field that asks for the name of a new folder of the Desktop, or a new name for
 /// one of its entries, so the keys go to it when the dialog opens.
 pub const NAME_FIELD: &str = "desktop-folder-name";
@@ -51,11 +64,18 @@ pub const NAME_FIELD: &str = "desktop-folder-name";
 /// The width of that dialog, in cells: the framework's file manager asks with the same.
 const NAMING_WIDTH: u16 = 48;
 
+/// The width of the password field of the lock screen, in cells.
+const LOCK_FIELD_WIDTH: u16 = 36;
+
 /// The program a folder opens in when it is on the machine: the ecosystem's file explorer.
 pub const EXPLORER: &str = "qexp";
 
 /// How far an arrow key with shift moves or sizes a window in desktop mode (design 3.3).
 pub const FAR_STEP: u16 = 5;
+
+/// How long the note on resizing stays while the pointer is not on it: two sentences take longer
+/// to read than a toast's usual five seconds.
+const RESIZE_HINT_FOR: Duration = Duration::from_secs(12);
 
 /// Reads the wall clock, in milliseconds since 1970-01-01 00:00 UTC.
 pub type WallClock = Box<dyn Fn() -> i64>;
@@ -66,8 +86,6 @@ pub type WallClock = Box<dyn Fn() -> i64>;
 ///
 /// Returns the terminal's error when the screen cannot be taken over or restored.
 pub fn run() -> io::Result<()> {
-    // The environment names no Desktop folder yet: the framework is to give it (request F13), and
-    // until then the floor shows the applications alone.
     let environment = Environment::from_process();
     let path = Desktop::path();
     let (desktop, mut notices) = match &path {
@@ -78,7 +96,13 @@ pub fn run() -> io::Result<()> {
     notices.extend(loaded.diagnostics);
     let catalog = Catalog::with_environment(loaded.entries, &environment);
     let chosen = settings::load();
-    let app = Desk::new(machine_name(), local_offset(), Box::new(wall_now))
+    let probe = Probe::new(&environment);
+    let notes = qframe::storage::data_dir("quvyta").map(|dir| dir.join("desktop").join("notes"));
+    let mut app = Desk::new(machine_name(), local_offset(), Box::new(wall_now)).probe(probe);
+    if let Some(notes) = notes {
+        app = app.notes_folder(notes);
+    }
+    let app = app
         .apps(environment)
         .catalog(catalog)
         .desktop(desktop)
@@ -158,6 +182,10 @@ pub enum Msg {
     /// A watched entry folder changed, on the watch of this run; `true` when there was something
     /// in the batch, `false` when the watch was dropped.
     Changed(u64, bool),
+    /// A bounded wait of the entry folders' watch of this run ended with nothing changed, so the
+    /// watch waits again. Only a desktop given a bound by
+    /// [`Desk::watch_within`](Desk::watch_within) — a screen test — ever hears this.
+    EntriesQuiet(u64),
     /// Something happened on the floor.
     Floor(desktop::Action),
     /// Open the launcher.
@@ -208,6 +236,11 @@ pub enum Msg {
     Arrow(Arrow, bool),
     /// Lay every window out at once.
     Tile,
+    /// Go to the workspace of this number, counted from 0, and give the keys to the window that
+    /// had them there.
+    Workspace(usize),
+    /// Send this window to the workspace of this number, counted from 0.
+    SendTo(WindowId, usize),
     /// Something happened on the Settings screen of a window.
     Settings(settings::Msg),
     /// Something happened in the file manager of a Files window.
@@ -216,6 +249,9 @@ pub enum Msg {
     FilesView(WindowId, FileView),
     /// A file chosen in a Files window, to open in a terminal window of its own.
     OpenFile(PathBuf),
+    /// "Open with" on a file's menu in a Files window: the file, and the desktop file id of the
+    /// terminal program chosen, or `None` for the person's editor.
+    OpenWith(PathBuf, Option<String>),
     /// "Open a terminal here" on a folder of a Files window.
     TerminalHere(PathBuf),
     /// "Open in a new window" on a folder of a Files window, and opening a folder of the Desktop.
@@ -250,6 +286,30 @@ pub enum Msg {
     PastedNowhere,
     /// A newer version of qdesk is out.
     NewVersion(Update),
+    /// A session action at the launcher's foot was pressed.
+    Power(Action),
+    /// Restarting or powering off was confirmed: carry it out.
+    PowerConfirmed(Action),
+    /// Restarting or powering off was asked of the system, which agreed or said why not.
+    PowerDone(Action, Result<(), String>),
+    /// The password field of the lock screen changed.
+    LockTyped(String),
+    /// Enter in the password field of the lock screen: check what is typed.
+    Unlock,
+    /// The password was checked: `true` when it was the person's.
+    Unlocked(bool),
+    /// Put a gadget of this kind on the floor: the floor's menu.
+    AddGadget(Kind),
+    /// Take the gadget at this index off the floor.
+    RemoveGadget(usize),
+    /// Change one option of the gadget at this index: its menu.
+    SetGadget(usize, crate::gadgets::Change),
+    /// The machine was read for the system gadget; the probe comes back for the next reading.
+    Sampled(Probe, Status),
+    /// The wall clock reached a new second, for a clock that shows its seconds.
+    Second,
+    /// The note kept in this file was typed into; this is all it holds now.
+    NoteTyped(String, String),
     /// Something arrived for an application that is no longer there.
     Ignore,
 }
@@ -261,6 +321,8 @@ pub enum Ask {
     Minimize,
     /// Fill the desktop with it, or give it its size back.
     Maximize,
+    /// Bring it forward and let the arrow keys size it.
+    Resize,
     /// Close it.
     Close,
 }
@@ -317,6 +379,10 @@ pub struct Desk {
     failures: BTreeMap<WindowId, Failure>,
     /// The file manager of every Files window, gone with its window.
     files: BTreeMap<WindowId, FilesWindow>,
+    /// Which programs open which kind of file, as the desktop's own databases say; read the first
+    /// time it is asked and again after the programs change. Shared with the menus of the Files
+    /// windows, which are built when they open.
+    openers: Arc<Programs>,
     /// The manager of the Desktop folder, whose entries stand on the floor after the applications;
     /// `None` when there is no Desktop folder. Nothing of it is drawn as a file manager: it reads
     /// and watches the folder, checks and makes names, and the floor shows what it read.
@@ -339,6 +405,34 @@ pub struct Desk {
     patience: Option<Duration>,
     /// Where the ecosystem's update notice is kept, or `None` where qdesk asks for no newer version.
     updates: Option<UpdateFolders>,
+    /// The helpers of the session actions, found on the environment's `PATH`.
+    tools: Tools,
+    /// The lock screen, while the screen is locked.
+    lock: Option<Lock>,
+    /// What the system gadget reads the machine with; away while a reading is under way, and
+    /// `None` for a desktop given none, which never reads the machine.
+    probe: Option<Probe>,
+    /// The reading the system gadget shows.
+    status: Status,
+    /// Whether a wait for the next second is under way, for a clock showing its seconds.
+    ticking: bool,
+    /// The folder the notes are kept in; `None` keeps them only while the desktop runs.
+    notes_dir: Option<PathBuf>,
+    /// What every note holds, by its file.
+    notes: BTreeMap<String, String>,
+    /// The notes whose files could not be read: never written over.
+    unreadable_notes: BTreeSet<String>,
+}
+
+/// What the lock screen holds while it covers the desktop.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Lock {
+    /// What is typed in the password field.
+    typed: String,
+    /// Whether a password is being checked; another Enter waits for the answer.
+    checking: bool,
+    /// Whether the last password was not the person's.
+    wrong: bool,
 }
 
 /// Why a window holds no program: the program that was to be started and what the system said.
@@ -386,6 +480,7 @@ impl Desk {
             attention: BTreeSet::new(),
             failures: BTreeMap::new(),
             files: BTreeMap::new(),
+            openers: Arc::new(Programs::new(XdgDirs::default(), None, None)),
             folder: None,
             dragging: None,
             keys: None,
@@ -396,6 +491,14 @@ impl Desk {
             leaving: false,
             patience: None,
             updates: None,
+            tools: Tools::default(),
+            lock: None,
+            probe: None,
+            status: Status::default(),
+            ticking: false,
+            notes_dir: None,
+            notes: BTreeMap::new(),
+            unreadable_notes: BTreeSet::new(),
         }
     }
 
@@ -440,9 +543,11 @@ impl Desk {
         // The Desktop folder is read when the desktop starts, after every other part is given.
         self.folder = apps.desktop.clone().map(FileManagerState::new);
         self.apps = apps;
+        self.openers = self.fresh_openers();
         // The programs need the shell and the home folder of this environment, and keep whatever
         // settings have been given so far, in whichever order the two were set.
         self.programs = Sessions::new(&self.apps, self.prefs, self.remote);
+        self.tools = Tools::find(&self.apps);
         self
     }
 
@@ -544,6 +649,12 @@ impl Desk {
         self.launcher.as_ref()
     }
 
+    /// Whether the lock screen covers the desktop.
+    #[must_use]
+    pub fn locked(&self) -> bool {
+        self.lock.is_some()
+    }
+
     /// The windows of the desktop.
     #[must_use]
     pub fn windows(&self) -> &Windows {
@@ -610,13 +721,10 @@ impl Desk {
 
     /// Starts watching the entry folders, so an application installed while the desktop is open
     /// appears by itself.
+    ///
+    /// A screen test's desktop watches them too, each wait bounded by its patience (see
+    /// [`watch_within`](Self::watch_within)): a test runs the wait where it stands.
     fn watch(&mut self) -> Command<Msg> {
-        if self.patience.is_some() {
-            // A screen test runs a command's wait where it stands, and a folder watch waits with no
-            // bound: a desktop given a data folder would never finish starting. A test's desktop
-            // reads its entries once, as a Files window of a test does not follow its folder.
-            return Command::none();
-        }
         let folders = self.apps.folders().watched();
         if folders.is_empty() {
             // Nothing to watch: an environment that names no entry folder at all. Waiting on a
@@ -628,15 +736,23 @@ impl Desk {
             // until it is opened again. That is worth no interruption.
             return Command::none();
         };
-        for folder in &folders {
-            // A folder that is not there yet cannot be watched; a program installed later brings
-            // it, and the next start sees it.
-            let _ = watch.watch(folder);
+        // A folder that is not there yet cannot be watched; a program installed later brings it,
+        // and the next start sees it.
+        let watched = folders.iter().filter(|folder| watch.watch(folder).is_ok()).count();
+        if watched == 0 {
+            // A watch of no folder never says anything: no thread is kept waiting on it.
+            return Command::none();
         }
         let changes = watch.changes();
         self.watch = Some(watch);
         self.run += 1;
-        wait(changes, self.run)
+        wait(changes, self.run, self.patience)
+    }
+
+    /// The databases of kinds and programs this environment names, not read yet.
+    fn fresh_openers(&self) -> Arc<Programs> {
+        let path = self.apps.path.clone();
+        Arc::new(Programs::new(self.apps.xdg(), self.apps.lang.as_deref(), path))
     }
 
     /// The notification one problem of the loaders becomes: the corner says it and the list keeps
@@ -655,8 +771,10 @@ impl Desk {
         let notices = loaded.diagnostics;
         self.catalog = Catalog::with_environment(loaded.entries, &self.apps);
         self.desktop.keep_known(|id| self.catalog.get(id).is_some());
+        // The programs changed, so which of them opens a file is read again when next asked.
+        self.openers = self.fresh_openers();
         let again = match &self.watch {
-            Some(watch) => wait(watch.changes(), self.run),
+            Some(watch) => wait(watch.changes(), self.run, self.patience),
             None => Command::none(),
         };
         let said: Vec<Command<Msg>> = notices.iter().map(|problem| self.told(problem)).collect();
@@ -692,6 +810,16 @@ impl Desk {
                 }
                 self.cursor = Some(index);
             }
+            desktop::Action::Extend(index) => {
+                // The range runs from the cursor, which stays where it is: a second shift click
+                // draws the range again from the same icon, as in a list of files.
+                let from = self.cursor.filter(|from| *from < ids.len()).unwrap_or(index);
+                let (low, high) = (from.min(index), from.max(index));
+                self.selection = ids.get(low..=high).map(<[String]>::to_vec).unwrap_or_default();
+                if self.cursor.is_none() {
+                    self.cursor = Some(index);
+                }
+            }
             desktop::Action::Band(indices) => {
                 self.selection = indices.iter().filter_map(|index| ids.get(*index).cloned()).collect();
                 self.cursor = indices.first().copied();
@@ -700,10 +828,18 @@ impl Desk {
             desktop::Action::Cursor(index) => self.cursor = Some(index),
             // Opening is the view's business: it makes the message with the name in it.
             desktop::Action::Open(index) => self.cursor = Some(index),
-            desktop::Action::Place { index, cell, layout } => {
+            desktop::Action::PlaceGadget { index, at } => {
+                if let Some(gadget) = self.desktop.widgets.get_mut(index)
+                    && gadget.place != at
+                {
+                    gadget.place = at;
+                    return Command::batch([closing, self.save()]);
+                }
+            }
+            desktop::Action::Place { index, moves, layout } => {
                 let drawn: Vec<(String, Option<Cell>)> =
                     ids.into_iter().zip(layout.into_iter().chain(std::iter::repeat(None))).collect();
-                if self.desktop.place(&drawn, index, cell) {
+                if self.desktop.place_all(&drawn, &moves) {
                     // The order of the icons does not change, so the cursor, which counts in it,
                     // stays on the icon that moved.
                     self.cursor = Some(index);
@@ -738,13 +874,14 @@ impl Desk {
                     launcher.selected = None;
                 }
             }
-            launcher::Msg::Select(index) | launcher::Msg::Activate(index) => launcher.selected = Some(index),
+            launcher::Msg::Select(index) => launcher.selected = Some(index),
             // The rest carry what they act on; the view turns them into the messages above.
             launcher::Msg::Submit
             | launcher::Msg::Open(_)
             | launcher::Msg::AddIcon(_)
             | launcher::Msg::RemoveIcon(_)
-            | launcher::Msg::Install(_) => {}
+            | launcher::Msg::Install(_)
+            | launcher::Msg::Power(_) => {}
         }
         Command::none()
     }
@@ -792,13 +929,11 @@ impl Desk {
         let open = if entry.single && !fresh { self.windows.of_entry(&entry.id) } else { None };
         let Some(id) = open else {
             let id = self.windows.open(entry);
-            return self.start(id, entry);
+            let started = self.start(id, entry);
+            return Command::batch([started, self.resize_hint()]);
         };
-        if self.windows.get(id).is_some_and(Window::is_minimized) {
-            self.windows.restore(id);
-        } else {
-            self.windows.raise(id);
-        }
+        // It may be on another workspace; the launcher takes the person there.
+        self.windows.bring(id);
         Command::none()
     }
 
@@ -806,27 +941,23 @@ impl Desk {
     /// entry's window forward when it opens only once and no window of its own was asked for.
     ///
     /// Each window has a manager of its own, kept under the window's id and let go with it. The
-    /// folders on screen are followed while the desktop runs; a screen test's desktop does not
-    /// follow them, because the framework's watch waits with no bound and a test runs that wait
-    /// where it stands (the same reason [`watch_within`](Self::watch_within) exists).
+    /// folders on screen are followed, in a screen test too, whose waits are bounded by the
+    /// desktop's patience (see [`watch_within`](Self::watch_within)).
     fn open_files(&mut self, entry: &Entry, root: PathBuf, fresh: bool) -> Command<Msg> {
         self.keys = None;
         if entry.single
             && !fresh
             && let Some(id) = self.windows.of_entry(&entry.id)
         {
-            if self.windows.get(id).is_some_and(Window::is_minimized) {
-                self.windows.restore(id);
-            } else {
-                self.windows.raise(id);
-            }
+            // It may be on another workspace; the launcher takes the person there.
+            self.windows.bring(id);
             return Command::none();
         }
         let id = self.windows.open(entry);
-        let mut window = FilesWindow::new(root, self.apps.data_home.as_deref(), self.patience.is_none());
+        let mut window = FilesWindow::new(root, self.apps.data_home.as_deref(), self.patience);
         let read = window.manager.load(move |message| Msg::Files(id, message));
         self.files.insert(id, window);
-        read
+        Command::batch([read, self.resize_hint()])
     }
 
     /// The window that shows `folder` in the ecosystem's file explorer, when Settings says folders
@@ -861,13 +992,16 @@ impl Desk {
         Command::batch([opened, self.body_focus()])
     }
 
-    /// Reads the Desktop folder, and follows it while the desktop runs. A screen test's desktop
-    /// does not follow it, for the reason [`watch`](Self::watch) gives; it reads the folder again
-    /// after each of its own changes to it, which the manager does by itself.
+    /// Reads the Desktop folder and follows it, so what another program puts in it comes to the
+    /// floor by itself. A screen test's desktop follows it too, each wait bounded by its patience
+    /// (see [`watch_within`](Self::watch_within)).
     fn read_folder(&mut self) -> Command<Msg> {
-        let following = self.patience.is_none();
-        let Some(folder) = &mut self.folder else { return Command::none() };
-        folder.set_following(following);
+        let patience = self.patience;
+        let Some(folder) = self.folder.take() else { return Command::none() };
+        let folder = self.folder.insert(match patience {
+            Some(bound) => folder.following_within(bound),
+            None => folder.following(true),
+        });
         folder.load(Msg::DesktopFolder)
     }
 
@@ -916,19 +1050,42 @@ impl Desk {
         Command::batch([asked, Command::focus(NAME_FIELD)])
     }
 
-    /// Opens `file`, chosen in a Files window, in a terminal window of its own: in the person's
-    /// editor, else in [`files::READER`], started in the file's folder.
+    /// Opens `file`, chosen in a Files window or on the floor, in a terminal window of its own,
+    /// started in the file's folder: with the terminal program the desktop's databases choose for
+    /// its kind, else in the person's editor, else in [`files::READER`] (see
+    /// [`files::default_command`]).
+    fn open_file(&mut self, file: &Path) -> Command<Msg> {
+        let choices = self.openers.for_file(file);
+        let words = files::default_command(&choices, self.apps.editor.as_deref(), file);
+        self.open_file_with(file, words)
+    }
+
+    /// Opens `file` with the program chosen on its "Open with" menu: the terminal program of the
+    /// desktop file id `program`, or the person's editor for `None`. A program that has gone since
+    /// the menu opened leaves the file to the editor.
+    fn open_with(&mut self, file: &Path, program: Option<&str>) -> Command<Msg> {
+        let openers = Arc::clone(&self.openers);
+        let words = program
+            .and_then(|id| openers.terminal_program(id))
+            .and_then(|app| files::with_program(app, file))
+            .or_else(|| files::opener(self.apps.editor.as_deref(), file));
+        self.open_file_with(file, words)
+    }
+
+    /// Opens `file` in a window running `words`.
     ///
     /// Every terminal program is an application, and an editor is one; the window is the same as
-    /// any command's, and stays when the program ends, so what it said last can be read. A file
-    /// whose name is not text is not opened under a guessed name: the corner says why.
-    fn open_file(&mut self, file: &Path) -> Command<Msg> {
+    /// any command's, and stays when the program ends, so what it said last can be read. It is
+    /// named after the file and drawn with the icon of the file's kind. A file whose name is not
+    /// text (`words` is `None`) is not opened under a guessed name: the corner says why.
+    fn open_file_with(&mut self, file: &Path, words: Option<Vec<String>>) -> Command<Msg> {
         let name =
             file.file_name().map_or_else(|| file.display().to_string(), |name| name.to_string_lossy().into_owned());
-        let Some(words) = files::opener(self.apps.editor.as_deref(), file) else {
+        let Some(words) = words else {
             return Command::toast(Toast::info(t!("files.not-text", name = name.as_str())));
         };
-        let mut entry = Self::made_entry("files.open", &name, "file", Category::Files, Launch::Command(words));
+        let icon = desktop::kind_icon(&name, false, false);
+        let mut entry = Self::made_entry("files.open", &name, icon, Category::Files, Launch::Command(words));
         entry.folder = file.parent().map(Path::to_path_buf);
         let opened = self.open_entry(&entry, true);
         Command::batch([opened, self.body_focus()])
@@ -1104,6 +1261,11 @@ impl Desk {
             None => body.clone(),
         };
         self.inbox.add(Notice::from(id, written));
+        // Over the lock screen the corner would show what the program said to anyone passing; the
+        // list keeps it for the person who unlocks.
+        if self.lock.is_some() {
+            return Command::none();
+        }
         let toast = match heading {
             Some(heading) => Toast::info(heading).body(body),
             None => Toast::info(body),
@@ -1135,6 +1297,9 @@ impl Desk {
                     None => t!("window.ended-signal"),
                 };
                 self.inbox.add(Notice::from(id, line.clone()));
+                if self.lock.is_some() {
+                    return Command::none();
+                }
                 let toast = match said {
                     Some(said) => Toast::info(said).body(line),
                     None => Toast::info(line),
@@ -1149,14 +1314,69 @@ impl Desk {
         }
     }
 
-    /// Brings the window `id` forward, from the dock or from a press on one of its notifications.
+    /// Brings the window `id` forward, from the dock or from a press on one of its notifications,
+    /// going to its workspace when it is on another one.
+    /// "Resize" on a window's menu: the window comes forward and desktop mode opens at its sizing
+    /// step, where the arrows size it and the dock's row says the mouse does it too.
+    fn resize_from_keys(&mut self, id: WindowId) -> Command<Msg> {
+        self.inbox_open = false;
+        self.more = false;
+        if !self.windows.bring(id) {
+            return Command::none();
+        }
+        self.keys = Some(Keys::Resize);
+        Command::focus(FLOOR)
+    }
+
+    /// The note on how a window is resized, the first time a window opens and never again: the
+    /// edges that size a window say nothing of themselves until the pointer is over them.
+    fn resize_hint(&mut self) -> Command<Msg> {
+        if self.desktop.resize_hint_seen {
+            return Command::none();
+        }
+        self.desktop.resize_hint_seen = true;
+        let toast = Toast::info(t!("window.resize-hint"))
+            .body(t!("window.resize-hint-body"))
+            .key("resize-hint")
+            .duration(RESIZE_HINT_FOR);
+        Command::batch([Command::toast(toast), self.save()])
+    }
+
     fn bring(&mut self, id: WindowId) -> Command<Msg> {
         // The list has been acted on, so it steps out of the way of the window it just raised.
         self.inbox_open = false;
-        if self.windows.get(id).is_some_and(Window::is_minimized) {
-            self.windows.restore(id);
-        } else if !self.windows.raise(id) {
+        let away = self.windows.get(id).is_some_and(|window| window.space() != self.windows.current());
+        if !self.windows.bring(id) {
             return Command::none();
+        }
+        if away {
+            self.more = false;
+        }
+        self.body_focus()
+    }
+
+    /// Goes to the workspace `space` and gives the keys to the window that had them there, or to
+    /// the floor: like opening a window from the launcher, going somewhere is a step out of desktop
+    /// mode (design 3.10).
+    fn switch(&mut self, space: usize) -> Command<Msg> {
+        if !self.windows.switch(space) {
+            return Command::none();
+        }
+        // The list of the windows that did not fit named the windows of the workspace just left.
+        self.more = false;
+        self.keys = None;
+        self.dragging = None;
+        self.body_focus()
+    }
+
+    /// Sends the window `id` to the workspace `space`. Desktop mode stays: a person sending windows
+    /// away is arranging them, and the next key is likely another such step.
+    fn send_to(&mut self, id: WindowId, space: usize) -> Command<Msg> {
+        if !self.windows.send(id, space) {
+            return Command::none();
+        }
+        if self.dragging.map(wm::Dragging::id) == Some(id) {
+            self.dragging = None;
         }
         self.body_focus()
     }
@@ -1580,6 +1800,75 @@ impl Desk {
         Command::batch([told, opened, self.body_focus()])
     }
 
+    /// A session action pressed at the launcher's foot. The launcher goes away first, as it does
+    /// for an application.
+    fn on_power(&mut self, action: Action) -> Command<Msg> {
+        self.launcher = None;
+        // Only what the launcher offered can be asked for: a message that names another action,
+        // on a machine or a connection where it is hidden, does nothing.
+        if !self.tools.offered(self.remote).contains(&action) {
+            return Command::focus(FLOOR);
+        }
+        match action {
+            Action::Lock => {
+                self.lock = Some(Lock::default());
+                self.keys = None;
+                self.help = false;
+                self.more = false;
+                self.inbox_open = false;
+                Command::focus(LOCK_FIELD)
+            }
+            // Logging out is leaving qdesk, with the question leaving asks when programs run.
+            Action::LogOut if self.programs.running() > 0 => Command::batch([Command::focus(FLOOR), self.ask_quit()]),
+            Action::LogOut => Command::quit(),
+            Action::Restart | Action::PowerOff => {
+                let running = self.programs.running();
+                let key = action.key();
+                let message = if running > 0 {
+                    t!(&format!("power.{key}-running"), n = running)
+                } else {
+                    t!(&format!("power.{key}-text"))
+                };
+                let question = Confirm::new(t!(&format!("power.{key}-title")), Msg::PowerConfirmed(action))
+                    .message(message)
+                    .confirm_label(action.label())
+                    .danger();
+                Command::batch([Command::focus(FLOOR), Command::confirm(question)])
+            }
+        }
+    }
+
+    /// Restarting or powering off, once confirmed: `systemctl` is asked off the render path, and
+    /// the corner says why when the system does not agree.
+    ///
+    /// The only way here is the answer to the question [`on_power`](Self::on_power) asks. The
+    /// action is looked at again all the same: an answer that arrives after the terminal became a
+    /// remote one, or a message from anywhere else, never powers off what the launcher would not
+    /// have offered.
+    fn carry_out(&self, action: Action) -> Command<Msg> {
+        if !self.tools.offered(self.remote).contains(&action) {
+            return Command::none();
+        }
+        match self.tools.command(action) {
+            Some(process) => Command::perform(move || Msg::PowerDone(action, power::carry_out(process))),
+            None => Command::none(),
+        }
+    }
+
+    /// Checks what is typed on the lock screen, off the render path. The field is emptied at once:
+    /// the password is not kept on screen or in the desktop while it is checked.
+    fn unlock(&mut self) -> Command<Msg> {
+        let Some(lock) = &mut self.lock else { return Command::none() };
+        if lock.checking {
+            return Command::none();
+        }
+        let Some(checker) = self.tools.checker().cloned() else { return Command::none() };
+        lock.checking = true;
+        lock.wrong = false;
+        let typed = std::mem::take(&mut lock.typed);
+        Command::perform(move || Msg::Unlocked(checker.check(&typed)))
+    }
+
     /// Applies one message. [`App::update`] wraps it, so what every message leaves behind is
     /// settled in one place.
     fn applied(&mut self, msg: Msg) -> Command<Msg> {
@@ -1588,11 +1877,49 @@ impl Desk {
             Msg::Changed(run, changed) if run == self.run && changed => self.reload(),
             // A batch of an older run, or the last empty answer of a dropped watch.
             Msg::Changed(..) | Msg::Ignore => Command::none(),
+            Msg::EntriesQuiet(run) => match &self.watch {
+                Some(watch) if run == self.run => wait(watch.changes(), run, self.patience),
+                // A watch that has been let go, or replaced, is not waited on again.
+                _ => Command::none(),
+            },
             // It is said in the corner and nowhere else: this is the answer to something the
             // person just did, not an event of the desktop worth keeping in the list.
             Msg::PastedNowhere => Command::toast(Toast::info(t!("notice.paste-nowhere"))),
             Msg::NewVersion(update) => Command::toast(update.toast()),
+            Msg::Power(action) => self.on_power(action),
+            Msg::PowerConfirmed(action) => self.carry_out(action),
+            Msg::PowerDone(_, Ok(())) => Command::none(),
+            Msg::PowerDone(action, Err(reason)) => {
+                let heading = t!(&format!("power.{}-failed", action.key()));
+                self.inbox.add(Notice::desktop(heading.clone(), reason.clone()));
+                Command::toast(Toast::warning(heading).body(reason))
+            }
+            Msg::LockTyped(typed) => {
+                if let Some(lock) = &mut self.lock {
+                    lock.typed = typed;
+                    lock.wrong = false;
+                }
+                Command::none()
+            }
+            Msg::Unlock => self.unlock(),
+            Msg::Unlocked(true) => {
+                self.lock = None;
+                self.body_focus()
+            }
+            Msg::Unlocked(false) => {
+                if let Some(lock) = &mut self.lock {
+                    lock.checking = false;
+                    lock.wrong = true;
+                }
+                Command::focus(LOCK_FIELD)
+            }
             Msg::Floor(action) => self.on_floor(action),
+            msg @ (Msg::AddGadget(_)
+            | Msg::RemoveGadget(_)
+            | Msg::SetGadget(..)
+            | Msg::Sampled(..)
+            | Msg::Second
+            | Msg::NoteTyped(..)) => self.on_gadget(msg),
             Msg::OpenLauncher => {
                 self.launcher = Some(Launcher::default());
                 Command::focus(launcher::SEARCH)
@@ -1617,6 +1944,7 @@ impl Desk {
                 self.windows.toggle_maximized(id);
                 Command::none()
             }
+            Msg::Ask(Ask::Resize, id) => self.resize_from_keys(id),
             Msg::Ask(Ask::Close, id) => self.ask_close(id),
             Msg::CloseAnyway(id) => self.close_window(id),
             Msg::Program(report) => self.on_program(report),
@@ -1655,9 +1983,12 @@ impl Desk {
             }
             Msg::Arrow(arrow, far) => self.on_arrow(arrow, far),
             Msg::Tile => self.tile(),
+            Msg::Workspace(space) => self.switch(space),
+            Msg::SendTo(id, space) => self.send_to(id, space),
             Msg::Settings(message) => self.on_settings(message),
             Msg::Files(id, message) => self.on_files(id, message),
             Msg::OpenFile(file) => self.open_file(&file),
+            Msg::OpenWith(file, program) => self.open_with(&file, program.as_deref()),
             Msg::TerminalHere(folder) => self.terminal_here(folder),
             Msg::FilesHere(folder) => self.open_folder(folder),
             Msg::DesktopFolder(message) => self.on_folder(message),
@@ -1723,14 +2054,15 @@ impl Desk {
         size.width < NARROW_WIDTH || size.height < NARROW_HEIGHT
     }
 
-    /// The open windows as the dock shows them, in the order they were opened.
+    /// The open windows of the workspace on screen as the dock shows them, in the order they were
+    /// opened.
     fn items(&self, ui: &View<'_, Msg>) -> Vec<dock::Item> {
         let language = ui.env().i18n().active();
         let icons = ui.env().icons();
         let mark = icons.glyph("window-minimize").into_owned();
         let called = icons.glyph("dot").into_owned();
         let focus = self.windows.focus();
-        let mut windows: Vec<&Window> = self.windows.iter().collect();
+        let mut windows: Vec<&Window> = self.windows.here().collect();
         windows.sort_by_key(|window| window.id());
         windows
             .into_iter()
@@ -1757,6 +2089,7 @@ impl Desk {
         let padding = ui.env().theme().style("button", None, &[]).pair("padding").map_or(2, |(_, sides)| sides);
         let plan = dock::plan(ui.size().width, &self.machine_text(), &clock, &count, &labels, padding);
         let desktop_keys = self.keys;
+        let workspaces = self.workspaces();
         let row = |ui: &mut View<'_, Msg>| match desktop_keys {
             // In desktop mode the dock's row says what the keys do, as the design asks (3.3).
             // It replaces the dock wherever the dock now is, so the row the person reads never
@@ -1764,6 +2097,8 @@ impl Desk {
             Some(keys) => Self::hints_view(keys, ui),
             None => {
                 let presses = dock::Presses {
+                    space: &Msg::Workspace,
+                    workspaces,
                     launcher: Msg::ToggleLauncher,
                     launcher_open: self.launcher.is_some(),
                     more: Msg::MoreWindows,
@@ -1807,8 +2142,9 @@ impl Desk {
     /// The floor, with the windows over it and the launcher and the welcome line above them.
     fn body(&self, items: &[dock::Item], plan: &dock::Plan, ui: &mut View<'_, Msg>) {
         ui.stack(|ui| {
-            // The floor's colour from the settings, under the icons; the windows keep the theme.
-            settings::ground(self.prefs.floor, ui);
+            // The floor's colour and pattern from the settings, under the icons; the windows keep
+            // the theme.
+            settings::ground(self.prefs.floor, self.prefs.floor_style, ui);
             self.floor(ui);
             self.windows_view(ui);
             if self.more && plan.hidden > 0 {
@@ -1930,23 +2266,46 @@ impl Desk {
         // The menu is built when it opens, long after this frame, so it takes the folders along.
         let folders = files.manager.folder_keys();
         let root = files.manager.root().to_path_buf();
+        let openers = Arc::clone(&self.openers);
+        let editor = self.apps.editor.clone();
         FileManager::new(&files.manager, move |message| Msg::Files(id, message))
             .view(files.view)
+            .kind_icons(true)
             .on_open(|file| Msg::OpenFile(file.to_path_buf()))
             .on_open_terminal(|folder| Msg::TerminalHere(folder.to_path_buf()))
             .menu_items(move |key, _| {
+                let path = key.split('/').filter(|part| !part.is_empty()).fold(root.clone(), |at, part| at.join(part));
                 if key.is_empty() || folders.contains(key) {
-                    let folder =
-                        key.split('/').filter(|part| !part.is_empty()).fold(root.clone(), |at, part| at.join(part));
-                    vec![ContextItem::new(t!("files.open-new-window"), Msg::FilesHere(folder))]
+                    vec![ContextItem::new(t!("files.open-new-window"), Msg::FilesHere(path))]
                 } else {
-                    Vec::new()
+                    vec![Self::open_with_menu(&openers, editor.as_deref(), path)]
                 }
             })
             .row_mark(move |key| marks.get(key).cloned().unwrap_or_else(RowMark::new))
             .show(ui)
             .id(wm::view::body_id(id))
             .fill();
+    }
+
+    /// The "Open with" row of a file's menu: the terminal programs the desktop's databases name
+    /// for the file's kind, the default first, and the person's editor last, which opens any file.
+    ///
+    /// Graphical programs are left out, as they would have no screen to open on. The databases
+    /// are read here, when the menu opens, not while the window is drawn.
+    fn open_with_menu(openers: &Programs, editor: Option<&str>, file: PathBuf) -> ContextItem<Msg> {
+        let choices = openers.for_file(&file);
+        let mut items: Vec<ContextItem<Msg>> = files::terminal_programs(&choices)
+            .into_iter()
+            .map(|app| ContextItem::new(app.name.clone(), Msg::OpenWith(file.clone(), Some(app.id.clone()))))
+            .collect();
+        let program = files::editor_name(editor);
+        let label = if editor.is_some_and(|editor| !editor.trim().is_empty()) {
+            t!("files.open-with-editor", program = program.as_str())
+        } else {
+            t!("files.open-with-reader", program = program.as_str())
+        };
+        items.push(ContextItem::new(label, Msg::OpenWith(file, None)));
+        ContextItem::submenu(t!("files.open-with"), items)
     }
 
     /// The line a window shows when its program has ended: what it ended with, and the two ways on.
@@ -1992,8 +2351,16 @@ impl Desk {
         let mut items = vec![
             ContextItem::new(t!("window.minimize"), Msg::Ask(Ask::Minimize, id)),
             ContextItem::new(t!("window.maximize"), Msg::Ask(Ask::Maximize, id)),
+            ContextItem::new(t!("window.resize"), Msg::Ask(Ask::Resize, id)),
             ContextItem::new(t!("window.tile"), Msg::Tile),
         ];
+        // The other workspaces, each a row of its own: four is few enough to name them all, and a
+        // submenu would hide the one thing the row is for.
+        let here = self.windows.get(id).map_or(self.windows.current(), Window::space);
+        items.push(ContextItem::gap());
+        for space in (0..SPACES).filter(|space| *space != here) {
+            items.push(ContextItem::new(t!("window.send-to", n = space + 1), Msg::SendTo(id, space)));
+        }
         if let Some(files) = self.files.get(&id) {
             items.push(ContextItem::gap());
             for (view, label) in [
@@ -2111,6 +2478,15 @@ impl Desk {
         );
     }
 
+    /// The workspaces as the dock's marks show them.
+    fn workspaces(&self) -> dock::Workspaces {
+        let mut occupied = [false; SPACES];
+        for (space, held) in occupied.iter_mut().enumerate() {
+            *held = self.windows.occupied(space);
+        }
+        dock::Workspaces { current: self.windows.current(), occupied }
+    }
+
     /// What the keys do while the desktop has them, in the dock's row.
     fn hints_view(keys: Keys, ui: &mut View<'_, Msg>) {
         let icons = ui.env().icons();
@@ -2127,16 +2503,28 @@ impl Desk {
                 .hint("r", t!("mode.resize"))
                 .hint("x", t!("mode.close"))
                 .hint("esc", t!("mode.leave"))
+                // Going to a workspace leaves desktop mode, and the dock that comes back shows the
+                // marks: the row needs no marks of its own, only the key.
+                .hint(format!("1-{SPACES}"), t!("mode.workspace"))
                 .hint("z", t!("mode.maximize"))
                 .hint("n", t!("mode.minimize"))
                 .hint("t", t!("mode.tile"))
                 .hint("space", t!("mode.launcher"))
                 .hint("b", t!("mode.notices")),
-            Keys::Move | Keys::Resize => KeyHints::new()
-                .hint(arrows, if keys == Keys::Move { t!("mode.move") } else { t!("mode.resize") })
+            Keys::Move => KeyHints::new()
+                .hint(arrows, t!("mode.move"))
                 .hint("shift", t!("mode.far", cells = FAR_STEP))
                 .hint("enter", t!("mode.release"))
                 .hint("esc", t!("mode.back")),
+            // Sizing also says the mouse does it: this row is where a person who came from the
+            // window's menu looks, and the edges say nothing until the pointer is over them. It
+            // comes before shift, which a narrow row drops first and the help layer still lists.
+            Keys::Resize => KeyHints::new()
+                .hint(arrows, t!("mode.resize"))
+                .hint(t!("mode.drag"), t!("mode.drag-label"))
+                .hint("enter", t!("mode.release"))
+                .hint("esc", t!("mode.back"))
+                .hint("shift", t!("mode.far", cells = FAR_STEP)),
         };
         ui.add(hints).fill_width().height(Length::Cells(dock::HEIGHT));
     }
@@ -2169,7 +2557,7 @@ impl Desk {
                 shown.push(FloorIcon {
                     id: file_id(&entry.name),
                     name: entry.name.clone(),
-                    glyph: icons.glyph(if entry.folder { "folder" } else { "file" }).into_owned(),
+                    glyph: icons.glyph(desktop::kind_icon(&entry.name, entry.folder, entry.executable)).into_owned(),
                     menu: Self::entry_items(&entry.name, &open),
                     open,
                 });
@@ -2177,6 +2565,12 @@ impl Desk {
         }
         let names: Vec<String> = shown.iter().map(|icon| icon.name.clone()).collect();
         let places: Vec<Option<Cell>> = shown.iter().map(|icon| self.desktop.places.get(&icon.id).copied()).collect();
+        let selected: Vec<usize> = shown
+            .iter()
+            .enumerate()
+            .filter(|(_, icon)| self.selection.contains(&icon.id))
+            .map(|(index, _)| index)
+            .collect();
         let cursor = self.cursor;
         // In desktop mode the arrows pick a window, so the floor lets them through; while a name
         // is asked for, the keys are the dialog's.
@@ -2198,6 +2592,8 @@ impl Desk {
                 other => Msg::Floor(other),
             })
             .places(places)
+            .gadgets(self.desktop.widgets.iter().map(Gadget::spot).collect())
+            .selected(selected)
             .cursor(cursor)
             .keys(keys);
             ui.add_with(floor, |ui| {
@@ -2220,6 +2616,7 @@ impl Desk {
                         });
                     }
                 }
+                self.gadget_nodes(ui);
             })
             .id(FLOOR)
             .fill();
@@ -2321,6 +2718,7 @@ impl Desk {
             items.push(ContextItem::new(t!("floor.new-folder"), Msg::NewFolder));
         }
         items.push(ContextItem::new(t!("floor.add-application"), Msg::OpenLauncher));
+        items.extend(self.gadget_floor_items());
         let mut arranged: Vec<(String, String)> =
             self.icons().iter().map(|entry| (entry.name.get(language).to_lowercase(), entry.id.clone())).collect();
         arranged.sort();
@@ -2342,6 +2740,7 @@ impl Desk {
         let shelves = launcher::shelves(&self.catalog, &self.desktop, &language);
         let targets: Vec<Target> =
             apps.iter().filter_map(|app| self.catalog.get(&app.id)).map(|entry| Target::of(entry, &language)).collect();
+        let actions = self.tools.offered(self.remote);
         self.against_dock(ui, |ui| {
             ui.row(|ui| {
                 ui.map(
@@ -2351,13 +2750,55 @@ impl Desk {
                         launcher::Msg::Install(id) => find(&targets, &id).map_or(Msg::Ignore, Msg::Install),
                         launcher::Msg::AddIcon(id) => find(&targets, &id).map_or(Msg::Ignore, Msg::AddIcon),
                         launcher::Msg::RemoveIcon(id) => find(&targets, &id).map_or(Msg::Ignore, Msg::RemoveIcon),
+                        launcher::Msg::Power(action) => Msg::Power(action),
                         other => Msg::Launcher(other),
                     },
-                    |ui| launcher::view(launcher, &apps, &shelves, ui),
+                    |ui| launcher::view(launcher, &apps, &shelves, &actions, ui),
                 );
                 ui.spacer();
             });
         });
+    }
+
+    /// The lock screen: the time, the machine and a field for the person's password, over
+    /// everything else. Nothing of the desktop is drawn under it, so nothing of it can be read or
+    /// pressed.
+    fn lock_view(&self, lock: &Lock, ui: &mut View<'_, Msg>) {
+        let user = self.tools.checker().map(|checker| checker.user().to_owned()).unwrap_or_default();
+        let clock = self.clock_text();
+        let machine = self.machine_text();
+        ui.column(|ui| {
+            ui.spacer();
+            ui.add(BigText::new(clock));
+            ui.add(Text::new(machine).role("secondary").no_wrap());
+            ui.spacer().height(Length::Cells(1));
+            ui.row(|ui| {
+                ui.add(
+                    TextInput::new(lock.typed.clone())
+                        .password(true)
+                        .placeholder(t!("power.lock-password", user = user.as_str()))
+                        .disabled(lock.checking)
+                        .invalid(lock.wrong)
+                        .on_change(Msg::LockTyped)
+                        .on_submit(|_| Msg::Unlock),
+                )
+                .id(LOCK_FIELD)
+                .width(Length::Cells(LOCK_FIELD_WIDTH));
+            });
+            let (line, role) = if lock.checking {
+                (t!("power.lock-checking"), "secondary")
+            } else if lock.wrong {
+                (t!("power.lock-wrong"), "")
+            } else {
+                (t!("power.lock-hint"), "faint")
+            };
+            let line = Text::new(line).no_wrap();
+            let line = if role.is_empty() { line.color("danger") } else { line.role(role) };
+            ui.add(line);
+            ui.spacer();
+        })
+        .align(Align::Center)
+        .fill();
     }
 
     /// The welcome line, shown once and never again once it is closed.
@@ -2386,8 +2827,17 @@ impl From<settings::Msg> for Msg {
 }
 
 /// Waits for the next batch of changes of the watch of run `run`.
-fn wait(changes: FolderChanges, run: u64) -> Command<Msg> {
-    Command::perform(move || Msg::Changed(run, !changes.next().is_empty()))
+///
+/// With a `patience` the wait lasts at most that long, and ends with [`Msg::EntriesQuiet`] when
+/// nothing changed; without one it lasts until something does.
+fn wait(changes: FolderChanges, run: u64, patience: Option<Duration>) -> Command<Msg> {
+    Command::perform(move || match patience {
+        None => Msg::Changed(run, !changes.next().is_empty()),
+        Some(bound) => match changes.next_within(bound) {
+            Some(batch) => Msg::Changed(run, !batch.is_empty()),
+            None => Msg::EntriesQuiet(run),
+        },
+    })
 }
 
 /// One icon as the floor draws it: what it is called and drawn with, what opening it does, and
@@ -2419,7 +2869,13 @@ impl App for Desk {
         let watching = self.watch();
         let reading = self.read_folder();
         let asked = self.ask_for_update();
-        Command::batch([self.next_minute(), watching, reading, Command::focus(FLOOR), asked].into_iter().chain(notices))
+        let notes = self.read_notes();
+        let ticks = self.gadget_ticks();
+        Command::batch(
+            [self.next_minute(), watching, reading, Command::focus(FLOOR), asked, notes, ticks]
+                .into_iter()
+                .chain(notices),
+        )
     }
 
     fn resized(&self, size: Size) -> Option<Msg> {
@@ -2444,6 +2900,10 @@ impl App for Desk {
     }
 
     fn action(&self, name: &str) -> Option<Msg> {
+        // The lock screen answers none of the desktop's keys: they would reach what it covers.
+        if self.lock.is_some() {
+            return None;
+        }
         match name {
             "launcher" => Some(Msg::ToggleLauncher),
             "close" => Some(Msg::Close),
@@ -2460,6 +2920,14 @@ impl App for Desk {
             "window-minimize" => self.windows.focus().map(|id| Msg::Ask(Ask::Minimize, id)),
             "window-close" => self.windows.focus().map(|id| Msg::Ask(Ask::Close, id)),
             "window-tile" => Some(Msg::Tile),
+            "workspace-1" => Some(Msg::Workspace(0)),
+            "workspace-2" => Some(Msg::Workspace(1)),
+            "workspace-3" => Some(Msg::Workspace(2)),
+            "workspace-4" => Some(Msg::Workspace(3)),
+            "send-to-1" => self.windows.focus().map(|id| Msg::SendTo(id, 0)),
+            "send-to-2" => self.windows.focus().map(|id| Msg::SendTo(id, 1)),
+            "send-to-3" => self.windows.focus().map(|id| Msg::SendTo(id, 2)),
+            "send-to-4" => self.windows.focus().map(|id| Msg::SendTo(id, 3)),
             "notices" => Some(Msg::Notices),
             "window-left" => Some(Msg::Arrow(Arrow::Left, false)),
             "window-right" => Some(Msg::Arrow(Arrow::Right, false)),
@@ -2485,6 +2953,9 @@ impl App for Desk {
     /// and a word for every stray paste would be noise. Copies are not answered at all.
     fn clipboard(&self, event: &ClipboardEvent) -> Option<Msg> {
         let ClipboardEvent::Pasted(_) = event else { return None };
+        if self.lock.is_some() {
+            return None;
+        }
         // Only while the keys belong to the window in front and nothing stands over it; otherwise
         // the paste was never aimed at the window's body.
         if self.keys.is_some() || self.launcher.is_some() || self.help || self.inbox_open {
@@ -2498,8 +2969,23 @@ impl App for Desk {
     }
 
     fn before_quit(&self) -> Option<Msg> {
+        // A locked screen is not left: on a machine whose session starts qdesk again, leaving would
+        // be a way past the lock.
+        if self.lock.is_some() {
+            return Some(Msg::Ignore);
+        }
         // The person's programs are their data: leaving with one running is asked about, counted.
         (self.programs.running() > 0).then_some(Msg::AskQuit)
+    }
+
+    /// The system ending qdesk is answered as the framework does, except that a locked screen
+    /// does not keep a machine that is going down waiting: nobody is there to answer a question.
+    fn terminating(&self, cause: Termination) -> Option<Msg> {
+        match cause {
+            Termination::Terminate if self.lock.is_none() => self.before_quit(),
+            // A locked screen, a hangup and whatever else the system may end qdesk for: at once.
+            _ => None,
+        }
     }
 
     fn update(&mut self, msg: Msg) -> Command<Msg> {
@@ -2513,7 +2999,9 @@ impl App for Desk {
 
     fn view(&self, ui: &mut View<'_, Msg>) {
         let size = ui.size();
-        if size.width < MIN_WIDTH || size.height < MIN_HEIGHT {
+        if let Some(lock) = &self.lock {
+            self.lock_view(lock, ui);
+        } else if size.width < MIN_WIDTH || size.height < MIN_HEIGHT {
             Self::too_small(ui);
         } else {
             self.desktop_view(ui);

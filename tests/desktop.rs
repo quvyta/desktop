@@ -68,12 +68,24 @@ fn rows(harness: &Harness<Desk>) -> Vec<String> {
 }
 
 /// The dock row as a terminal of `width` columns shows it: the launcher button at the left end,
-/// a button with the pillar's cell and a space before its glyph and two spaces after it, the parts
-/// at the right one, one free cell after them.
+/// a button with the pillar's cell and a space before its glyph and two spaces after it, the marks
+/// of the four workspaces two cells on (the first one on screen, all of them empty), the parts at
+/// the right one, one free cell after them.
 fn dock_line(harness: &Harness<Desk>, width: u16, parts: &str) -> String {
     let glyph = harness.env().icons().glyph(quvyta_icon(harness.env().icons())).into_owned();
-    let left = format!("   {glyph}  ");
-    let used = qframe::text::width(&left) + qframe::text::width(parts) + 1;
+    let empty = harness.env().icons().glyph("dot-outline").into_owned();
+    row(&format!("   {glyph}    1 {empty} {empty} {empty}  "), width, parts)
+}
+
+/// The same row where the machine name left no room for the marks of the workspaces.
+fn bare_dock_line(harness: &Harness<Desk>, width: u16, parts: &str) -> String {
+    let glyph = harness.env().icons().glyph(quvyta_icon(harness.env().icons())).into_owned();
+    row(&format!("   {glyph}  "), width, parts)
+}
+
+/// `left` and `parts` at the two ends of a row of `width` columns, one free cell after the parts.
+fn row(left: &str, width: u16, parts: &str) -> String {
+    let used = qframe::text::width(left) + qframe::text::width(parts) + 1;
     format!("{left}{}{parts}", " ".repeat(usize::from(width) - usize::from(used)))
 }
 
@@ -137,7 +149,8 @@ fn a_long_machine_name_pushes_the_clock_out_before_it_is_shortened() {
     // 34 cells fit the 35 a 40-column dock leaves beside the launcher button, but not with the
     // clock beside them.
     let alone = desk_on(Some("build-server-europe-west-3-tail"), Some(OFFSET), &clock, 40, 10);
-    assert_eq!(rows(&alone)[9], dock_line(&alone, 40, "build-server-europe-west-3-tail"), "the clock went first");
+    let expected = bare_dock_line(&alone, 40, "build-server-europe-west-3-tail");
+    assert_eq!(rows(&alone)[9], expected, "the clock went first, and the number of the workspace after it");
     let cut = desk_on(Some("build-server-europe-west-17-very-long-tail"), Some(OFFSET), &clock, 40, 10);
     let dock = &rows(&cut)[9];
     assert!(dock.contains("build") && dock.ends_with("long-tail"), "the name keeps both ends: {dock}");

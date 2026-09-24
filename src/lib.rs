@@ -6,11 +6,14 @@ pub mod cli;
 pub mod desktop;
 pub mod dock;
 pub mod files;
+pub mod gadgets;
 pub mod inbox;
 pub mod launcher;
 pub mod notice;
+pub mod power;
 pub mod session;
 pub mod settings;
+pub mod status;
 pub mod wm;
 
 pub use app::run;

@@ -23,6 +23,7 @@ use toml::de::{DeTable, DeValue};
 
 use super::grid::Cell;
 use crate::apps::{Diagnostic, DiagnosticKind, Expected, Position};
+use crate::gadgets::{self, Gadget};
 
 /// The name of the file inside the desktop's configuration folder.
 pub const FILE: &str = "desktop.toml";
@@ -58,6 +59,12 @@ pub struct Desktop {
     pub recents: Vec<String>,
     /// Whether the welcome line has been closed; once it has, it never comes back.
     pub welcome_seen: bool,
+    /// Whether the note saying how a window is resized has been shown: it is shown once, when the
+    /// first window opens.
+    pub resize_hint_seen: bool,
+    /// The gadgets on the floor, in their order: an earlier one keeps its spot when two want the
+    /// same cells. A file of an older qdesk has none.
+    pub widgets: Vec<Gadget>,
 }
 
 impl Default for Desktop {
@@ -67,6 +74,8 @@ impl Default for Desktop {
             places: BTreeMap::new(),
             recents: Vec::new(),
             welcome_seen: false,
+            resize_hint_seen: false,
+            widgets: Vec::new(),
         }
     }
 }
@@ -156,8 +165,23 @@ impl Desktop {
     /// gap, and moving one icon would move others. An icon drawn away from its own place — a
     /// screen too small for it — keeps that place. Returns whether anything changed.
     pub fn place(&mut self, drawn: &[(String, Option<Cell>)], index: usize, cell: Cell) -> bool {
-        let Some((id, Some(from))) = drawn.get(index).cloned() else { return false };
-        if from == cell {
+        self.place_all(drawn, &[(index, cell)])
+    }
+
+    /// Puts several icons of `drawn` at once, each `(index, cell)` of `moves` into its cell: a
+    /// selection carried together. The icons standing in the cells they land in, and not moving
+    /// themselves, take the cells the group left, paired in the order of the cells, column by
+    /// column; for one icon that is the change of places [`Desktop::place`] makes. Pins the floor
+    /// as a single move does. Returns whether anything changed.
+    pub fn place_all(&mut self, drawn: &[(String, Option<Cell>)], moves: &[(usize, Cell)]) -> bool {
+        let movers: Vec<(&String, Cell, Cell)> = moves
+            .iter()
+            .filter_map(|(index, to)| match drawn.get(*index) {
+                Some((id, Some(from))) => Some((id, *from, *to)),
+                _ => None,
+            })
+            .collect();
+        if movers.iter().all(|(_, from, to)| from == to) {
             return false;
         }
         for (other, at) in drawn {
@@ -165,10 +189,22 @@ impl Desktop {
                 self.places.entry(other.clone()).or_insert(*at);
             }
         }
-        if let Some((standing, _)) = drawn.iter().find(|(other, at)| *at == Some(cell) && *other != id) {
-            self.places.insert(standing.clone(), from);
+        let landing: Vec<Cell> = movers.iter().map(|(.., to)| *to).collect();
+        let mut left: Vec<Cell> =
+            movers.iter().map(|(_, from, _)| *from).filter(|from| !landing.contains(from)).collect();
+        left.sort_unstable();
+        let mut standing: Vec<(&String, Cell)> = drawn
+            .iter()
+            .filter(|(other, _)| !movers.iter().any(|(id, ..)| *id == other))
+            .filter_map(|(other, at)| at.filter(|at| landing.contains(at)).map(|at| (other, at)))
+            .collect();
+        standing.sort_unstable_by_key(|(_, at)| *at);
+        for ((other, _), cell) in standing.into_iter().zip(left) {
+            self.places.insert(other.clone(), cell);
         }
-        self.places.insert(id, cell);
+        for (id, _, to) in movers {
+            self.places.insert(id.clone(), to);
+        }
         true
     }
 
@@ -200,6 +236,12 @@ impl Desktop {
         text.push_str(&format!("recents = {}\n\n", list(&self.recents)));
         text.push_str("# The welcome line is shown once and never again.\n");
         text.push_str(&format!("welcome_seen = {}\n", self.welcome_seen));
+        // Written only once it is true, so a file of a qdesk that never showed the note is left
+        // as that qdesk wrote it.
+        if self.resize_hint_seen {
+            text.push_str("# The note on how a window is resized is shown once, with the first window.\n");
+            text.push_str("resize_hint_seen = true\n");
+        }
         if !self.places.is_empty() {
             text.push_str("\n# The cells icons were put in, as [column, row] from the top left. An icon with no\n");
             text.push_str("# cell here flows into the first free one.\n[places]\n");
@@ -207,6 +249,9 @@ impl Desktop {
                 text.push_str(&format!("{} = [{column}, {row}]\n", quoted(id)));
             }
         }
+        // The gadgets are an array of tables, which TOML allows only after every plain key and
+        // table above: they close the file.
+        text.push_str(&gadgets::to_toml(&self.widgets));
         text
     }
 
@@ -241,7 +286,7 @@ fn quoted(text: &str) -> String {
 }
 
 /// A place as the file writes it: an array of two whole numbers, the column and the row.
-fn place_of(value: &DeValue<'_>) -> Option<Cell> {
+pub(crate) fn place_of(value: &DeValue<'_>) -> Option<Cell> {
     let DeValue::Array(items) = value else { return None };
     let numbers: Vec<u16> = items
         .iter()
@@ -322,6 +367,13 @@ pub fn parse(file: &Path, bytes: &[u8]) -> (Desktop, Vec<Diagnostic>) {
             ("places", _) => diagnostics.push(wrong(name, Expected::Table, offset)),
             ("welcome_seen", DeValue::Boolean(seen)) => desktop.welcome_seen = *seen,
             ("welcome_seen", _) => diagnostics.push(wrong(name, Expected::Boolean, offset)),
+            ("resize_hint_seen", DeValue::Boolean(seen)) => desktop.resize_hint_seen = *seen,
+            ("resize_hint_seen", _) => diagnostics.push(wrong(name, Expected::Boolean, offset)),
+            ("widgets", _) => {
+                let (widgets, problems) = gadgets::parse(file, text, value);
+                desktop.widgets = widgets;
+                diagnostics.extend(problems);
+            }
             _ => {
                 let position = Position::of_offset(text, key.span().start);
                 diagnostics.push(Diagnostic::at(
@@ -540,6 +592,33 @@ mod tests {
         assert_eq!(desktop.places.get("terminal"), Some(&(0, 1)));
         assert_eq!(desktop.places.get("files"), Some(&(0, 0)), "the icon that stood there took the other cell");
         assert_eq!(desktop.places.get("settings"), Some(&(9, 9)), "a place the screen could not show is kept");
+    }
+
+    #[test]
+    fn a_group_carried_together_keeps_its_shape_and_the_icons_it_lands_on_take_the_cells_it_left() {
+        let mut desktop = Desktop::default();
+        let floor = drawn(&[
+            ("terminal", Some((0, 0))),
+            ("files", Some((0, 1))),
+            ("settings", Some((0, 2))),
+            ("htop", Some((1, 1))),
+            ("vim", Some((1, 2))),
+        ]);
+        // Terminal and Files go one column right: Files lands on htop, Terminal on bare floor.
+        assert!(desktop.place_all(&floor, &[(0, (1, 0)), (1, (1, 1))]));
+        assert_eq!(desktop.places.get("terminal"), Some(&(1, 0)));
+        assert_eq!(desktop.places.get("files"), Some(&(1, 1)));
+        assert_eq!(desktop.places.get("htop"), Some(&(0, 0)), "the icon landed on takes a cell the group left");
+        assert_eq!(desktop.places.get("settings"), Some(&(0, 2)), "an icon not in the way stays");
+        assert_eq!(desktop.places.get("vim"), Some(&(1, 2)));
+        let mut cells: Vec<Cell> = desktop.places.values().copied().collect();
+        cells.sort_unstable();
+        cells.dedup();
+        assert_eq!(cells.len(), 5, "no two icons share a cell: {:?}", desktop.places);
+        assert!(
+            !desktop.place_all(&floor, &[(0, (0, 0)), (1, (0, 1))]),
+            "a group put back where it is drawn is no change"
+        );
     }
 
     #[test]

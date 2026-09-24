@@ -44,6 +44,8 @@ pub struct Grid {
     columns: u16,
     rows: u16,
     cells: Vec<Option<Cell>>,
+    /// The cells the gadgets take: no icon stands or lands in them.
+    blocked: Vec<Cell>,
 }
 
 impl Grid {
@@ -65,14 +67,30 @@ impl Grid {
     /// the design (3.7) hides them anyway. Icons for which no cell is left are not drawn.
     #[must_use]
     pub fn placed(area: Size, wanted: &[Option<Cell>]) -> Self {
+        Self::placed_around(area, wanted, &[])
+    }
+
+    /// The grid of icons that want the cells `wanted`, around the cells `blocked` that the
+    /// gadgets take (design 3.12).
+    ///
+    /// A blocked cell is as good as an icon's for the icons: one whose own place is blocked stands
+    /// in the nearest free cell and keeps its place, and the icons with no place flow past the
+    /// blocked cells. A blocked cell outside the area blocks nothing.
+    #[must_use]
+    pub fn placed_around(area: Size, wanted: &[Option<Cell>], blocked: &[Cell]) -> Self {
         let columns = area.width / CELL_WIDTH;
         let rows = area.height / CELL_HEIGHT;
-        let mut grid = Self { columns, rows, cells: vec![None; wanted.len()] };
+        let blocked: Vec<Cell> =
+            blocked.iter().copied().filter(|(column, row)| *column < columns && *row < rows).collect();
+        let mut grid = Self { columns, rows, cells: vec![None; wanted.len()], blocked };
         if columns == 0 || rows == 0 {
             return grid;
         }
         let mut taken = vec![false; usize::from(columns) * usize::from(rows)];
         let slot = |(column, row): Cell| usize::from(column) * usize::from(rows) + usize::from(row);
+        for cell in &grid.blocked {
+            taken[slot(*cell)] = true;
+        }
         // Places that fit and are free, first come first served in the order of the icons.
         for (index, place) in wanted.iter().enumerate() {
             if let Some(cell) = place.filter(|(column, row)| *column < columns && *row < rows)
@@ -113,6 +131,12 @@ impl Grid {
             }
         }
         grid
+    }
+
+    /// Whether a gadget takes `cell`, so no icon may be put there.
+    #[must_use]
+    pub fn is_blocked(&self, cell: Cell) -> bool {
+        self.blocked.contains(&cell)
     }
 
     /// How many icons the area holds this frame.
@@ -224,6 +248,29 @@ impl Grid {
         found.map_or(index, |(found, _)| found)
     }
 
+    /// Where the icons at `indices` land when every one of them is carried `by` columns and rows,
+    /// each with its index; the ones not drawn are left out.
+    ///
+    /// The group keeps its shape. A carry that would take any of them off the grid is cut short
+    /// at the edge, the way a window stops against the side of the screen, so the group always
+    /// lands whole: it stops rather than refuses.
+    #[must_use]
+    pub fn shifted(&self, indices: &[usize], (dx, dy): (i32, i32)) -> Vec<(usize, Cell)> {
+        let drawn: Vec<(usize, Cell)> =
+            indices.iter().filter_map(|index| self.cell(*index).map(|cell| (*index, cell))).collect();
+        let columns = drawn.iter().map(|(_, (column, _))| i32::from(*column));
+        let rows = drawn.iter().map(|(_, (_, row))| i32::from(*row));
+        let (Some(left), Some(right), Some(top), Some(bottom)) =
+            (columns.clone().min(), columns.max(), rows.clone().min(), rows.max())
+        else {
+            return Vec::new();
+        };
+        let dx = dx.clamp(-left, i32::from(self.columns) - 1 - right);
+        let dy = dy.clamp(-top, i32::from(self.rows) - 1 - bottom);
+        let carried = |at: u16, by: i32| u16::try_from(i32::from(at) + by).unwrap_or(at);
+        drawn.into_iter().map(|(index, (column, row))| (index, (carried(column, dx), carried(row, dy)))).collect()
+    }
+
     /// The icons whose cells the rectangle `band` touches: the rubber-band selection.
     #[must_use]
     pub fn inside(&self, band: Rect) -> Vec<usize> {
@@ -292,6 +339,18 @@ mod tests {
         assert_eq!(grid.cell(2), Some((0, 2)));
         assert_eq!(grid.cell(3), Some((5, 3)));
         assert_eq!(grid.at(52, 10), Some(3));
+    }
+
+    #[test]
+    fn icons_flow_past_the_cells_a_gadget_takes_and_one_placed_there_stands_nearest() {
+        let blocked = [(0, 0), (0, 1), (1, 0), (1, 1)];
+        let grid = Grid::placed_around(floor(), &[None, None, Some((1, 1))], &blocked);
+        assert_eq!(grid.cell(0), Some((0, 2)), "the first free cell of the first column");
+        assert_eq!(grid.cell(1), Some((0, 3)));
+        assert_eq!(grid.cell(2), Some((1, 2)), "the nearest free cell to its own place");
+        assert!(grid.is_blocked((1, 1)) && !grid.is_blocked((2, 2)));
+        // A blocked cell off the area blocks nothing.
+        assert!(!Grid::placed_around(floor(), &[], &[(40, 40)]).is_blocked((40, 40)));
     }
 
     #[test]
@@ -429,6 +488,19 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_carried_group_keeps_its_shape_and_stops_at_the_edge() {
+        // Nine icons on an 80x24 floor: three columns of seven, then two in the second column.
+        let grid = Grid::new(floor(), 9);
+        assert_eq!(grid.shifted(&[0, 1], (2, 1)), vec![(0, (2, 1)), (1, (2, 2))]);
+        // Pulled past the top and the left, the group stops against them, whole.
+        assert_eq!(grid.shifted(&[1, 2], (-3, -5)), vec![(1, (0, 0)), (2, (0, 1))]);
+        // Pushed past the right and the bottom, the same.
+        let (columns, rows) = (grid.columns(), grid.rows());
+        assert_eq!(grid.shifted(&[0, 1], (99, 99)), vec![(0, (columns - 1, rows - 2)), (1, (columns - 1, rows - 1))]);
+        assert!(grid.shifted(&[42], (1, 1)).is_empty(), "an icon that is not drawn is not carried");
     }
 
     #[test]

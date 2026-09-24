@@ -6,9 +6,9 @@
 //! person's home folder, trash or programs: the desktop is given a home, a data folder and a shell
 //! of the test's own.
 //!
-//! The desktop of a screen test does not follow the folders it shows. The framework's folder watch
-//! waits with no bound and a test runs that wait where it stands, so a watching desktop would hold
-//! the test for ever; what the watch does is the framework's to prove, and it does.
+//! The desktop of a screen test follows the folders it shows, as the running desktop does, each
+//! wait for a change bounded by its patience: a test runs the wait where it stands, so a file
+//! another program makes in the folder is seen by stepping the desktop.
 
 mod support;
 
@@ -460,4 +460,32 @@ fn the_mark_is_a_sign_of_its_own_in_ascii_and_in_sixteen_colours_without_bracket
     assert!(plain.contains("# projeler"), "a plain folder keeps its own sign: {plain}");
     let screen = harness.screen();
     assert_eq!(decoration(&screen), None, "no brackets and no box lines:\n{screen}");
+}
+
+#[test]
+fn a_file_another_program_makes_in_the_folder_appears_in_the_window_by_itself() {
+    let scratch = Scratch::new();
+    furnish(&scratch);
+    let mut harness = desk(&scratch);
+    open_icon(&mut harness, "Files");
+    assert!(!harness.screen().contains("yeni.txt"), "not there yet:\n{}", harness.screen());
+    // Nothing is asked of the window: the file is simply made, as another program would make it.
+    fs::write(scratch.home().join("yeni.txt"), "yeni\n").expect("a file is written");
+    until(&mut harness, "the new file in the window", |harness| harness.screen().contains("yeni.txt"));
+}
+
+#[test]
+fn a_row_s_icon_says_what_kind_of_file_it_is() {
+    let scratch = Scratch::new();
+    furnish(&scratch);
+    fs::write(scratch.home().join("main.rs"), "fn main() {}\n").expect("a file is written");
+    let mut harness = desk(&scratch);
+    harness.set_glyph_mode(GlyphMode::Nerd);
+    open_icon(&mut harness, "Files");
+    let icons = harness.env().icons();
+    let (rust, plain) = (icons.glyph("file-rust").into_owned(), icons.glyph("file").into_owned());
+    assert_ne!(rust, plain, "the kinds are told apart in a Nerd Font");
+    let line = row_line(&harness, "main.rs");
+    assert!(line.contains(&rust), "the Rust file carries the Rust icon: {line}");
+    assert!(!line.contains(&plain), "not the plain file icon: {line}");
 }

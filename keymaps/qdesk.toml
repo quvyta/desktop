@@ -4,7 +4,7 @@
 # types a space in the launcher's search field, and Esc clears the selection while the floor has
 # the keys, so neither binding takes a key out of the hand of what is on screen.
 #
-# The keys under desktop-mode are single letters and arrows. They answer only while the desktop has
+# The keys under desktop-mode are single letters, digits and arrows. They answer only while the desktop has
 # the keys (ctrl+alt+space); at any other time the desktop says nothing to them and they go on to
 # whatever is on screen, so a letter typed in a window stays the window's.
 
@@ -26,6 +26,19 @@ window-minimize = "n"
 window-close = "x"
 window-tile = "t"
 notices = "b"                 # the list of recent notifications (bildirimler)
+
+# Workspaces (design 3.10). A digit goes to that workspace and hands the keys to its window. Sending
+# the focused window takes alt and not shift: a terminal sends shift+1 as `!`, and which sign comes
+# for shift+2 depends on the keyboard layout (`'` on a Turkish Q, `@` on a US one), while alt with a
+# digit arrives the same from every terminal.
+workspace-1 = "1"
+workspace-2 = "2"
+workspace-3 = "3"
+workspace-4 = "4"
+send-to-1 = "alt+1"
+send-to-2 = "alt+2"
+send-to-3 = "alt+3"
+send-to-4 = "alt+4"
 
 window-left = "left"
 window-right = "right"

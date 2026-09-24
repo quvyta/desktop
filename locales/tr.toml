@@ -12,6 +12,9 @@ Masaüstündeyken ctrl+q ile çıkılır."""
 unknown-argument = "qdesk: {argument} diye bir seçenek yok; seçenekler için qdesk --help"
 
 [dock]
+# Başlatıcı düğmesinin yanındaki çalışma alanı işaretleri ve dar satırda onların yerine duran numara.
+workspace = "{n}. çalışma alanı"
+workspace-next = "{n}. çalışma alanı; tıklayınca sonrakine geçer"
 clock-utc = "{time} UTC"
 unknown-machine = "bu makine"
 launcher = "Uygulamalar"
@@ -106,8 +109,11 @@ bell = "zil çaldı"
 paste-nowhere = "Bu pencerenin programı bitti, yapıştırılan metin hiçbir yere gitmedi"
 
 [window]
+send-to = "{n}. çalışma alanına taşı"
 minimize = "Küçült"
 maximize = "Büyüt"
+# Pencereyi öne alır, ok tuşları boyutlandırır.
+resize = "Boyutlandır"
 tile = "Pencereleri döşe"
 close = "Kapat"
 restart = "Yeniden başlat"
@@ -121,6 +127,9 @@ quit-running = { one = "{n} program hâlâ çalışıyor. Çıkılırsa sonland�
 quit = "Çık"
 tile-narrow = "Masaüstü pencereleri yan yana dizecek kadar geniş değil."
 tile-short = "Masaüstüne en çok {fits} pencere döşenebiliyor."
+# İlk pencere açılınca bir kez söylenir.
+resize-hint = "Pencereler kenarlarından boyutlanır"
+resize-hint-body = "Sağ ya da alt kenarı, ya da ikisinin köşesini sürükle. Alt ile sağ tuş pencereyi her yerinden boyutlandırır; dock'taki menüsünde Boyutlandır bunu ok tuşlarıyla yapar."
 
 [mode]
 # Tuşlar masaüstündeyken dock'un satırı.
@@ -137,10 +146,22 @@ leave = "geri"
 back = "geri"
 release = "bırak"
 far = "{cells} hücre"
+# Fare de boyutlandırır: tuşun yerinde sürüklenen şey, yanında ne işe yaradığı.
+drag = "kenar"
+drag-label = "sürükle"
+workspace = "alan"
 
 # Yardım katmanı qdesk'in her tuşunu işiyle birlikte yazar. Masaüstü kipinin tuşları bunu söyler:
 # yalnız tuşlar masaüstündeyken çalışırlar, söylemeyen bir satır tutulmayacak bir söz verir.
 [keys]
+workspace-1 = "Masaüstü kipi: 1. çalışma alanına geç"
+workspace-2 = "Masaüstü kipi: 2. çalışma alanına geç"
+workspace-3 = "Masaüstü kipi: 3. çalışma alanına geç"
+workspace-4 = "Masaüstü kipi: 4. çalışma alanına geç"
+send-to-1 = "Masaüstü kipi: pencereyi 1. çalışma alanına gönder"
+send-to-2 = "Masaüstü kipi: pencereyi 2. çalışma alanına gönder"
+send-to-3 = "Masaüstü kipi: pencereyi 3. çalışma alanına gönder"
+send-to-4 = "Masaüstü kipi: pencereyi 4. çalışma alanına gönder"
 launcher = "Başlatıcıyı açar"
 close = "Açık olanı kapatır: başlatıcı, liste, sonra masaüstü kipi"
 desktop-mode = "Tuşları pencereden alıp masaüstüne verir, sonra geri"
@@ -223,6 +244,13 @@ floor-color-theme = "Tema"
 floor-color-deep = "Derin"
 floor-color-mist = "Sis"
 floor-color-accent = "Vurgu"
+floor-style-text = "Aşağıya doğru vurgu rengine ısınan bir geçiş, simge ızgarasının köşelerinde sönük birer nokta, ya da ikisi."
+floor-style = "Zemin deseni"
+floor-style-plain = "Düz"
+floor-style-gradient = "Degrade"
+floor-style-dots = "Noktalı"
+# Degrade ve noktalar birlikte.
+floor-style-gradient-dots = "İkisi"
 folders-in-explorer = "Klasörleri {program} ile aç"
 folders-in-explorer-text = "Masaüstündeki ya da Dosyalar'daki bir klasör ekosistemin dosya gezgininde açılır. {program} kurulu değilse yerine Dosyalar açılır."
 
@@ -252,3 +280,81 @@ view-tree = "Ağaç olarak göster"
 view-icons = "Simge olarak göster"
 open-new-window = "Yeni pencerede aç"
 not-text = "{name} açılamıyor: adı bir programa verilebilecek bir metin değil"
+open-with = "Birlikte aç"
+open-with-editor = "{program}, düzenleyiciniz"
+open-with-reader = "{program}, okumak için"
+
+[status]
+# Dock'un sağındaki durum şeridi: makinenin kısa ölçümleri.
+tmux = "tmux oturumları"
+network = "Ağ"
+cpu = "İşlemci"
+memory = "Bellek"
+battery = "Pil"
+# Şeritte bir oran, yuvarlanmış: {value} bir tam sayı.
+percent = "%{value}"
+# Şeritte ağ hızları, okunabildiği kadar kısa: {value} bir sayı.
+rate-bytes = "{value}B/sn"
+rate-kilo = "{value}K/sn"
+rate-mega = "{value}M/sn"
+rate-giga = "{value}G/sn"
+
+[power]
+# Başlatıcının altındaki oturum işlemleri.
+lock = "Kilitle"
+log-out = "Oturumu kapat"
+restart = "Yeniden başlat"
+power-off = "Kapat"
+restart-title = "Bu makine yeniden başlatılsın mı?"
+restart-text = "Üzerindeki her şey durur ve yeniden başlar."
+restart-running = { one = "{n} program hâlâ çalışıyor. Yeniden başlatmak onu kapatır.", other = "{n} program hâlâ çalışıyor. Yeniden başlatmak onları kapatır." }
+restart-failed = "Makine yeniden başlatılamadı"
+power-off-title = "Bu makine kapatılsın mı?"
+power-off-text = "Üzerindeki her şey durur."
+power-off-running = { one = "{n} program hâlâ çalışıyor. Kapatmak onu da kapatır.", other = "{n} program hâlâ çalışıyor. Kapatmak onları da kapatır." }
+power-off-failed = "Makine kapatılamadı"
+# Sisteme yapılan istek başarısız olduğunda ve program bir şey söylemediğinde nedeni.
+exit-code = "{code} koduyla bitti."
+killed = "Cevap veremeden durduruldu."
+# Kilit ekranı. {user}, parolası kilidi açan kullanıcı adı.
+lock-password = "{user} için parola"
+lock-checking = "Denetleniyor…"
+lock-wrong = "Parola bu değil. Yeniden deneyin."
+lock-hint = "Parolayı yazıp enter'a basın"
+
+[widget]
+# Araçlar masaüstü zemininde simgelerin yanında durur. Dört türü, zeminin ve aracın kendi
+# menüsünde.
+clock = "Saat"
+calendar = "Takvim"
+system = "Sistem"
+note = "Not"
+# Zeminin menüsü: dört türün alt menüsü ve zemindeki araçların alt menüsü.
+add = "Araç ekle"
+remove-one = "Araç kaldır"
+# Aracın kendi menüsünün son satırı.
+remove = "Aracı kaldır"
+# Saatin seçenekleri.
+hours-24 = "24 saat"
+hours-12 = "12 saat"
+seconds = "Saniyeyi göster"
+color = "Renk"
+color-accent = "Vurgu"
+color-text = "Sade"
+color-gradient = "Geçişli"
+# 12 saatlik saatin rakamlarının yanında.
+am = "ÖÖ"
+pm = "ÖS"
+# Saatin rakamlarının altında: {weekday} günün tam adı, {date} gün ve ay, dilin yazdığı gibi.
+clock-date = "{date} {weekday}"
+# Takvimin seçeneği ve üç seçimi.
+week-start = "Haftanın ilk günü"
+week-start-language = "Dilin günü"
+week-start-monday = "Pazartesi"
+week-start-sunday = "Pazar"
+# Boş bir notta.
+note-placeholder = "Bir şeyler yaz"
+# Bir not okunamayınca ya da yazılamayınca; gövde dosyayı ve nedenini söyler.
+note-unsaved = "Not kaydedilemedi"
+# Zeminde yeni bir araca yer kalmayınca; {name} aracın türü.
+no-room = "Masaüstünde {name} aracına yer yok"

@@ -1,8 +1,10 @@
 //! The launcher: the search, the shelves on its left and the applications on its right.
 //!
-//! It is shaped like a Start menu: a panel of a fixed width that rises from the dock's left end,
-//! where its button is, and is as tall as what it holds. It does not dim the screen and does not
-//! take it over: the desktop stays where it is behind it, and a press outside closes it.
+//! It is shaped like a Start menu: a panel of one fixed size that rises from the dock's left end,
+//! where its button is, with the applications as small cards and the session actions — lock, log
+//! out, restart, power off — at its foot. Its size never follows what it holds, so it does not
+//! jump while a search narrows it down. It does not dim the screen and does not take it over: the
+//! desktop stays where it is behind it, and a press outside closes it.
 //!
 //! The launcher keeps nothing of its own besides what is on it now — the query, the shelf and the
 //! card the person is on. What lasts — the recents and the icons of the floor — belongs to the
@@ -12,43 +14,38 @@ use std::rc::Rc;
 
 use qframe::icons::Icons;
 use qframe::prelude::*;
-use qframe::text;
-use qframe::widgets::{
-    CardGrid, ContextItem, ContextMenu, EmptyState, IconButton, Menu, MenuGroup, MenuItem, Panel, TextInput,
-};
+use qframe::widgets::{CardGrid, ContextItem, EmptyState, IconButton, Menu, MenuGroup, MenuItem, Panel, TextInput};
 
 use crate::apps::{Catalog, Category, Entry, Launch};
 use crate::desktop::{Desktop, glyph_of};
+use crate::power::Action;
 
 /// The id of the search field, for putting the keys in it the moment the launcher opens.
 pub const SEARCH: &str = "launcher-search";
 
+/// The id of the cards of the applications, which the arrows walk once the keys are in them.
+pub const CARDS: &str = "launcher-cards";
+
 /// The launcher's width, in columns, on any screen wide enough for it.
 ///
-/// A Start menu is a column, not a strip: wide enough for the shelves, an application's name and
-/// a few words of what it does, and no wider, so on a server's wide screen it still gathers the
-/// applications in the corner the button is in.
-pub const MAX_WIDTH: u16 = 64;
+/// Wide enough for the shelves and two columns of cards that each hold a name and a few words of
+/// what it does, and the four session actions in a row in every language; no wider, so on a
+/// server's wide screen it still gathers the applications in the corner the button is in.
+pub const WIDTH: u16 = 72;
 
-/// The tallest the launcher grows, in rows; past this its list scrolls.
-pub const MAX_HEIGHT: u16 = 24;
+/// The launcher's height, in rows, on any screen tall enough for it: an 80 × 24 terminal keeps a
+/// few rows of the floor above it besides the dock's row. What does not fit scrolls.
+pub const HEIGHT: u16 = 20;
 
 /// Columns the shelves take beside the applications.
 const SHELF_WIDTH: u16 = 16;
 
-/// Rows the launcher takes besides the shelves and the list: the panel's padding above and below,
-/// the search row, the hint row and a row between each of them and the list.
-const CHROME: u16 = 6;
+/// The narrowest and the widest a card of an application gets, in columns; the width the
+/// launcher gives its cards holds two of them side by side.
+const CARD_WIDTH: (u16, u16) = (20, 24);
 
-/// The fewest rows the list is given, so a search that finds nothing has room to say so.
-const LEAST_ROWS: u16 = 5;
-
-/// The widest the column of names grows before a name is cut, so a long name never pushes what
-/// the applications do out of the row.
-const NAME_WIDTH: u16 = 16;
-
-/// Columns between an application's name and what it does.
-const NAME_GAP: u16 = 2;
+/// Rows of content in a card: the name, and what the application does.
+const CARD_ROWS: u16 = 2;
 
 /// Which applications the launcher is showing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,8 +175,6 @@ pub enum Msg {
     Shelf(String),
     /// A card was selected.
     Select(usize),
-    /// A card was activated.
-    Activate(usize),
     /// Open this application.
     Open(String),
     /// Put an icon for it on the floor.
@@ -188,6 +183,8 @@ pub enum Msg {
     RemoveIcon(String),
     /// Install it.
     Install(String),
+    /// One of the session actions at the launcher's foot was pressed.
+    Power(Action),
 }
 
 /// The applications a shelf holds, or the hits of a query when something is typed.
@@ -261,24 +258,27 @@ pub fn closes(before: &str, after: &str) -> bool {
     before.is_empty() && after == " "
 }
 
-/// The size the launcher takes in a body of `body` cells for `shelves` shelves and `apps`
-/// applications: its fixed width, and as many rows as the longer of its two columns needs.
+/// The size the launcher takes in a body of `body` cells: always the same, and never more than the
+/// body.
 #[must_use]
-pub fn size(body: Size, shelves: usize, apps: usize) -> Size {
-    let rows = u16::try_from(shelves.max(apps)).unwrap_or(u16::MAX).max(LEAST_ROWS);
-    let height = rows.saturating_add(CHROME).min(MAX_HEIGHT);
-    Size::new(body.width.min(MAX_WIDTH), body.height.min(height))
+pub fn size(body: Size) -> Size {
+    Size::new(body.width.min(WIDTH), body.height.min(HEIGHT))
 }
 
-/// Draws the launcher for `apps`, the applications [`shown`] gave.
-pub fn view(launcher: &Launcher, apps: &[Shown], shelves: &[Shelf], ui: &mut View<'_, Msg>) {
+/// What a press on the card of `app` does: an application on the machine opens, and one that is
+/// not starts on its way to being installed.
+fn activate(app: &Shown) -> Msg {
+    if app.installed { Msg::Open(app.id.clone()) } else { Msg::Install(app.id.clone()) }
+}
+
+/// Draws the launcher for `apps`, the applications [`shown`] gave, with the session `actions` at
+/// its foot.
+pub fn view(launcher: &Launcher, apps: &[Shown], shelves: &[Shelf], actions: &[Action], ui: &mut View<'_, Msg>) {
     let search = ui.env().icons().glyph("search").into_owned();
     // The dock takes a row; the launcher stands in what is left of the screen.
     let screen = ui.size();
-    let room = size(Size::new(screen.width, screen.height.saturating_sub(1)), shelves.len(), apps.len());
-    let names = apps.iter().map(|app| text::width(&title(app))).max().unwrap_or(0).min(NAME_WIDTH);
+    let room = size(Size::new(screen.width, screen.height.saturating_sub(1)));
     let cards: Rc<[Shown]> = apps.into();
-    let chosen = launcher.selected.and_then(|index| apps.get(index)).cloned();
     ui.add_with(Panel::new(), |ui| {
         ui.row(|ui| {
             ui.add(Text::new(search));
@@ -302,18 +302,20 @@ pub fn view(launcher: &Launcher, apps: &[Shown], shelves: &[Shelf], ui: &mut Vie
                     .on_select(|key| Msg::Shelf(key.to_owned())),
             )
             .width(Length::Cells(SHELF_WIDTH));
-            // The menu acts on the card that is selected, and every row says which application
-            // that is: a right click cannot name the card under the pointer, because the cards of
-            // a grid take no input of their own.
-            match chosen.map(|app| menu_items(&app)).filter(|items| !items.is_empty()) {
-                Some(items) => {
-                    ui.add_with(ContextMenu::new(items), |ui| grid(launcher, Rc::clone(&cards), names, ui)).fill();
-                }
-                None => grid(launcher, Rc::clone(&cards), names, ui),
-            }
+            grid(launcher, cards, ui);
         })
         .fill()
         .gap(2);
+        // The session actions stand at the far end of the foot, as a Start menu keeps its power
+        // button; the one that ends the most is last, furthest from where the pointer comes from.
+        ui.row(|ui| {
+            ui.spacer();
+            for action in actions {
+                ui.add(Button::new(action.label()).on_press(Msg::Power(*action))).id(action.id());
+            }
+        })
+        .fill_width()
+        .gap(1);
         // A narrow row drops hints from its end, so the way to put an icon on the desktop, which
         // the card's menu also offers, goes before the way out.
         ui.add(
@@ -355,31 +357,33 @@ fn menu_items(app: &Shown) -> Vec<ContextItem<Msg>> {
     items
 }
 
-/// What an application's row begins with: its glyph and its name.
+/// What an application's card begins with: its glyph and its name.
 fn title(app: &Shown) -> String {
     format!("{} {}", app.glyph, app.name)
 }
 
-/// The applications as a list of one-row cards: the name in a column `names` wide, and beside it
-/// what the application does or how it would be installed.
+/// The applications as small cards, two to a row: the glyph and the name, and under them what the
+/// application does or how it would be installed.
 ///
-/// The cards are the framework's card grid kept to one column, so choosing, the arrows, the page
-/// keys, the wheel and the scroll bar are the grid's own.
-fn grid(launcher: &Launcher, cards: Rc<[Shown]>, names: u16, ui: &mut View<'_, Msg>) {
+/// The cards are the framework's card grid, so choosing, the arrows, the page keys, the wheel, the
+/// scroll bar and a card's own menu are the grid's. One press on a card opens it; so does Enter on
+/// the card the arrows chose. A right press opens the menu of the card it lands on.
+fn grid(launcher: &Launcher, cards: Rc<[Shown]>, ui: &mut View<'_, Msg>) {
     let empty = if launcher.query.trim().is_empty() {
         EmptyState::new(t!("launcher.empty")).message(t!("launcher.empty-hint"))
     } else {
         EmptyState::new(t!("launcher.no-hits", query = launcher.query.trim())).message(t!("launcher.no-hits-hint"))
     };
+    let pressed = Rc::clone(&cards);
+    let menus = Rc::clone(&cards);
     ui.add(
         CardGrid::new(cards.len())
-            // One column whatever the width: the list is narrower than two of the least width.
-            .card_width(MAX_WIDTH, MAX_WIDTH)
-            .card_height(1)
-            .gap(0, 0)
+            .card_width(CARD_WIDTH.0, CARD_WIDTH.1)
+            .card_height(CARD_ROWS)
             .selected(launcher.selected)
             .on_select(Msg::Select)
-            .on_activate(Msg::Activate)
+            .on_activate(move |index| pressed.get(index).map_or(Msg::Select(index), activate))
+            .context_menu(move |index| menus.get(index).map(menu_items).unwrap_or_default())
             .empty(empty)
             .card(move |ui, index| {
                 let Some(app) = cards.get(index) else { return };
@@ -390,16 +394,13 @@ fn grid(launcher: &Launcher, cards: Rc<[Shown]>, names: u16, ui: &mut View<'_, M
                     (Some(Way::Quvyta(_)), false) => t!("launcher.with-quvyta"),
                     _ => app.comment.clone(),
                 };
-                ui.row(|ui| {
-                    ui.add(Text::new(title(app)).role(role).no_wrap()).width(Length::Cells(names));
-                    if !second.is_empty() {
-                        ui.add(Text::new(second).role("secondary").no_wrap()).fill_width();
-                    }
-                })
-                .gap(NAME_GAP)
-                .fill_width();
+                ui.add(Text::new(title(app)).role(role).no_wrap());
+                if !second.is_empty() {
+                    ui.add(Text::new(second).role("secondary").no_wrap());
+                }
             }),
     )
+    .id(CARDS)
     .fill();
 }
 
@@ -426,20 +427,11 @@ mod tests {
     }
 
     #[test]
-    fn it_never_grows_past_the_body_it_is_in() {
-        assert_eq!(size(Size::new(200, 50), 100, 100), Size::new(MAX_WIDTH, MAX_HEIGHT));
-        assert_eq!(size(Size::new(40, 12), 100, 100), Size::new(40, 12));
-    }
-
-    #[test]
-    fn it_is_as_tall_as_its_longer_column() {
-        assert_eq!(size(Size::new(200, 50), 7, 3), Size::new(MAX_WIDTH, 7 + CHROME));
-        assert_eq!(size(Size::new(200, 50), 3, 9), Size::new(MAX_WIDTH, 9 + CHROME));
-        assert_eq!(
-            size(Size::new(200, 50), 1, 0),
-            Size::new(MAX_WIDTH, LEAST_ROWS + CHROME),
-            "room to say nothing matched"
-        );
+    fn it_is_one_size_that_never_grows_past_the_body_it_is_in() {
+        assert_eq!(size(Size::new(200, 49)), Size::new(WIDTH, HEIGHT));
+        assert_eq!(size(Size::new(120, 39)), Size::new(WIDTH, HEIGHT));
+        assert_eq!(size(Size::new(80, 23)), Size::new(WIDTH, HEIGHT), "80 by 24 holds it beside the dock");
+        assert_eq!(size(Size::new(40, 12)), Size::new(40, 12));
     }
 
     #[test]

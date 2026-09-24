@@ -3,7 +3,7 @@
 //!
 //! The desktop shares the look of every Quvyta application: the theme, the language and the
 //! glyph mode are the framework's keys, kept beside qdesk's own in one file. qdesk's own keys
-//! say where the dock sits, what colour the floor is, whether a folder opens in the ecosystem's
+//! say where the dock sits, what colour and pattern the floor has, whether a folder opens in the ecosystem's
 //! file explorer, how a window follows the mouse while it is
 //! dragged, how often the screen may be drawn and how many lines a terminal window remembers.
 //!
@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 use qframe::runtime::FrameLimit;
 use qframe::storage::{Family, Schema, Setting, SettingKind, Settings};
 
-pub use floor_color::{FloorColor, ground};
+pub use floor_color::{FloorColor, FloorStyle, GLYPHS_READ, NAMES_READ, Palette, Shades, ground, is_dot};
 pub use screen::{Applications, LIST, Msg, Request, Screen, Shared, UPDATE_NOTICE, update, view};
 
 use crate::apps::{Diagnostic, DiagnosticKind, Position};
@@ -72,6 +72,8 @@ impl UpdateFolders {
 pub const DOCK_POSITION: &str = "dock-position";
 /// The key of the floor's colour: `theme`, `deep`, `mist` or `accent`.
 pub const FLOOR_COLOR: &str = "floor-color";
+/// The key of the floor's pattern: `plain`, `gradient`, `dots` or `gradient-dots`.
+pub const FLOOR_STYLE: &str = "floor-style";
 /// The key of whether a folder opens in the ecosystem's file explorer when it is on the machine:
 /// `true` or `false`.
 pub const FOLDERS_IN_EXPLORER: &str = "folders-in-explorer";
@@ -183,6 +185,8 @@ pub struct Prefs {
     pub dock: DockPosition,
     /// The colour of the floor.
     pub floor: FloorColor,
+    /// The pattern over the floor's colour.
+    pub floor_style: FloorStyle,
     /// Whether a folder opens in the ecosystem's file explorer, `qexp`, when it is on the machine,
     /// rather than in a Files window.
     pub folders_in_explorer: bool,
@@ -201,6 +205,7 @@ impl Default for Prefs {
         Self {
             dock: DockPosition::default(),
             floor: FloorColor::default(),
+            floor_style: FloorStyle::default(),
             folders_in_explorer: true,
             drag: DragStyle::default(),
             frame_cap: None,
@@ -219,6 +224,7 @@ impl Prefs {
         Schema::builtin()
             .choice(DOCK_POSITION, DockPosition::ALL.map(DockPosition::name), DockPosition::default().name())
             .choice(FLOOR_COLOR, FloorColor::ALL.map(FloorColor::name), FloorColor::default().name())
+            .choice(FLOOR_STYLE, FloorStyle::ALL.map(FloorStyle::name), FloorStyle::default().name())
             .flag(FOLDERS_IN_EXPLORER, true)
             .choice(DRAG_STYLE, DragStyle::ALL.map(DragStyle::name), DragStyle::default().name())
             // No default of its own: without the key the cap follows the link, and a number
@@ -243,6 +249,10 @@ impl Prefs {
                 .get::<String>(FLOOR_COLOR)
                 .and_then(|name| FloorColor::from_name(&name))
                 .unwrap_or(defaults.floor),
+            floor_style: settings
+                .get::<String>(FLOOR_STYLE)
+                .and_then(|name| FloorStyle::from_name(&name))
+                .unwrap_or(defaults.floor_style),
             folders_in_explorer: settings.get::<bool>(FOLDERS_IN_EXPLORER).unwrap_or(defaults.folders_in_explorer),
             drag: settings
                 .get::<String>(DRAG_STYLE)
@@ -267,6 +277,7 @@ impl Prefs {
         let defaults = Self::default();
         store(settings, DOCK_POSITION, self.dock.name().to_owned(), self.dock == defaults.dock);
         store(settings, FLOOR_COLOR, self.floor.name().to_owned(), self.floor == defaults.floor);
+        store(settings, FLOOR_STYLE, self.floor_style.name().to_owned(), self.floor_style == defaults.floor_style);
         store(
             settings,
             FOLDERS_IN_EXPLORER,

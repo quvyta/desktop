@@ -7,8 +7,9 @@
 //! away again. The desktop is given a Desktop folder, a home, a `PATH` and a desktop file of the
 //! test's own, so nothing of the person's is read or written, and no program of theirs is found.
 //!
-//! The desktop of a screen test does not follow its Desktop folder, for the reason the Files tests
-//! give; it reads the folder again after each of its own changes, which is what is shown here.
+//! The desktop of a screen test follows its Desktop folder as the running desktop does, each wait
+//! for a change bounded by its patience, so a file another program puts there is seen by stepping
+//! the desktop.
 
 mod support;
 
@@ -180,10 +181,11 @@ fn the_entries_of_the_desktop_folder_stand_after_the_applications_folders_first(
     assert!(!harness.screen().contains("gizli"), "a hidden entry is not shown:\n{}", harness.screen());
     let icons = harness.env().icons();
     let folder = icons.glyph("folder").into_owned();
-    let file = icons.glyph("file").into_owned();
+    // A text file is drawn with the icon of its kind, as a Files window draws it.
+    let text = icons.glyph(qframe::icons::file_kind("notlar.txt", false, false).icon()).into_owned();
     let screen: Vec<String> = harness.screen().lines().map(str::to_owned).collect();
     assert!(screen[9].contains(&folder), "a folder is drawn with the folder icon: {:?}", screen[9]);
-    assert!(screen[12].contains(&file), "a file with the file icon: {:?}", screen[12]);
+    assert!(screen[12].contains(&text), "a file with the icon of its kind: {:?}", screen[12]);
     assert_eq!(harness.app().floor_ids()[3..], ["file:Projeler", "file:notlar.txt"]);
 }
 
@@ -398,4 +400,29 @@ fn the_desktop_folder_draws_without_decoration_in_every_glyph_mode_and_colour_de
             harness.mouse(MouseKind::Up(MouseButton::Left), 45, 7);
         }
     }
+}
+
+#[test]
+fn a_file_another_program_puts_in_the_desktop_folder_comes_to_the_floor() {
+    let scratch = Scratch::new();
+    let mut harness = desk(&scratch);
+    assert!(!harness.screen().contains("yeni.md"), "not there yet:\n{}", harness.screen());
+    fs::write(scratch.desktop().join("yeni.md"), "# yeni\n").expect("a file is written");
+    until(&mut harness, "the new file on the floor", |harness| harness.screen().contains("yeni.md"));
+}
+
+#[test]
+fn an_entry_on_the_floor_carries_the_icon_of_its_kind() {
+    let scratch = Scratch::new();
+    fs::write(scratch.desktop().join("main.rs"), "fn main() {}\n").expect("a file is written");
+    let mut harness = desk(&scratch);
+    harness.set_glyph_mode(GlyphMode::Nerd).render();
+    let icons = harness.env().icons();
+    let (rust, plain) = (icons.glyph("file-rust").into_owned(), icons.glyph("file").into_owned());
+    assert_ne!(rust, plain, "the kinds are told apart in a Nerd Font");
+    let screen = harness.screen();
+    let (_, y) = harness.find("main.rs").unwrap_or_else(|| panic!("the file is on the floor:\n{screen}"));
+    // The glyph stands on the row above the name, in the icon's cell.
+    let above = screen.lines().nth(usize::try_from(y - 1).expect("a row")).expect("the glyph's row");
+    assert!(above.contains(&rust), "the Rust file carries the Rust icon:\n{screen}");
 }

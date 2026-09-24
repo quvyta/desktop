@@ -1,18 +1,23 @@
 //! The dock: one row of the screen, at the bottom or, when the settings say so, at the top.
 //!
-//! Its left end holds the launcher button, then the open windows in the order they were opened,
-//! and its right side the name of the machine and the clock. The launcher button works like a
+//! Its left end holds the launcher button, then the marks of the workspaces, then the open windows
+//! of the workspace on screen in the order they were opened, and its right side the name of the
+//! machine and the clock. The launcher button works like a
 //! Start button: it opens the launcher and closes it again, and it stays pressed while the launcher
 //! is open. Which of them fit in a given width is
 //! decided by [`plan`], a pure function, and drawn by [`view`] into whichever row it is given.
 //! Nothing here knows which edge that is: the row is the same row at either end.
 
+use qframe::event::{Event, MouseButton, MouseKind};
+use qframe::geometry::{Rect, Size};
 use qframe::prelude::*;
+use qframe::style::CellStyle;
 use qframe::text;
+use qframe::widget::{EventCx, MeasureCx, PaintCx, Widget};
 use qframe::widgets::{ContextItem, ContextMenu, Tooltip};
 
 use crate::desktop::quvyta_icon;
-use crate::wm::WindowId;
+use crate::wm::{SPACES, WindowId};
 
 /// Rows the dock takes at its edge of the screen. It is always there, so the desktop has this
 /// row less whichever edge it sits on.
@@ -35,6 +40,49 @@ pub const ITEM_GAP: u16 = 1;
 
 /// The id of the button that counts the unread notifications and opens their list.
 pub const NOTICES: &str = "dock-notices";
+
+/// Cells on each side of the workspace marks, between them and the launcher button and between
+/// them and the first window.
+pub const MARKS_GAP: u16 = 2;
+
+/// How the workspaces are shown beside the launcher button.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Marks {
+    /// One mark for every workspace, a cell apart.
+    All,
+    /// Only the number of the workspace on screen.
+    Current,
+    /// Nothing: the row is left to the machine name.
+    Hidden,
+}
+
+impl Marks {
+    /// Cells the marks themselves take.
+    #[must_use]
+    pub fn width(self) -> u16 {
+        match self {
+            // SPACES is four; the cast cannot lose anything.
+            Self::All => u16::try_from(2 * SPACES - 1).unwrap_or(u16::MAX),
+            Self::Current => 1,
+            Self::Hidden => 0,
+        }
+    }
+
+    /// Cells the marks take with the gaps on both sides of them.
+    #[must_use]
+    pub fn lead(self) -> u16 {
+        if self == Self::Hidden { 0 } else { self.width().saturating_add(2 * MARKS_GAP) }
+    }
+}
+
+/// The workspaces as the marks show them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Workspaces {
+    /// The workspace on screen, from 0.
+    pub current: usize,
+    /// Which workspaces hold a window.
+    pub occupied: [bool; SPACES],
+}
 
 /// What one window item says: the parts [`plan`] measures and [`view`] writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,6 +150,8 @@ pub struct Plan {
     pub named: bool,
     /// How many windows are left over; they are reached through the `+n` control.
     pub hidden: usize,
+    /// How the workspaces are shown.
+    pub marks: Marks,
 }
 
 /// Which parts of the dock fit in `width` columns, for the machine name `name`, the clock text
@@ -122,28 +172,46 @@ pub struct Plan {
 /// The windows take what is left of the row after that. First every item shows its name; when they
 /// do not all fit they fall back to their glyphs alone, and when even those do not fit the last
 /// ones go behind a `+n` control that opens a list of them (design 3.4).
+///
+/// The workspaces stand beside the launcher button (design 3.10). Their four marks give way before
+/// the windows do: when the windows would go behind `+n` beside them, only the number of the
+/// workspace on screen is left. That number outlives the clock and the count, because it is the
+/// one answer to "where am I", and goes only when the whole machine name would not fit beside it.
 #[must_use]
 pub fn plan(width: u16, name: &str, clock: &str, count: &str, labels: &[Label], padding: u16) -> Plan {
     let room = width.saturating_sub(2 * EDGE + launcher_width(padding));
+    // The room beside the number; none at all when the number itself does not fit.
+    let beside = room.checked_sub(Marks::Current.lead());
+    let fits_beside = |used: u16| beside.is_some_and(|beside| used <= beside);
     let name_width = text::width(name);
     let count_width = if count.is_empty() { 0 } else { item_width(count, padding).saturating_add(GAP) };
     let with_clock = count_width.saturating_add(name_width).saturating_add(GAP).saturating_add(text::width(clock));
     let with_count = count_width.saturating_add(name_width);
-    let (shown_name, count_shown, clock_shown, right) = if with_clock <= room {
-        (name.to_owned(), count_width > 0, true, with_clock)
-    } else if with_count <= room {
-        (name.to_owned(), count_width > 0, false, with_count)
+    let (shown_name, count_shown, clock_shown, right, marks) = if fits_beside(with_clock) {
+        (name.to_owned(), count_width > 0, true, with_clock, Marks::Current)
+    } else if fits_beside(with_count) {
+        (name.to_owned(), count_width > 0, false, with_count, Marks::Current)
+    } else if fits_beside(name_width) {
+        (name.to_owned(), false, false, name_width, Marks::Current)
     } else if name_width <= room {
-        (name.to_owned(), false, false, name_width)
+        (name.to_owned(), false, false, name_width, Marks::Hidden)
     } else {
         let shortened = text::truncate_middle(name, room).into_owned();
         let used = text::width(&shortened);
-        (shortened, false, false, used)
+        (shortened, false, false, used, Marks::Hidden)
     };
     // The items keep a gap away from whatever stands at the right end.
-    let left = room.saturating_sub(right).saturating_sub(if right == 0 { 0 } else { GAP });
+    let left = room.saturating_sub(right).saturating_sub(if right == 0 { 0 } else { GAP }).saturating_sub(marks.lead());
+    // Every mark is drawn when the windows still all stand on the row beside them.
+    let more = Marks::All.lead() - Marks::Current.lead();
+    let marks = if marks == Marks::Current && left >= more && windows(left - more, labels, padding).0 == labels.len() {
+        Marks::All
+    } else {
+        marks
+    };
+    let left = left.saturating_sub(if marks == Marks::All { more } else { 0 });
     let (shown, named, hidden) = windows(left, labels, padding);
-    Plan { name: shown_name, count: count_shown, clock: clock_shown, shown, named, hidden }
+    Plan { name: shown_name, count: count_shown, clock: clock_shown, shown, named, hidden, marks }
 }
 
 /// Cells the launcher button takes with a button padding of `padding` columns on each side.
@@ -208,6 +276,10 @@ pub fn count_label(mark: &str, unread: usize) -> String {
 
 /// What a press on the dock means.
 pub struct Presses<'a, Msg> {
+    /// Going to a workspace, by its number from 0.
+    pub space: &'a dyn Fn(usize) -> Msg,
+    /// The workspaces the marks show.
+    pub workspaces: Workspaces,
     /// Opening the launcher, or closing it while it is open.
     pub launcher: Msg,
     /// Whether the launcher is open, which the button shows by staying pressed.
@@ -239,6 +311,11 @@ pub fn view<Msg: Clone + 'static>(
         ui.add_with(Tooltip::new(t!("dock.launcher")), |ui| {
             ui.add(button).id(LAUNCHER);
         });
+        if plan.marks != Marks::Hidden {
+            ui.spacer().width(Length::Cells(MARKS_GAP));
+            marks_view(plan.marks, presses.workspaces, presses.space, ui);
+            ui.spacer().width(Length::Cells(MARKS_GAP));
+        }
         // The gaps are spacers of their own and not a gap of the row: a row gap would also stand
         // between the spacer and the machine name and take cells the plan gave the name.
         for (index, item) in items.iter().take(plan.shown).enumerate() {
@@ -277,6 +354,139 @@ pub fn view<Msg: Clone + 'static>(
     .height(Length::Cells(HEIGHT));
 }
 
+/// The id of the mark of the workspace `space`, counted from 0.
+#[must_use]
+pub fn mark_id(space: usize) -> String {
+    format!("dock-space-{}", space + 1)
+}
+
+/// The id of the number that stands for the marks on a narrow row.
+pub const MARK_CURRENT: &str = "dock-space";
+
+/// Draws the marks of the workspaces into the row `ui` is building: one for each workspace, or only
+/// the number of the one on screen. A press on a mark goes to its workspace; a press on the number
+/// goes on to the next one, round from the last to the first.
+pub fn marks_view<Msg: Clone + 'static>(
+    marks: Marks,
+    workspaces: Workspaces,
+    space: &dyn Fn(usize) -> Msg,
+    ui: &mut View<'_, Msg>,
+) {
+    match marks {
+        Marks::Hidden => {}
+        Marks::Current => {
+            let number = workspaces.current + 1;
+            let mark = Mark { glyph: number.to_string(), tone: Tone::Current, on_press: space(number % SPACES) };
+            ui.add_with(Tooltip::new(t!("dock.workspace-next", n = number)), |ui| {
+                ui.add(mark).id(MARK_CURRENT);
+            });
+        }
+        Marks::All => {
+            let icons = ui.env().icons();
+            let (held, empty) = (icons.glyph("bullet").into_owned(), icons.glyph("dot-outline").into_owned());
+            for index in 0..SPACES {
+                if index > 0 {
+                    ui.spacer().width(Length::Cells(1));
+                }
+                let tone = if index == workspaces.current {
+                    Tone::Current
+                } else if workspaces.occupied[index] {
+                    Tone::Occupied
+                } else {
+                    Tone::Empty
+                };
+                let glyph = match tone {
+                    Tone::Current => (index + 1).to_string(),
+                    Tone::Occupied => held.clone(),
+                    Tone::Empty => empty.clone(),
+                };
+                let mark = Mark { glyph, tone, on_press: space(index) };
+                ui.add_with(Tooltip::new(t!("dock.workspace", n = index + 1)), |ui| {
+                    ui.add(mark).id(mark_id(index));
+                });
+            }
+        }
+    }
+}
+
+/// How a mark of a workspace looks. Each look has a shape of its own as well as a tone, so the
+/// three read apart in sixteen colours and without colour (VISION 4.5).
+///
+/// The workspace on screen is its number and not a filled dot: the dock already says "something
+/// here wants you" with the filled dot, on a window that called and before the unread count, and a
+/// second meaning for the same mark on the same row would be read as the first. The number is also
+/// the key that reaches it, and what the row keeps when it is too narrow for the marks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tone {
+    /// The workspace on screen: its number in the accent, bold.
+    Current,
+    /// A workspace that holds windows: a small dot in the text colour.
+    Occupied,
+    /// An empty workspace: a ring, faint.
+    Empty,
+}
+
+/// One mark of a workspace: a single glyph that goes there when clicked.
+///
+/// It is a glyph and not a button because a button's padding would make four of them wider than
+/// the windows they stand beside; it takes the icon button's hover tone, so it answers the pointer
+/// the way every small control of the framework does.
+struct Mark<Msg> {
+    glyph: String,
+    tone: Tone,
+    on_press: Msg,
+}
+
+/// Whether the left button went down on the mark, so only a click that began on it presses it.
+#[derive(Debug, Default)]
+struct MarkMemory {
+    held: bool,
+}
+
+impl<Msg: Clone + 'static> Widget<Msg> for Mark<Msg> {
+    fn measure(&self, _cx: &mut MeasureCx<'_>, available: Size) -> Size {
+        Size::new(text::width(&self.glyph).max(1), 1).min(available)
+    }
+
+    fn paint(&self, cx: &mut PaintCx<'_>, area: Rect) {
+        if area.is_empty() {
+            return;
+        }
+        let states = cx.pressable_states();
+        let style = cx.style("icon-button", None, &states).text();
+        if let Some(bg) = style.bg {
+            cx.fill(area, bg);
+        }
+        cx.register_hit(area);
+        let token = match self.tone {
+            Tone::Current => "accent",
+            Tone::Occupied => "text",
+            Tone::Empty => "dim",
+        };
+        let look = CellStyle::fg(cx.color(token)).with_bold(self.tone == Tone::Current);
+        cx.text(area.x, area.y, &self.glyph, look, area.width);
+    }
+
+    fn event(&self, cx: &mut EventCx<'_, Msg>, event: &Event) -> bool {
+        let Event::Mouse(mouse) = event else { return false };
+        match mouse.kind {
+            MouseKind::Down(MouseButton::Left) => {
+                cx.capture_pointer();
+                cx.memory::<MarkMemory>().held = true;
+                true
+            }
+            MouseKind::Up(MouseButton::Left) => {
+                let held = std::mem::take(&mut cx.memory::<MarkMemory>().held);
+                if held && cx.area().contains(mouse.x, mouse.y) {
+                    cx.emit(self.on_press.clone());
+                }
+                held
+            }
+            _ => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,6 +498,9 @@ mod tests {
 
     /// The narrowest row the launcher button and both ends fit in.
     const ROOM: u16 = 2 * EDGE + LAUNCHER_GLYPH + 2 * PAD;
+
+    /// What the number of the workspace on screen takes with its gaps.
+    const NUMBER: u16 = 1 + 2 * MARKS_GAP;
 
     fn plan(width: u16, name: &str, clock: &str) -> Plan {
         super::plan(width, name, clock, "", &[], PAD)
@@ -304,7 +517,7 @@ mod tests {
     }
 
     fn fits(plan: &Plan, width: u16) {
-        let mut used = text::width(&plan.name);
+        let mut used = text::width(&plan.name) + plan.marks.lead();
         if plan.clock {
             used += GAP + text::width(CLOCK);
         }
@@ -323,9 +536,10 @@ mod tests {
     #[test]
     fn the_clock_goes_first_when_both_do_not_fit() {
         let name = "a".repeat(30);
-        // 30 + 3 + 5 + 2 + 5 = 45 fits exactly; one column less and the clock goes.
-        assert!(plan(45, &name, CLOCK).clock);
-        let narrower = plan(44, &name, CLOCK);
+        // 30 + 3 + 5 + 2 + 5 and the number of the workspace fit exactly; one column less and the
+        // clock goes.
+        assert!(plan(45 + NUMBER, &name, CLOCK).clock);
+        let narrower = plan(44 + NUMBER, &name, CLOCK);
         assert!(!narrower.clock);
         assert_eq!(narrower.name, name, "the whole name still fits alone");
     }
@@ -382,11 +596,11 @@ mod tests {
         // The count is a button: `●2` between two paddings, and a gap before the name.
         let count = item_width(&count_label("●", 2), PAD) + GAP;
         let name = "sunucu-1";
-        let exact = ROOM + count + text::width(name) + GAP + text::width(CLOCK);
+        let exact = ROOM + NUMBER + count + text::width(name) + GAP + text::width(CLOCK);
         assert_eq!((with_count(exact, name).count, with_count(exact, name).clock), (true, true));
         let without_clock = with_count(exact - 1, name);
         assert!(without_clock.count && !without_clock.clock, "the clock goes first: {without_clock:?}");
-        let narrower = with_count(ROOM + count + text::width(name) - 1, name);
+        let narrower = with_count(ROOM + NUMBER + count + text::width(name) - 1, name);
         assert!(!narrower.count, "then the count: {narrower:?}");
         assert_eq!(narrower.name, name, "and the name is whole until nothing else is left");
     }
@@ -397,7 +611,7 @@ mod tests {
         for name in ["", "pi", "sunucu-1", "build-server-europe-west-17"] {
             for width in 0..=120 {
                 let plan = super::plan(width, name, CLOCK, &count, &[], PAD);
-                let mut used = text::width(&plan.name);
+                let mut used = text::width(&plan.name) + plan.marks.lead();
                 if plan.count {
                     used += item_width(&count, PAD) + GAP;
                 }
@@ -482,7 +696,10 @@ mod tests {
                 if plan.clock {
                     right = right.saturating_add(GAP).saturating_add(text::width(CLOCK));
                 }
-                let left = room.saturating_sub(right).saturating_sub(if right == 0 { 0 } else { GAP });
+                let left = room
+                    .saturating_sub(right)
+                    .saturating_sub(if right == 0 { 0 } else { GAP })
+                    .saturating_sub(plan.marks.lead());
                 assert!(used <= left, "{plan:?} takes {used} of {left} columns at width {width}");
                 let counted = plan.shown + plan.hidden;
                 assert!(counted == count || counted == 0, "{plan:?} loses a window of {count} at width {width}");
@@ -497,5 +714,51 @@ mod tests {
         let plan = plan(40, "raspberrypi", CLOCK);
         assert!(plan.clock);
         assert_eq!(plan.name, "raspberrypi");
+    }
+
+    #[test]
+    fn a_wide_row_shows_a_mark_for_every_workspace() {
+        let labels = [label("▦", "htop"), label("❯", "Terminal")];
+        let plan = super::plan(80, "sunucu-1", CLOCK, "", &labels, PAD);
+        assert_eq!(plan.marks, Marks::All);
+        assert_eq!((plan.shown, plan.named, plan.hidden), (2, true, 0));
+        assert_eq!(Marks::All.width(), 7, "four marks a cell apart");
+    }
+
+    #[test]
+    fn the_marks_shrink_to_the_number_before_a_window_goes_behind_the_control() {
+        // Six glyph items want 6 * 5 + 5 = 35 columns. Beside every mark they would not all fit on a
+        // row of 70; beside the number they do.
+        let labels: Vec<Label> = (0..6).map(|index| label("▦", &format!("window {index}"))).collect();
+        for width in 0..=160 {
+            let plan = super::plan(width, "sunucu-1", CLOCK, "", &labels, PAD);
+            if plan.marks == Marks::All {
+                assert_eq!(plan.hidden, 0, "every mark cost a window at width {width}: {plan:?}");
+                assert_eq!(plan.shown, labels.len(), "width {width}");
+            }
+        }
+        let plan = super::plan(70, "sunucu-1", CLOCK, "", &labels, PAD);
+        assert_eq!((plan.marks, plan.shown, plan.hidden), (Marks::Current, 6, 0), "{plan:?}");
+        assert!(plan.clock, "the marks shrink before the clock goes: {plan:?}");
+    }
+
+    #[test]
+    fn the_number_outlives_the_clock_and_the_count_and_goes_before_the_name() {
+        let name = "sunucu-1";
+        let count = item_width(&count_label("●", 2), PAD) + GAP;
+        let clockless = with_count(ROOM + NUMBER + count + text::width(name) + GAP + text::width(CLOCK) - 1, name);
+        assert_eq!((clockless.clock, clockless.count, clockless.marks), (false, true, Marks::Current));
+        let countless = with_count(ROOM + NUMBER + text::width(name), name);
+        assert_eq!((countless.count, countless.marks), (false, Marks::Current), "{countless:?}");
+        let bare = with_count(ROOM + NUMBER + text::width(name) - 1, name);
+        assert_eq!((bare.marks, bare.name.as_str()), (Marks::Hidden, name), "the name is whole: {bare:?}");
+    }
+
+    #[test]
+    fn the_narrowest_desktop_keeps_every_mark_while_there_is_no_window() {
+        let plan = plan(40, "raspberrypi", CLOCK);
+        assert_eq!((plan.marks, plan.clock), (Marks::All, true), "{plan:?}");
+        let one = super::plan(40, "raspberrypi", CLOCK, "", &[label("▦", "htop")], PAD);
+        assert_eq!((one.shown, one.hidden), (1, 0), "{one:?}");
     }
 }

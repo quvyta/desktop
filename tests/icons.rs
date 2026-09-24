@@ -408,3 +408,105 @@ fn every_glyph_mode_and_colour_depth_draws_the_icons_without_decoration() {
         }
     }
 }
+
+/// A click at `x`, `y` with `mods` held, as a terminal reports it: the press, then the release.
+fn click_holding(harness: &mut Harness<qdesk::app::Desk>, x: i32, y: i32, mods: qframe::keymap::Modifiers) {
+    for kind in [MouseKind::Down(MouseButton::Left), MouseKind::Up(MouseButton::Left)] {
+        harness.events(&[Event::Mouse(qframe::event::MouseEvent { kind, x, y, mods })]);
+    }
+}
+
+#[test]
+fn a_selection_dragged_by_one_of_its_icons_lands_together_and_stays_after_a_restart() {
+    let folder = std::env::temp_dir().join(format!("qdesk-test-group-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("a folder of the test's own");
+    let file = folder.join("desktop.toml");
+    let first = Desktop { icons: support::ICONS.map(str::to_owned).to_vec(), welcome_seen: true, ..Desktop::default() };
+    let mut harness = support::desk_writing(&file, first);
+
+    // A band over the three icons, as a person draws it from bare floor.
+    harness.drag((40, 1), (2, 8));
+    assert_eq!(harness.app().selection(), ["terminal", "settings", "mc"]);
+    // Settings, the middle one, is carried three columns right and one row down.
+    harness.drag((3, 4), cell_middle(3, 2));
+    let places = &harness.app().order().places;
+    assert_eq!(places.get("terminal"), Some(&(3, 1)), "{places:?}");
+    assert_eq!(places.get("settings"), Some(&(3, 2)), "{places:?}");
+    assert_eq!(places.get("mc"), Some(&(3, 3)), "{places:?}");
+    assert_eq!(harness.find("Terminal"), Some((31, 4)), "all three went:\n{}", harness.screen());
+    assert_eq!(harness.find("Settings"), Some((31, 7)));
+    assert_eq!(harness.find("Midnight"), Some((31, 10)));
+    assert!(screen(&harness)[1].trim().is_empty(), "the column they left is bare:\n{}", harness.screen());
+    assert_eq!(harness.app().selection(), ["terminal", "settings", "mc"], "they are still selected");
+
+    // The next start reads the same floor from the file.
+    let (desktop, problems) = Desktop::load(&file);
+    assert!(problems.is_empty(), "{problems:?}");
+    let again = support::desk_writing(&file, desktop);
+    assert_eq!(again.find("Terminal"), Some((31, 4)), "after a restart:\n{}", again.screen());
+    assert_eq!(again.find("Settings"), Some((31, 7)));
+    assert_eq!(again.find("Midnight"), Some((31, 10)));
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn where_a_dragged_selection_would_land_is_lit_cell_by_cell() {
+    let mut harness = desk(80, 24);
+    harness.drag((40, 1), (2, 5));
+    assert_eq!(harness.app().selection(), ["terminal", "settings"]);
+    harness.mouse(MouseKind::Down(MouseButton::Left), 3, 1);
+    harness.mouse(MouseKind::Drag(MouseButton::Left), 45, 7);
+    let canvas = harness.env().theme().color("canvas").expect("the theme has a canvas");
+    // Terminal would land in the cell under the pointer, Settings in the one under it.
+    for (x, y) in [(45, 7), (45, 10)] {
+        let tone = harness.bg(x, y).expect("the cell is drawn");
+        assert_ne!(tone, canvas, "a cell the group would land in is lit: ({x}, {y})\n{}", harness.screen());
+    }
+    assert_eq!(harness.bg(45, 13), Some(canvas), "no more cells than icons are lit");
+    assert_eq!(support::decoration(&harness.screen()), None, "tones, never lines");
+    harness.mouse(MouseKind::Up(MouseButton::Left), 45, 7);
+    assert_eq!(harness.find("Terminal"), Some((41, 7)), "{}", harness.screen());
+    assert_eq!(harness.find("Settings"), Some((41, 10)));
+    assert_eq!(harness.find("Midnight"), Some((1, 7)), "the icon left out of the selection stays");
+}
+
+#[test]
+fn a_selection_pulled_past_the_edge_stops_against_it_whole() {
+    let mut harness = desk(80, 24);
+    harness.drag((40, 1), (2, 8));
+    // Terminal, the highest, is pulled to the bottom right cell: the two under it would leave the
+    // floor, so the group stops with its lowest icon in the last row.
+    harness.drag((3, 1), (75, 20));
+    let places = &harness.app().order().places;
+    assert_eq!(places.get("terminal"), Some(&(7, 4)), "{places:?}");
+    assert_eq!(places.get("settings"), Some(&(7, 5)), "{places:?}");
+    assert_eq!(places.get("mc"), Some(&(7, 6)), "{places:?}");
+}
+
+#[test]
+fn an_icon_outside_the_selection_is_dragged_alone() {
+    let mut harness = desk(80, 24);
+    harness.drag((40, 1), (2, 5));
+    assert_eq!(harness.app().selection(), ["terminal", "settings"]);
+    harness.drag((3, 7), cell_middle(4, 2));
+    assert_eq!(harness.find("Midnight"), Some((41, 7)), "{}", harness.screen());
+    assert_eq!(harness.find("Terminal"), Some((1, 1)), "the selection stays where it was");
+    assert_eq!(harness.find("Settings"), Some((1, 4)));
+}
+
+#[test]
+fn shift_click_selects_every_icon_from_the_cursor_to_the_one_clicked() {
+    let mut harness = desk(80, 24);
+    harness.click(3, 1);
+    let shift = qframe::keymap::Modifiers { shift: true, ..qframe::keymap::Modifiers::default() };
+    click_holding(&mut harness, 3, 7, shift);
+    assert_eq!(harness.app().selection(), ["terminal", "settings", "mc"]);
+    // The range is drawn again from the same icon, not from the last one clicked.
+    click_holding(&mut harness, 3, 4, shift);
+    assert_eq!(harness.app().selection(), ["terminal", "settings"]);
+    // Ctrl still takes one out of what shift gathered.
+    let ctrl = qframe::keymap::Modifiers { ctrl: true, ..qframe::keymap::Modifiers::default() };
+    click_holding(&mut harness, 3, 1, ctrl);
+    assert_eq!(harness.app().selection(), ["settings"]);
+}

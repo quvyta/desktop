@@ -9,10 +9,13 @@
 //! lets a screen connect to it, and then this state moves into that process unchanged: the screen
 //! only swaps a direct call for a message.
 //!
+//! The desktop has [`SPACES`] workspaces. Every window belongs to one of them and only the windows
+//! of the current one are drawn; the floor under them is the same on every workspace.
+//!
 //! Two promises hold after every operation, and the tests check them over long random sequences:
 //! every window lies whole inside the desktop and is no smaller than [`MIN_SIZE`] (or the whole
-//! desktop, when the terminal is smaller than that), and exactly one window has the focus as long
-//! as one is not minimized.
+//! desktop, when the terminal is smaller than that), and exactly one window of the current
+//! workspace has the focus as long as one of them is not minimized.
 
 pub mod layout;
 pub mod snap;
@@ -38,10 +41,15 @@ pub use window::{Body, Placement, Run, Window, WindowId};
 /// offsets there are before they start again.
 const CASCADE: (i32, i32, u32) = (3, 2, 6);
 
+/// How many workspaces the desktop has: the keys `1` to `4` of desktop mode reach them, and the
+/// dock's marks for them fit in seven cells.
+pub const SPACES: usize = 4;
+
 /// Every window of one desktop, from the floor up.
 ///
 /// The list is in stacking order: the first window is the furthest back, the last one is in front.
-/// A minimized window keeps its place in it.
+/// A minimized window keeps its place in it. The windows of every workspace share the one list;
+/// each carries the workspace it belongs to.
 #[derive(Debug, Clone)]
 pub struct Windows {
     screen: Size,
@@ -49,13 +57,26 @@ pub struct Windows {
     focus: Option<WindowId>,
     next: WindowId,
     cascade: u32,
+    /// The workspace on screen.
+    current: usize,
+    /// The window each workspace had the focus on when it was left. It may name a window that has
+    /// since closed or moved on; switching back checks before it trusts it.
+    last: [Option<WindowId>; SPACES],
 }
 
 impl Windows {
     /// An empty desktop on a terminal of `screen` cells.
     #[must_use]
     pub fn new(screen: Size) -> Self {
-        Self { screen, windows: Vec::new(), focus: None, next: WindowId::first(), cascade: 0 }
+        Self {
+            screen,
+            windows: Vec::new(),
+            focus: None,
+            next: WindowId::first(),
+            cascade: 0,
+            current: 0,
+            last: [None; SPACES],
+        }
     }
 
     /// The part of the terminal windows may use, in the desktop's own coordinates.
@@ -120,8 +141,29 @@ impl Windows {
     }
 
     /// Every drawn window, from the furthest back to the one in front: the order to draw them in.
+    /// Only the current workspace is drawn.
     pub fn visible(&self) -> impl DoubleEndedIterator<Item = &Window> {
-        self.windows.iter().filter(|window| !window.minimized)
+        let current = self.current;
+        self.windows.iter().filter(move |window| !window.minimized && window.space == current)
+    }
+
+    /// Every window of the current workspace, minimized ones included, from the furthest back to
+    /// the one in front: what the dock lists.
+    pub fn here(&self) -> impl DoubleEndedIterator<Item = &Window> {
+        let current = self.current;
+        self.windows.iter().filter(move |window| window.space == current)
+    }
+
+    /// The workspace on screen, counted from 0.
+    #[must_use]
+    pub fn current(&self) -> usize {
+        self.current
+    }
+
+    /// Whether the workspace `space` holds any window, minimized ones included.
+    #[must_use]
+    pub fn occupied(&self, space: usize) -> bool {
+        self.windows.iter().any(|window| window.space == space)
     }
 
     /// The window `id`, when it is open.
@@ -150,17 +192,20 @@ impl Windows {
 
     /// The first open window that came from the entry `entry`, from the front.
     ///
-    /// An entry marked `single` opens once: the launcher brings this window forward instead.
+    /// An entry marked `single` opens once: the launcher brings this window forward instead. One
+    /// drawn on the current workspace is found first, then a minimized one of it, then one on
+    /// another workspace.
     #[must_use]
     pub fn of_entry(&self, entry: &str) -> Option<WindowId> {
         self.visible()
             .rev()
-            .chain(self.windows.iter().filter(|window| window.minimized))
+            .chain(self.here().filter(|window| window.minimized))
+            .chain(self.windows.iter().rev().filter(|window| window.space != self.current))
             .find(|window| window.entry.id == entry)
             .map(|window| window.id)
     }
 
-    /// Opens a window for `entry` and gives it the focus.
+    /// Opens a window for `entry` on the current workspace and gives it the focus.
     ///
     /// It takes the size the entry asks for, or two thirds of the desktop, and sits a few cells
     /// down and to the right of the window before it, so a second window of the same program does
@@ -182,7 +227,16 @@ impl Windows {
         let id = self.next;
         self.next = id.next();
         self.cascade = self.cascade.wrapping_add(1);
-        self.windows.push(Window { id, entry: entry.clone(), body, title: None, rect, placement, minimized: false });
+        self.windows.push(Window {
+            id,
+            entry: entry.clone(),
+            body,
+            title: None,
+            rect,
+            placement,
+            minimized: false,
+            space: self.current,
+        });
         self.focus = Some(id);
         id
     }
@@ -221,10 +275,11 @@ impl Windows {
     /// Brings the window `id` in front of the others and gives it the focus.
     ///
     /// A minimized window is not brought forward: it is not on the desktop to be clicked, and the
-    /// focus never lands on one. [`Windows::restore`] brings it back first.
+    /// focus never lands on one. [`Windows::restore`] brings it back first. Nor is a window of
+    /// another workspace: [`Windows::bring`] goes there first.
     pub fn raise(&mut self, id: WindowId) -> bool {
         let Some(index) = self.index_of(id) else { return false };
-        if self.windows[index].minimized {
+        if self.windows[index].minimized || self.windows[index].space != self.current {
             return false;
         }
         let window = self.windows.remove(index);
@@ -247,14 +302,66 @@ impl Windows {
         true
     }
 
-    /// Brings the minimized window `id` back to the desktop, in front and with the focus.
+    /// Brings the minimized window `id` of the current workspace back to the desktop, in front and
+    /// with the focus.
     pub fn restore(&mut self, id: WindowId) -> bool {
         let Some(index) = self.index_of(id) else { return false };
-        if !self.windows[index].minimized {
+        if !self.windows[index].minimized || self.windows[index].space != self.current {
             return false;
         }
         self.windows[index].minimized = false;
         self.raise(id)
+    }
+
+    /// Goes to the workspace `space` and gives the focus to the window it had when it was left, or,
+    /// when that one has closed, moved away or been minimized, to the one in front; to none when
+    /// the workspace has no drawn window. `false` when `space` is no workspace or is the current one.
+    pub fn switch(&mut self, space: usize) -> bool {
+        if space >= SPACES || space == self.current {
+            return false;
+        }
+        self.last[self.current] = self.focus;
+        self.current = space;
+        let remembered = self.last[space].filter(|id| self.visible().any(|window| window.id == *id));
+        self.focus = remembered.or_else(|| self.front().map(Window::id));
+        true
+    }
+
+    /// Sends the window `id` to the workspace `space`, in front of the windows there and as the one
+    /// that has the focus when that workspace is gone to. When it had the focus here, the focus
+    /// passes to the window below it, as when it closes. `false` when there is no such window, no
+    /// such workspace, or the window is there already.
+    pub fn send(&mut self, id: WindowId, space: usize) -> bool {
+        let Some(index) = self.index_of(id) else { return false };
+        if space >= SPACES || self.windows[index].space == space {
+            return false;
+        }
+        let mut window = self.windows.remove(index);
+        window.space = space;
+        let drawn = !window.minimized;
+        self.windows.push(window);
+        if space == self.current {
+            if drawn {
+                self.focus = Some(id);
+            }
+        } else {
+            if drawn {
+                self.last[space] = Some(id);
+            }
+            if self.focus == Some(id) {
+                self.focus = self.below(index);
+            }
+        }
+        true
+    }
+
+    /// Brings the window `id` forward wherever it is: to its workspace, back from the dock when it
+    /// is minimized, in front and with the focus. What a press on one of its notifications does.
+    pub fn bring(&mut self, id: WindowId) -> bool {
+        let Some(window) = self.get(id) else { return false };
+        let (space, minimized) = (window.space, window.minimized);
+        self.switch(space);
+        if minimized { self.restore(id) } else { self.raise(id) }
     }
 
     /// Fills the desktop with the window `id`, remembering the rectangle it had.
@@ -444,11 +551,16 @@ impl Windows {
     }
 
     /// The window that takes the focus when the one at `index` gives it up: the nearest drawn one
-    /// below it, or the nearest one above when it was at the bottom.
+    /// of the current workspace below it, or the nearest one above when it was at the bottom.
     fn below(&self, index: usize) -> Option<WindowId> {
         let index = index.min(self.windows.len());
         let (under, over) = self.windows.split_at(index);
-        under.iter().rev().chain(over.iter()).find(|window| !window.minimized).map(|window| window.id)
+        under
+            .iter()
+            .rev()
+            .chain(over.iter())
+            .find(|window| !window.minimized && window.space == self.current)
+            .map(|window| window.id)
     }
 }
 
@@ -493,6 +605,119 @@ mod tests {
     /// A desktop on an 80x24 terminal: 23 rows for windows and one for the dock.
     fn desk() -> Windows {
         Windows::new(Size::new(80, 24))
+    }
+
+    #[test]
+    fn a_new_window_opens_on_the_workspace_on_screen() {
+        let mut desk = desk();
+        let first = desk.open(&entry("one"));
+        assert!(desk.switch(2));
+        let second = desk.open(&entry("two"));
+        assert_eq!(desk.get(first).map(Window::space), Some(0));
+        assert_eq!(desk.get(second).map(Window::space), Some(2));
+        assert_eq!(desk.visible().map(Window::id).collect::<Vec<_>>(), vec![second]);
+        assert!(desk.occupied(0) && desk.occupied(2) && !desk.occupied(1));
+    }
+
+    #[test]
+    fn switching_draws_only_that_workspace_and_gives_back_the_focus_it_had() {
+        let mut desk = desk();
+        let first = desk.open(&entry("one"));
+        let second = desk.open(&entry("two"));
+        assert!(desk.raise(first));
+        assert!(desk.switch(1));
+        assert_eq!(desk.visible().count(), 0, "the second workspace is empty");
+        assert_eq!(desk.focus(), None, "an empty workspace leaves the keys to the floor");
+        let third = desk.open(&entry("three"));
+        assert!(desk.switch(0));
+        assert_eq!(desk.visible().map(Window::id).collect::<Vec<_>>(), vec![second, first]);
+        assert_eq!(desk.focus(), Some(first), "the window that had the focus when it was left");
+        assert!(desk.switch(1));
+        assert_eq!(desk.focus(), Some(third));
+        assert!(!desk.switch(1), "going where one already is changes nothing");
+        assert!(!desk.switch(SPACES), "there is no fifth workspace");
+    }
+
+    #[test]
+    fn a_workspace_whose_remembered_window_is_gone_focuses_the_one_in_front() {
+        let mut desk = desk();
+        let first = desk.open(&entry("one"));
+        let second = desk.open(&entry("two"));
+        desk.raise(first);
+        desk.switch(1);
+        desk.close(first);
+        desk.switch(0);
+        assert_eq!(desk.focus(), Some(second));
+        desk.switch(1);
+        desk.minimize(second);
+        desk.switch(0);
+        assert_eq!(desk.focus(), None, "a minimized window never takes the focus");
+    }
+
+    #[test]
+    fn a_sent_window_leaves_the_focus_below_it_and_leads_where_it_went() {
+        let mut desk = desk();
+        let first = desk.open(&entry("one"));
+        let second = desk.open(&entry("two"));
+        assert!(desk.send(second, 3));
+        assert_eq!(desk.focus(), Some(first), "the focus passes down, as when it closes");
+        assert_eq!(desk.visible().map(Window::id).collect::<Vec<_>>(), vec![first]);
+        assert!(!desk.send(second, 3), "it is there already");
+        assert!(!desk.send(second, SPACES));
+        desk.switch(3);
+        assert_eq!(desk.focus(), Some(second));
+        assert_eq!(desk.front().map(Window::id), Some(second));
+    }
+
+    #[test]
+    fn a_window_sent_to_a_workspace_with_windows_is_in_front_there() {
+        let mut desk = desk();
+        desk.switch(1);
+        let there = desk.open(&entry("there"));
+        desk.switch(0);
+        let sent = desk.open(&entry("sent"));
+        desk.send(sent, 1);
+        desk.switch(1);
+        assert_eq!(desk.visible().map(Window::id).collect::<Vec<_>>(), vec![there, sent]);
+        assert_eq!(desk.focus(), Some(sent));
+    }
+
+    #[test]
+    fn a_window_of_another_workspace_is_brought_but_never_raised_from_here() {
+        let mut desk = desk();
+        let away = desk.open(&entry("away"));
+        desk.minimize(away);
+        desk.switch(2);
+        let here = desk.open(&entry("here"));
+        assert!(!desk.raise(away), "the focus never lands off the workspace on screen");
+        assert!(!desk.restore(away));
+        assert_eq!(desk.focus(), Some(here));
+        assert!(desk.bring(away));
+        assert_eq!(desk.current(), 0);
+        assert_eq!(desk.focus(), Some(away));
+        assert!(!desk.get(away).expect("open").is_minimized());
+    }
+
+    #[test]
+    fn a_single_entry_is_found_on_another_workspace_after_this_one() {
+        let mut desk = desk();
+        let away = desk.open(&entry("one"));
+        desk.switch(1);
+        assert_eq!(desk.of_entry("one"), Some(away));
+        let here = desk.open(&entry("one"));
+        assert_eq!(desk.of_entry("one"), Some(here));
+    }
+
+    #[test]
+    fn tiling_lays_out_only_the_workspace_on_screen() {
+        let mut desk = desk();
+        let away = desk.open(&entry("away"));
+        let before = desk.get(away).map(Window::rect);
+        desk.switch(1);
+        desk.open(&entry("one"));
+        desk.open(&entry("two"));
+        assert!(desk.tile().is_ok());
+        assert_eq!(desk.get(away).map(Window::rect), before);
     }
 
     #[test]

@@ -174,7 +174,8 @@ fn desk(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> {
     all.extend(entries);
     // Every program of these tests is one of the machine's own, so every entry is installed.
     let catalog = Catalog::new(all, |entry| !matches!(entry.launch, Launch::Open(_)));
-    let desktop = Desktop { icons, recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
+    let desktop =
+        Desktop { icons, recents: Vec::new(), welcome_seen: true, resize_hint_seen: true, ..Desktop::default() };
     harness_with(catalog, desktop, width, height)
 }
 
@@ -190,7 +191,8 @@ fn desk_over_ssh(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> 
     let mut all = builtins();
     all.extend(entries);
     let catalog = Catalog::new(all, |entry| !matches!(entry.launch, Launch::Open(_)));
-    let desktop = Desktop { icons, recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
+    let desktop =
+        Desktop { icons, recents: Vec::new(), welcome_seen: true, resize_hint_seen: true, ..Desktop::default() };
     let dirs = AssetDirs {
         locale_sources: qdesk::locales().iter().map(|(file, text)| ((*file).to_owned(), (*text).to_owned())).collect(),
         keymap_source: Some({
@@ -242,8 +244,10 @@ fn dock(harness: &Harness<Desk>) -> String {
 /// Where `text` starts on the dock's row, for a right click on a window's item there.
 fn dock_cell(harness: &Harness<Desk>, text: &str) -> (i32, i32) {
     let row = dock(harness);
-    let x = row.find(text).unwrap_or_else(|| panic!("{text} is not on the dock: {row}"));
-    (x as i32, (rows(harness).len() - 1) as i32)
+    let at = row.find(text).unwrap_or_else(|| panic!("{text} is not on the dock: {row}"));
+    // A column, not a byte: the marks of the workspaces before the item are wider in bytes.
+    let x = qframe::text::width(&row[..at]);
+    (i32::from(x), (rows(harness).len() - 1) as i32)
 }
 
 #[test]
@@ -654,8 +658,16 @@ fn the_lines_set_in_settings_are_as_far_back_as_the_next_window_scrolls() {
     );
     let mut harness = desk(vec![counted.clone()], 120, 40);
     open(&mut harness, &builtin("settings"));
-    // The field of the remembered lines, as the person reaches it: a click into the number it
-    // shows, all of it chosen, and two typed over it.
+    // The field of the remembered lines, as the person reaches it: the wheel over the Settings
+    // window until the row is in sight, a click into the number it shows, all of it chosen, and
+    // two typed over it.
+    let (x, y) = harness.find("Appearance").expect("the Settings window is open");
+    for _ in 0..40 {
+        if harness.find("Remembered lines").is_some() {
+            break;
+        }
+        harness.mouse(MouseKind::ScrollDown, x, y);
+    }
     let (_, y) =
         harness.find("Remembered lines").unwrap_or_else(|| panic!("the setting is on screen:\n{}", harness.screen()));
     let row = rows(&harness)[usize::try_from(y).expect("a row on screen")].clone();
