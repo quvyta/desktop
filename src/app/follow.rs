@@ -12,6 +12,15 @@
 //! so two quick choices never show the first one again for a moment. Whatever else is read is
 //! compared value by value with what is in force, and only what differs is applied, so reading
 //! the file never writes it and never starts a loop.
+//!
+//! This watch is for the desktop's own keys. The keys every Quvyta application shares (the
+//! language, the theme, the icons, reduced motion and the pillar) are followed by the runtime,
+//! which the desktop starts as a member of the Quvyta ecosystem: it watches `desktop.conf` and the
+//! ecosystem's shared `quvyta.conf`, resolves where each value comes from and applies what changed
+//! (see [`App::preferences`](qframe::runtime::App::preferences) on the desktop). Only one of the two
+//! applies a key, so they never undo each other; a key that says it follows the ecosystem would be
+//! misread here as a theme called `quvyta`. The slide, which the runtime does not follow, is the
+//! one framework key still applied here.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -122,10 +131,8 @@ impl Desk {
     /// Everything of the desktop's own is read from the preferences where it is used, so a changed
     /// value is the next frame's: the floor's colour, pattern and picture (once it is decoded), the dock's edge, the status
     /// strip, folders in the explorer, the drag style and the frame cap. The scrollback is the
-    /// next terminal window's, as it is when it is changed on the Settings screen. Of the keys
-    /// every Quvyta application shares, a theme, a language, a glyph mode, reduced motion, the
-    /// pillar and the slide written in the file are applied; a key taken out of the file, or set
-    /// to follow the ecosystem, leaves what is on screen until the next start.
+    /// next terminal window's, as it is when it is changed on the Settings screen. Of the
+    /// framework's keys only the slide is applied here; the runtime follows the others.
     fn follow(&mut self, loaded: Loaded) -> Command<Msg> {
         let Loaded { settings, prefs, wallpaper, diagnostics } = loaded;
         let shared = shared_changes(&self.stored, &settings);
@@ -159,29 +166,13 @@ impl Desk {
     }
 }
 
-/// The commands that apply the keys every Quvyta application shares which `after` sets to
-/// something other than `before` did.
+/// The command that applies the framework's keys the runtime does not follow itself, when `after`
+/// sets them to something other than `before` did: the slide.
 fn shared_changes(before: &Settings, after: &Settings) -> Command<Msg> {
-    let mut commands = Vec::new();
-    if let Some(theme) = after.theme().filter(|theme| before.theme().as_ref() != Some(theme)) {
-        commands.push(Command::set_theme(theme));
+    match after.slide().filter(|slide| before.slide() != Some(*slide)) {
+        Some(slide) => Command::set_slide(slide),
+        None => Command::none(),
     }
-    if let Some(language) = after.language().filter(|language| before.language().as_ref() != Some(language)) {
-        commands.push(Command::set_locale(language));
-    }
-    if let Some(mode) = after.icon_mode().filter(|mode| before.icon_mode() != Some(*mode)) {
-        commands.push(Command::set_icon_mode(mode));
-    }
-    if let Some(reduced) = after.reduced_motion().filter(|reduced| before.reduced_motion() != Some(*reduced)) {
-        commands.push(Command::set_reduced_motion(reduced));
-    }
-    if let Some(style) = after.pillar_style().filter(|style| before.pillar_style() != Some(*style)) {
-        commands.push(Command::set_pillar(style));
-    }
-    if let Some(slide) = after.slide().filter(|slide| before.slide() != Some(*slide)) {
-        commands.push(Command::set_slide(slide));
-    }
-    Command::batch(commands)
 }
 
 /// Waits for the next batch of changes of the settings folder's watch of run `run`, and says

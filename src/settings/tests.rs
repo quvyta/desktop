@@ -26,7 +26,7 @@ fn read(folder: &Path) -> String {
 
 /// The settings `text` holds, read the way the desktop reads them.
 fn parse(text: &str) -> Loaded {
-    super::read(Settings::parse_str(&format!("{APP}.conf"), text).member_of(&Family::QUVYTA))
+    super::read(Settings::parse_str(&format!("{APP}.conf"), text).member_of(&Ecosystem::QUVYTA))
 }
 
 #[test]

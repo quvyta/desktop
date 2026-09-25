@@ -17,7 +17,7 @@ use qdesk::settings::UpdateFolders;
 use qframe::env::{AssetDirs, Env};
 use qframe::icons::GlyphMode;
 use qframe::prelude::*;
-use qframe::storage::Family;
+use qframe::storage::Ecosystem;
 
 use support::{HARMLESS, ICONS, MACHINE, MOMENT, OFFSET, PATIENCE, catalog};
 
@@ -65,9 +65,16 @@ fn started(folders: Option<UpdateFolders>) -> Harness<Desk> {
     let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), Box::new(|| MOMENT * 1_000))
         .apps(apps)
         .catalog(catalog())
-        .desktop(desktop)
-        .update_notice(folders)
-        .watch_within(PATIENCE);
+        .desktop(desktop);
+    // The desktop's settings in the ecosystem's folder of the test, so the switch is saved there.
+    let app = match &folders {
+        Some(folders) => {
+            let loaded = qdesk::settings::load_in(&folders.config);
+            app.settings(loaded.settings, loaded.prefs, loaded.diagnostics)
+        }
+        None => app,
+    };
+    let app = app.update_notice(folders).watch_within(PATIENCE);
     let mut harness = Harness::with_env(app, env(), SIZE.0, SIZE.1);
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
     harness.render();
@@ -82,13 +89,17 @@ fn open_settings(harness: &mut Harness<Desk>) {
     assert_eq!(harness.app().windows().len(), 1, "the window opened:\n{}", harness.screen());
 }
 
-/// Moves the switch of the ecosystem's update notice where it is drawn: a switch is colour alone
-/// and stands at the right edge of the row, where the language drop-down's arrow stands too.
+/// Moves the switch of the ecosystem's update notice where it is drawn: a switch is colour alone,
+/// so it is the first cell right of the row's label whose ground is not the window's.
 fn click_update_notice(harness: &mut Harness<Desk>) {
     open_settings(harness);
-    let (_, row) = harness.find("Say when an update is out").expect("the switch is on screen");
-    let (edge, _) = harness.find("▾").expect("the language drop-down");
-    harness.click(edge - 1, row);
+    let label = "Say when an update is out";
+    let (x, y) = harness.find(label).expect("the switch is on screen");
+    let after = u16::try_from(x).expect("on screen") + u16::try_from(label.len()).expect("short");
+    let row = u16::try_from(y).expect("on screen");
+    let ground = harness.bg(after, row);
+    let switch = (after..SIZE.0).find(|x| harness.bg(*x, row) != ground).expect("the switch right of its label");
+    harness.click(i32::from(switch), y);
 }
 
 #[test]
@@ -120,12 +131,16 @@ fn the_switch_on_the_settings_screen_turns_the_question_off_for_every_quvyta_app
     click_update_notice(&mut harness);
     // The write happens off the drawing path; a few frames let it land, bounded.
     for _ in 0..50 {
-        if !Family::QUVYTA.update_notice_in(&folders.config) {
+        if !Ecosystem::QUVYTA.update_notice_in(&folders.config) {
             break;
         }
         harness.render();
     }
-    assert!(!Family::QUVYTA.update_notice_in(&folders.config), "the ecosystem's file says off:\n{}", harness.screen());
+    assert!(
+        !Ecosystem::QUVYTA.update_notice_in(&folders.config),
+        "the ecosystem's file says off:\n{}",
+        harness.screen()
+    );
     let shared = std::fs::read_to_string(folders.config.join("quvyta.conf")).expect("the ecosystem's file");
     assert!(shared.contains("update-notice = false"), "{shared}");
 
@@ -144,6 +159,6 @@ fn without_the_ecosystems_folders_nothing_is_asked_and_no_switch_is_shown() {
     assert!(!harness.screen().contains("is out"), "{}", harness.screen());
     open_settings(&mut harness);
     let screen = harness.screen();
-    assert!(screen.contains("Glyphs") || screen.contains("Theme"), "the Settings screen is open:\n{screen}");
+    assert!(screen.contains("In every Quvyta application"), "the Settings screen is open:\n{screen}");
     assert!(!screen.contains("Say when an update is out"), "no switch that would do nothing:\n{screen}");
 }

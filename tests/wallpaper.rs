@@ -231,6 +231,8 @@ fn an_included_picture_is_decoded_from_the_program_and_the_settings_name_it_buil
     let scratch = Scratch::new();
     let mut harness = scratch.desk(&support::ICONS);
     open_icon(&mut harness, "Settings");
+    // Far enough down that the list opens with room under it inside the window.
+    assert!(support::scroll_to(&mut harness, "Status on the dock"), "{}", harness.screen());
     harness.click_text("Pick one");
     harness.click_text("Tide");
     let tide = Picture::Ours(OURS[2]);

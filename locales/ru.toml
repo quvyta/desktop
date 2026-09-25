@@ -247,15 +247,6 @@ store-failed = "Не удалось записать настройки: {reason
 file-problems = "Часть файла настроек не удалось прочитать; записанное там оставлено как есть, и рабочий стол использует всё, что применимо без него."
 read = "Понятно"
 
-appearance = "Внешний вид"
-language = "Язык"
-theme = "Тема"
-glyphs = "Символы"
-glyphs-text = "Все приложения Quvyta рисуют этими символами."
-glyphs-auto = "Автоматически"
-glyphs-nerd = "Nerd Font"
-glyphs-unicode = "Unicode"
-glyphs-ascii = "Простой ASCII"
 
 desktop = "Рабочий стол"
 dock = "Док"

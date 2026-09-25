@@ -4,13 +4,17 @@
 mod support;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use qdesk::apps::{Diagnostic, DiagnosticKind, Expected, Folders, Position};
-use qdesk::settings::{self, Applications, DockPosition, DragStyle, FloorColor, Msg, Prefs, Screen, Shared};
+use qdesk::settings::{self, APP, Applications, DockPosition, DragStyle, FloorColor, Msg, Prefs, Screen};
 use qframe::color::ColorDepth;
 use qframe::env::{AssetDirs, Env};
-use qframe::icons::{GlyphMode, IconMode};
+use qframe::i18n::I18n;
+use qframe::icons::GlyphMode;
 use qframe::prelude::*;
+use qframe::storage::{Ecosystem, Settings};
+use qframe::widgets::{Appearance, AppearanceChange};
 
 /// The Settings screen with the state a test gives it, in an application of its own: the screen
 /// is a view, and the desktop that will hold it arrives with the windows.
@@ -20,6 +24,8 @@ struct SettingsApp {
     remote: bool,
     folders: Folders,
     diagnostics: Vec<Diagnostic>,
+    appearance: Appearance,
+    stored: Settings,
 }
 
 impl App for SettingsApp {
@@ -29,18 +35,37 @@ impl App for SettingsApp {
         let (command, request) = settings::update(&mut self.screen, &self.prefs, msg);
         match request {
             Some(settings::Request::Prefs(prefs)) => self.prefs = prefs,
-            Some(
-                settings::Request::Shared(_) | settings::Request::UpdateNotice(_) | settings::Request::Wallpaper(_),
-            )
-            | None => {}
+            Some(settings::Request::Appearance(change)) => {
+                return Command::batch([command, self.appearance.update(change, &mut self.stored)]);
+            }
+            Some(settings::Request::Wallpaper(_)) | None => {}
         }
         command
     }
 
     fn view(&self, ui: &mut View<'_, Msg>) {
         let apps = Applications { folders: &self.folders, diagnostics: &self.diagnostics };
-        settings::view(&self.screen, &self.prefs, self.remote, &apps, ui);
+        settings::view(&self.screen, &self.prefs, self.remote, &self.appearance, &apps, ui);
     }
+}
+
+/// A folder of the test's own in the system's temporary folder, standing for the ecosystem's: the
+/// appearance section reads and saves there, never in the person's own `~/.config/quvyta`.
+/// The appearance section and the desktop's settings over a folder of the test's own.
+fn appearance() -> (Appearance, Settings) {
+    let folder = ecosystem_folder();
+    let preferences = Ecosystem::QUVYTA.preferences_in(&folder, APP, &I18n::builtin());
+    let appearance = Appearance::new(Ecosystem::QUVYTA, APP, preferences).in_folder(&folder);
+    (appearance, Settings::open(folder.join("desktop.conf")).member_of(&Ecosystem::QUVYTA))
+}
+
+fn ecosystem_folder() -> PathBuf {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    let once = NEXT.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("qdesk-settings-screen-{}-{once}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("folder");
+    dir
 }
 
 /// Turns the wheel over the list until `text` is on screen, the way a person reaches a row below
@@ -93,7 +118,9 @@ fn screen_of(
     width: u16,
     height: u16,
 ) -> Harness<SettingsApp> {
-    let app = SettingsApp { screen: Screen::default(), prefs, remote, folders: folders(), diagnostics };
+    let (appearance, stored) = appearance();
+    let app =
+        SettingsApp { screen: Screen::default(), prefs, remote, folders: folders(), diagnostics, appearance, stored };
     let mut harness = Harness::with_env(app, env(), width, height);
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
     harness
@@ -113,20 +140,22 @@ fn decoration(text: &str) -> Option<char> {
 fn a_standard_terminal_shows_every_section_and_what_is_in_force() {
     let mut harness = screen(80, 24);
     let shown = harness.screen();
-    for heading in ["Appearance", "Language", "Theme", "Glyphs", "Desktop", "Dock", "Wallpaper"] {
+    for heading in ["Appearance", "Language", "Theme", "Icons", "In every Quvyta application"] {
         assert!(shown.contains(heading), "no `{heading}`:\n{shown}");
     }
     assert_eq!(decoration(&shown), None, "nothing is drawn with lines or brackets:\n{shown}");
-    // The desktop's own rows fill a standard terminal; the last section is a turn of the wheel
+    // The shared rows fill a standard terminal; the desktop's own sections are turns of the wheel
     // below them.
-    let shown = scrolled_to(&mut harness, "Connection");
-    assert!(shown.contains("Connection"), "no `Connection`:\n{shown}");
-    assert_eq!(decoration(&shown), None, "nothing is drawn with lines or brackets:\n{shown}");
+    for text in ["Reduce motion", "Pillar", "Desktop", "Dock", "Wallpaper", "Connection"] {
+        let shown = scrolled_to(&mut harness, text);
+        assert!(shown.contains(text), "no `{text}`:\n{shown}");
+        assert_eq!(decoration(&shown), None, "nothing is drawn with lines or brackets:\n{shown}");
+    }
 }
 
 #[test]
 fn a_tall_terminal_shows_the_connection_and_the_applications_as_well() {
-    let harness = screen(200, 50);
+    let harness = screen(200, 70);
     let shown = harness.screen();
     for text in ["Dragging a window", "Frames a second", "Remembered lines", "Applications"] {
         assert!(shown.contains(text), "no `{text}`:\n{shown}");
@@ -162,9 +191,12 @@ fn every_glyph_mode_and_sixteen_colours_draw_the_screen_without_decoration() {
 fn the_screen_speaks_turkish_when_the_language_does() {
     let mut harness = screen(80, 24);
     harness.set_locale("tr").render();
-    let mut shown = harness.screen();
-    shown.push_str(&scrolled_to(&mut harness, "Bağlantı"));
-    for text in ["Görünüş", "Dil", "Tema", "Masaüstü", "Bağlantı"] {
+    let shown = harness.screen();
+    for text in ["Görünüm", "Dil", "Renk teması"] {
+        assert!(shown.contains(text), "no `{text}`:\n{shown}");
+    }
+    for text in ["Masaüstü", "Bağlantı"] {
+        let shown = scrolled_to(&mut harness, text);
         assert!(shown.contains(text), "no `{text}`:\n{shown}");
     }
 }
@@ -185,7 +217,7 @@ fn the_screen_speaks_every_language_qdesk_carries() {
     for (code, word) in words {
         let mut harness = screen(100, 30);
         harness.set_locale(code).render();
-        let shown = harness.screen();
+        let shown = scrolled_to(&mut harness, word);
         assert!(shown.contains(word), "{code}: no `{word}`:\n{shown}");
         assert!(!shown.contains("Connection"), "{code}: English is left:\n{shown}");
     }
@@ -267,8 +299,8 @@ fn an_entry_that_could_not_be_read_is_shown_in_turkish_too() {
 
 #[test]
 fn with_nothing_to_report_the_applications_section_says_so_instead_of_staying_empty() {
-    let harness = screen_of(Prefs::default(), false, Vec::new(), 120, 40);
-    let shown = harness.screen();
+    let mut harness = screen_of(Prefs::default(), false, Vec::new(), 120, 40);
+    let shown = scrolled_to(&mut harness, "Every entry was read");
     assert!(shown.contains("Every entry was read"), "{shown}");
     assert!(!shown.contains("could not be read and are not shown"), "{shown}");
     assert_eq!(decoration(&shown), None, "{shown}");
@@ -284,12 +316,15 @@ fn a_settings_file_that_could_not_be_read_is_said_above_the_settings_and_can_be_
         )
         .with_detail("`scrollback` must be a whole number from 0 to 10000, found \"many\"; it is ignored"),
     ];
+    let (appearance, stored) = appearance();
     let app = SettingsApp {
         screen: Screen::new(broken),
         prefs: Prefs::default(),
         remote: false,
         folders: folders(),
         diagnostics: Vec::new(),
+        appearance,
+        stored,
     };
     let mut harness = Harness::with_env(app, env(), 120, 40);
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
@@ -319,16 +354,23 @@ fn a_failed_write_is_said_and_taken_back_when_one_succeeds() {
 }
 
 #[test]
-fn a_shared_setting_is_applied_to_the_whole_screen_and_handed_back_to_be_stored() {
+fn a_change_on_the_appearance_section_is_handed_to_it_and_changes_the_whole_screen() {
     let mut screen_state = Screen::default();
     let prefs = Prefs::default();
-    let (_command, request) =
-        settings::update::<Msg>(&mut screen_state, &prefs, Msg::Shared(Shared::Icons(IconMode::Ascii)));
-    assert_eq!(request, Some(settings::Request::Shared(Shared::Icons(IconMode::Ascii))));
+    let change = AppearanceChange::Theme("nordic".to_owned());
+    let (_command, request) = settings::update::<Msg>(&mut screen_state, &prefs, Msg::Appearance(change.clone()));
+    assert_eq!(request, Some(settings::Request::Appearance(change)));
+
+    // A screen that shows no update notice never passes a change of it on.
+    let off = Msg::Appearance(AppearanceChange::UpdateNotice(false));
+    assert_eq!(settings::update::<Msg>(&mut screen_state, &prefs, off.clone()).1, None);
+    let mut shown = Screen::default().with_updates(true);
+    assert!(settings::update::<Msg>(&mut shown, &prefs, off).1.is_some());
 
     let mut harness = screen(80, 24);
-    harness.send(Msg::Shared(Shared::Language("tr".to_owned())));
-    assert!(harness.screen().contains("Görünüş"), "the language changes the screen at once:\n{}", harness.screen());
+    harness.send(Msg::Appearance(AppearanceChange::Language("tr".to_owned())));
+    assert!(harness.screen().contains("Görünüm"), "the language changes the screen at once:\n{}", harness.screen());
+    assert!(harness.screen().contains("Renk teması"), "{}", harness.screen());
 }
 
 #[test]

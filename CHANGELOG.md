@@ -2,6 +2,15 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.1.10 - 2026-09-25
+
+### Changed
+
+- The Settings screen shows the appearance section every Quvyta application shows, with the same rows and words: language, theme, icons and reduced motion, each with a box saying whether a change goes to every Quvyta application (the shared `~/.config/quvyta/quvyta.conf`) or stays on the desktop alone (`desktop.conf`), then the pillar and the Quvyta-wide update notice. The desktop's own language, theme and glyph rows are gone; its own sections (Desktop, Connection) are as they were.
+- The desktop starts as a member of the Quvyta ecosystem: the shared language, theme, icons and reduced motion are in force from the first frame, and an open desktop follows them when another Quvyta application changes them, unless the desktop keeps a value of its own.
+- A theme, language or icons qdesk 0.1.9 and earlier wrote into `desktop.conf` are looked at once, at the first start: one the same as the ecosystem's shared value follows the ecosystem from now on (`desktop.conf` then says `quvyta` for it), one that differs stays the desktop's own. `desktop.conf` takes a `shared-checked = true` line so this is never done again.
+- Built on quvyta-framework 0.1.29.
+
 ## 0.1.9 - 2026-09-24
 
 ### Changed

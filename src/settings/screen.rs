@@ -1,8 +1,10 @@
 //! The Settings screen: what a person can change about the desktop, and what it cannot read.
 //!
-//! What the framework keeps for every Quvyta application (the language, the theme, the glyph
-//! mode) is read from the environment the screen draws in, which is the one place that knows
-//! what is in force: a saved value the shell overrides would show a choice nobody made. The
+//! What every Quvyta application shares (the language, the theme, the icons, reduced motion) is
+//! the framework's own appearance section, [`Appearance`], the same rows in every Quvyta
+//! application: each with the box that says whether it is changed in every Quvyta application or
+//! on the desktop alone, then the pillar and, where the desktop asks for its updates, the
+//! ecosystem's update notice. The application holds the section and hands its changes to it. The
 //! desktop's own preferences come from [`Prefs`], which the application owns; a change is
 //! applied at once, so it can be seen, and handed back as a [`Request`] for the application to
 //! write.
@@ -12,11 +14,10 @@
 //! drawn with lines, boxes or brackets: the sections are told apart by their headings and by
 //! tone.
 
-use qframe::icons::IconMode;
 use qframe::prelude::*;
-use qframe::storage::Family;
 use qframe::widgets::{
-    EmptyState, ImageError, NumberInput, ScrollView, Segmented, Select, SettingRow, SettingsList, SettingsRows, Switch,
+    Appearance, AppearanceChange, EmptyState, ImageError, NumberInput, ScrollView, Segmented, Select, SettingRow,
+    SettingsList, SettingsRows, Switch,
 };
 
 use super::{
@@ -30,13 +31,10 @@ pub const LIST: &str = "settings-list";
 /// The widget id of the field that holds a chosen frame cap.
 pub const FRAME_CAP_FIELD: &str = "settings-frame-cap";
 
-/// The widget id of the switch of the ecosystem's update notice.
-pub const UPDATE_NOTICE: &str = "settings-update-notice";
-
 /// The widget id of the button that chooses a picture for the floor.
 pub const CHOOSE_WALLPAPER: &str = "settings-choose-wallpaper";
 
-/// Width of the drop-downs: enough for the longest theme, language and glyph mode name.
+/// Width of the desktop's own drop-downs: enough for the longest drag style and picture name.
 const CONTROL_WIDTH: u16 = 18;
 
 /// Cells a number field takes: five digits, the room the cursor needs after them, and the two
@@ -49,22 +47,11 @@ const FRAME_CAP_STEP: f64 = 5.0;
 /// How far the scrollback moves with one step of its field.
 const SCROLLBACK_STEP: f64 = 100.0;
 
-/// A change to something every Quvyta application shares.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Shared {
-    /// The language, by code.
-    Language(String),
-    /// The theme, by id.
-    Theme(String),
-    /// The glyph mode.
-    Icons(IconMode),
-}
-
 /// Something that happened on the screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Msg {
-    /// A shared setting was chosen.
-    Shared(Shared),
+    /// Something was changed on the appearance section every Quvyta application shows.
+    Appearance(AppearanceChange),
     /// The dock was moved to an edge.
     Dock(DockPosition),
     /// A colour was chosen for the floor.
@@ -87,8 +74,6 @@ pub enum Msg {
     FrameCap(Option<u16>),
     /// A number of scrollback lines was set.
     Scrollback(u16),
-    /// The ecosystem's update notice was switched on (`true`) or off.
-    UpdateNotice(bool),
     /// What the settings file could not be read as was read and can go.
     ReadProblems,
     /// The application wrote the settings, or could not.
@@ -99,12 +84,10 @@ pub enum Msg {
 /// left is writing it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
-    /// Store a shared setting.
-    Shared(Shared),
+    /// Hand this change to the appearance section, which applies and saves it.
+    Appearance(AppearanceChange),
     /// Use and store these preferences.
     Prefs(Prefs),
-    /// Turn the ecosystem's update notice on (`true`) or off in the ecosystem's shared file.
-    UpdateNotice(bool),
     /// Do what was asked about the floor's picture: nothing about it has changed yet, since a
     /// picture is decoded before it is taken.
     Wallpaper(Wallpaper),
@@ -142,16 +125,16 @@ pub struct Applications<'a> {
 }
 
 /// The state of the screen: what the settings file itself could not be read as, until it is
-/// read, why the last write failed, until one succeeds, and the ecosystem's update notice where the
-/// desktop asks for its updates.
+/// read, why the last write failed, until one succeeds, and whether the ecosystem's update notice
+/// is shown.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Screen {
     problems: Vec<Diagnostic>,
     problems_read: bool,
     failure: Option<String>,
-    /// The ecosystem's update notice as the screen shows it, or `None` for a desktop that asks for no
-    /// newer version and so shows no switch that would do nothing.
-    update_notice: Option<bool>,
+    /// Whether the switch of the ecosystem's update notice is shown: only on a desktop that asks
+    /// for a newer version of itself, so no switch is shown that would do nothing.
+    updates: bool,
     /// The floor's picture as the application last told it.
     wallpaper: WallpaperRow,
 }
@@ -161,14 +144,13 @@ impl Screen {
     /// [`super::Loaded::diagnostics`] held.
     #[must_use]
     pub fn new(problems: Vec<Diagnostic>) -> Self {
-        Self { problems, problems_read: false, failure: None, update_notice: None, wallpaper: WallpaperRow::default() }
+        Self { problems, problems_read: false, failure: None, updates: false, wallpaper: WallpaperRow::default() }
     }
 
-    /// The same screen showing the ecosystem's update notice as `on`, or showing no switch at all
-    /// with `None`.
+    /// The same screen showing the switch of the ecosystem's update notice, or not.
     #[must_use]
-    pub fn with_update_notice(mut self, on: Option<bool>) -> Self {
-        self.update_notice = on;
+    pub fn with_updates(mut self, shown: bool) -> Self {
+        self.updates = shown;
         self
     }
 
@@ -196,10 +178,10 @@ impl Screen {
         &self.wallpaper
     }
 
-    /// The ecosystem's update notice as the screen shows it; `None` when it shows no switch.
+    /// Whether the switch of the ecosystem's update notice is shown.
     #[must_use]
-    pub fn update_notice(&self) -> Option<bool> {
-        self.update_notice
+    pub fn updates(&self) -> bool {
+        self.updates
     }
 }
 
@@ -210,14 +192,10 @@ pub fn update<M: From<Msg> + Clone + Send + 'static>(
     msg: Msg,
 ) -> (Command<M>, Option<Request>) {
     match msg {
-        Msg::Shared(change) => {
-            let command = match &change {
-                Shared::Language(code) => Command::set_locale(code.clone()),
-                Shared::Theme(id) => Command::set_theme(id.clone()),
-                Shared::Icons(mode) => Command::set_icon_mode(*mode),
-            };
-            (command, Some(Request::Shared(change)))
-        }
+        // A screen without the switch was never offered it; nothing is written for it.
+        Msg::Appearance(AppearanceChange::UpdateNotice(_)) if !screen.updates => (Command::none(), None),
+        // The section applies a change itself as it saves it, so the application does both.
+        Msg::Appearance(change) => (Command::none(), Some(Request::Appearance(change))),
         Msg::Dock(dock) => (Command::none(), Some(Request::Prefs(Prefs { dock, ..*prefs }))),
         Msg::Floor(floor) => (Command::none(), Some(Request::Prefs(Prefs { floor, ..*prefs }))),
         Msg::FloorStyle(floor_style) => (Command::none(), Some(Request::Prefs(Prefs { floor_style, ..*prefs }))),
@@ -237,14 +215,6 @@ pub fn update<M: From<Msg> + Clone + Send + 'static>(
             let scrollback = lines.min(SCROLLBACK_MOST);
             (Command::none(), Some(Request::Prefs(Prefs { scrollback, ..*prefs })))
         }
-        Msg::UpdateNotice(on) => {
-            // A screen without the switch was never offered it; nothing is written for it.
-            if screen.update_notice.is_none() {
-                return (Command::none(), None);
-            }
-            screen.update_notice = Some(on);
-            (Command::none(), Some(Request::UpdateNotice(on)))
-        }
         Msg::ReadProblems => {
             screen.problems_read = true;
             (Command::none(), None)
@@ -259,20 +229,15 @@ pub fn update<M: From<Msg> + Clone + Send + 'static>(
 /// Draws the screen: what the settings file could not be read as until it is read, the last
 /// failure to write, the settings by section, and where the applications come from. `remote` says
 /// what the frame cap comes to on this terminal, since that is the one setting still tied to the
-/// connection.
+/// connection. `appearance` is the section every Quvyta application shows first.
 pub fn view<M: From<Msg> + Clone + Send + 'static>(
     screen: &Screen,
     prefs: &Prefs,
     remote: bool,
+    appearance: &Appearance,
     apps: &Applications<'_>,
     ui: &mut View<'_, M>,
 ) {
-    let languages = ui.env().i18n().list();
-    let language = ui.env().i18n().active().to_owned();
-    let themes = ui.env().themes();
-    let theme = ui.env().theme().id().to_owned();
-    let icons = ui.env().icon_mode();
-
     ui.add_with(ScrollView::new(), |ui| {
         ui.column(|ui| {
             if !screen.problems_read && !screen.problems.is_empty() {
@@ -282,46 +247,11 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
                 warning_line(t!("settings.store-failed", reason = reason.clone()), ui);
             }
             let list = SettingsList::show(ui, |list| {
-                list.heading(t!("settings.appearance"));
-                let codes: Vec<String> = languages.iter().map(|(code, _)| code.clone()).collect();
-                let names: Vec<String> = languages.iter().map(|(_, name)| name.clone()).collect();
-                let chosen = codes.iter().position(|code| *code == language);
-                list.row(SettingRow::new(t!("settings.language")), |ui| {
-                    ui.add(
-                        Select::new(names)
-                            .selected(chosen)
-                            .on_select(move |index| M::from(Msg::Shared(Shared::Language(codes[index].clone())))),
-                    )
-                    .width(Length::Cells(CONTROL_WIDTH));
-                });
-                let ids: Vec<String> = themes.iter().map(|(id, _)| id.clone()).collect();
-                let titles: Vec<String> = themes.iter().map(|(_, name)| name.clone()).collect();
-                let chosen = ids.iter().position(|id| *id == theme);
-                list.row(SettingRow::new(t!("settings.theme")), |ui| {
-                    ui.add(
-                        Select::new(titles)
-                            .selected(chosen)
-                            .on_select(move |index| M::from(Msg::Shared(Shared::Theme(ids[index].clone())))),
-                    )
-                    .width(Length::Cells(CONTROL_WIDTH));
-                });
-                let modes = IconMode::ALL.map(|mode| t!(&format!("settings.glyphs-{}", mode.name())));
-                let chosen = IconMode::ALL.iter().position(|mode| *mode == icons);
-                let row = SettingRow::new(t!("settings.glyphs")).description(t!("settings.glyphs-text"));
-                list.row(row, |ui| {
-                    ui.add(
-                        Select::new(modes)
-                            .selected(chosen)
-                            .on_select(|index| M::from(Msg::Shared(Shared::Icons(IconMode::ALL[index])))),
-                    )
-                    .width(Length::Cells(CONTROL_WIDTH));
-                });
-                // The ecosystem's own words, the same in every Quvyta application that asks.
-                if let Some(on) = screen.update_notice {
-                    let about = t!("quvyta.appearance.updates-text", family = Family::QUVYTA.title());
-                    list.row(SettingRow::new(t!("quvyta.appearance.updates")).description(about), |ui| {
-                        ui.add(Switch::new(on).on_toggle(|on| M::from(Msg::UpdateNotice(on)))).id(UPDATE_NOTICE);
-                    });
+                // The same rows, words and order as in every other Quvyta application.
+                let change = |change| M::from(Msg::Appearance(change));
+                appearance.section(list, change);
+                if screen.updates {
+                    appearance.updates(list, change);
                 }
 
                 list.heading(t!("settings.desktop"));

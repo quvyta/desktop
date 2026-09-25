@@ -114,11 +114,14 @@ fn a_file_broken_by_hand_is_said_and_the_floor_follows_it_again_once_it_is_mende
 fn the_theme_in_the_settings_file_is_applied_at_start_and_when_the_file_changes() {
     let config = Config::new();
     fs::write(config.file(), "theme = \"amber\"\n").expect("file");
-    let mut harness = support::desk_in(&config.0, SIZE.0, SIZE.1);
+    // Started as `qdesk` starts, a member of the ecosystem: the runtime applies the saved theme and
+    // follows the file, so a change is heard as its watch hears it.
+    let mut harness = support::member_in(&config.0, SIZE.0, SIZE.1);
     assert_eq!(harness.env().theme().id(), "amber", "the saved theme is the first frame's");
 
     fs::write(config.file(), "theme = \"nordic\"\n").expect("file");
-    until(&mut harness, "the new theme", |harness| harness.env().theme().id() == "nordic");
+    harness.poll_preferences();
+    assert_eq!(harness.env().theme().id(), "nordic", "the new theme is applied while the desktop runs");
 }
 
 #[test]

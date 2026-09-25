@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use qframe::i18n::{I18n, scope};
-use qframe::storage::Family;
+use qframe::storage::Ecosystem;
 use qframe::t;
 use qframe::widgets::ImageData;
 
@@ -182,7 +182,7 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Optio
 pub fn execute(args: &[String], code: Option<&str>, out: &mut impl Write, err: &mut impl Write) -> Option<u8> {
     // Asked only when the arguments need it: `--help` reads no folder.
     let needs_folder = matches!(parse(args), Some(Command::Wallpaper(_)));
-    let config = if needs_folder { Family::QUVYTA.config_dir() } else { None };
+    let config = if needs_folder { Ecosystem::QUVYTA.config_dir() } else { None };
     execute_in(args, code, config.as_deref(), out, err)
 }
 

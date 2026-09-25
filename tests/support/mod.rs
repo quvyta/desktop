@@ -308,3 +308,38 @@ pub fn desk_over(
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true).set_remote(remote);
     harness
 }
+
+/// The usual test desktop started the way `qdesk` starts on a machine, with `config` as the Quvyta
+/// ecosystem's folder: the settings an older qdesk wrote are settled first, and the runtime starts
+/// the desktop as a member of the ecosystem, applying the shared language, theme, icons and
+/// reduced motion before the first frame. The folder is not watched; after writing a file, as
+/// another application would, [`Harness::poll_preferences`] reads it the way the runtime does.
+///
+/// The framework's member harness draws with the framework's own files only, so the desktop's own
+/// words show as their keys here; these tests read the framework's appearance section, the names
+/// of the entries and colours, never the desktop's own words.
+#[must_use]
+pub fn member_in(config: &Path, width: u16, height: u16) -> Harness<Desk> {
+    let loaded = qdesk::settings::start_in(config);
+    let app = base(Box::new(|| MOMENT * 1_000)).settings(loaded.settings, loaded.prefs, loaded.diagnostics);
+    let mut harness =
+        Harness::member_in(app, qframe::storage::Ecosystem::QUVYTA, config, qdesk::settings::APP, width, height);
+    harness.set_glyph_mode(GlyphMode::Unicode).render();
+    harness
+}
+
+/// Turns the wheel over the only open window until `text` is on screen, the way a person reaches a
+/// row of the Settings screen below the window's edge; at most as many turns as the screen has
+/// rows. Says whether the text is shown.
+pub fn scroll_to(harness: &mut Harness<Desk>, text: &str) -> bool {
+    let rows = harness.screen().lines().count();
+    for _ in 0..rows {
+        if harness.screen().contains(text) {
+            return true;
+        }
+        let window = harness.app().windows().iter().next().map(qdesk::wm::Window::rect).expect("an open window");
+        let (x, y) = (window.x + i32::from(window.width / 2), window.y + i32::from(window.height / 2));
+        harness.mouse(qframe::event::MouseKind::ScrollDown, x, y);
+    }
+    harness.screen().contains(text)
+}

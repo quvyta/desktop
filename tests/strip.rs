@@ -367,17 +367,23 @@ fn a_changing_number_never_moves_the_items_beside_it() {
     assert_eq!(harness.find("▦"), Some(memory), "the memory stayed where it was: {}", dock(&harness));
 }
 
-/// Opens Settings from its icon on the floor, clicks the switch of "Status on the dock" where it
-/// is drawn, at the right edge of its row, and closes the window again from its title.
+/// Opens Settings from its icon on the floor, turns the wheel down to "Status on the dock", clicks
+/// its switch where it is drawn, and closes the window again from its title.
 fn switch_strip_in_settings(harness: &mut Harness<Desk>) {
     let (x, y) = harness.find("Settings").expect("the Settings icon");
     harness.click(x, y);
     harness.click(x, y);
-    let (_, row) = harness.find("Status on the dock").unwrap_or_else(|| panic!("the row:\n{}", harness.screen()));
-    // A switch stands at the right edge of its row, where the arrow of the language drop-down
-    // stands too.
-    let (edge, _) = harness.find("▾").expect("the language drop-down");
-    harness.click(edge - 1, row);
+    let label = "Status on the dock";
+    assert!(support::scroll_to(harness, label), "the row:\n{}", harness.screen());
+    let (x, y) = harness.find(label).expect("the row");
+    // A switch is colour alone: the first cell right of the label whose ground is not the window's.
+    let row = u16::try_from(y).expect("on screen");
+    let after = u16::try_from(x).expect("on screen") + u16::try_from(label.len()).expect("short");
+    let ground = harness.bg(after, row);
+    let width = u16::try_from(harness.screen().lines().map(str::chars).map(Iterator::count).max().unwrap_or(0))
+        .expect("a terminal's width");
+    let switch = (after..width).find(|x| harness.bg(*x, row) != ground).expect("the switch right of its label");
+    harness.click(i32::from(switch), y);
     let (x, y) = harness.find("×").unwrap_or_else(|| panic!("the window's close mark:\n{}", harness.screen()));
     harness.click(x, y);
     assert!(harness.app().windows().is_empty(), "the Settings window closed:\n{}", harness.screen());

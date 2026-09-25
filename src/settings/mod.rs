@@ -1,8 +1,11 @@
 //! What a person can set about the desktop, where it is kept, and how a value becomes the one
 //! in force.
 //!
-//! The desktop shares the look of every Quvyta application: the theme, the language and the
-//! glyph mode are the framework's keys, kept beside qdesk's own in one file. qdesk's own keys
+//! The desktop shares the look of every Quvyta application: the language, the theme, the icons and
+//! reduced motion are the Quvyta ecosystem's, kept in its shared file `quvyta.conf` unless the
+//! person chose them for the desktop alone, when they stand in `desktop.conf` beside qdesk's own
+//! keys. The framework resolves where each comes from and follows both files while the desktop
+//! runs; the Settings screen shows them with the framework's own appearance section. qdesk's own keys
 //! say where the dock sits, what colour and pattern the floor has and which picture lies over it, whether a folder opens in the ecosystem's
 //! file explorer, how a window follows the mouse while it is
 //! dragged, how often the screen may be drawn and how many lines a terminal window remembers.
@@ -33,13 +36,10 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 use qframe::runtime::FrameLimit;
-use qframe::storage::{Family, Schema, Setting, SettingKind, Settings};
+use qframe::storage::{Ecosystem, Schema, Setting, SettingKind, Settings};
 
 pub use floor_color::{FloorColor, FloorStyle, GLYPHS_READ, NAMES_READ, Palette, Shades, ground, is_dot};
-pub use screen::{
-    Applications, CHOOSE_WALLPAPER, LIST, Msg, Request, Screen, Shared, UPDATE_NOTICE, Wallpaper, WallpaperRow, update,
-    view,
-};
+pub use screen::{Applications, CHOOSE_WALLPAPER, LIST, Msg, Request, Screen, Wallpaper, WallpaperRow, update, view};
 
 use crate::apps::{Diagnostic, DiagnosticKind, Position};
 use crate::wallpapers::Picture;
@@ -67,7 +67,7 @@ impl UpdateFolders {
     /// switch or the last question and so nothing is asked.
     #[must_use]
     pub fn here() -> Option<Self> {
-        let ecosystem = Family::QUVYTA;
+        let ecosystem = Ecosystem::QUVYTA;
         ecosystem.config_dir().zip(ecosystem.state_dir(APP)).map(|(config, state)| Self { config, state })
     }
 }
@@ -186,8 +186,8 @@ pub fn frame_cap(setting: Option<u16>, remote: bool) -> u16 {
     }
 }
 
-/// What a person has set about the desktop itself. The theme, the language and the glyph mode
-/// are not here: they belong to every Quvyta application and the framework keeps them.
+/// What a person has set about the desktop itself. The language, the theme, the icons and reduced
+/// motion are not here: they belong to every Quvyta application and the framework keeps them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Prefs {
     /// Which edge the dock sits on.
@@ -371,13 +371,39 @@ pub struct Loaded {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// Reads the settings as the desktop starts on this machine: first the settings an older qdesk
+/// wrote are settled with the ecosystem ([`start_in`]), then the file is read as [`load`] reads it.
+#[must_use]
+pub fn start() -> Loaded {
+    match Ecosystem::QUVYTA.config_dir() {
+        Some(folder) => start_in(&folder),
+        None => load(),
+    }
+}
+
+/// [`start`] with `config_dir` as the ecosystem's folder, so a test starts the way the desktop
+/// does without touching the person's own settings.
+///
+/// qdesk 0.1.9 and earlier wrote the theme, the language and the icons chosen on its Settings
+/// screen into `desktop.conf` as fixed values, before the ecosystem shared them. Settling looks at
+/// them once: a value the same as the ecosystem's shared one follows the ecosystem from now on, and
+/// one that differs is the person's own choice for the desktop and stays. The file is marked so it
+/// is never looked at again. A settling that fails is passed over in silence: a file that cannot be
+/// read is said by [`load_in`] with its line and column, one that cannot be written is tried again
+/// at the next start, and the desktop opens either way with what the files say.
+#[must_use]
+pub fn start_in(config_dir: &Path) -> Loaded {
+    let _ = Ecosystem::QUVYTA.settle_in(config_dir, APP);
+    load_in(config_dir)
+}
+
 /// Reads the settings from the ecosystem's folder on this machine. Without a home folder to write
 /// in, the settings stay in memory and changing one does nothing more than apply it.
 #[must_use]
 pub fn load() -> Loaded {
-    match Family::QUVYTA.config_dir() {
+    match Ecosystem::QUVYTA.config_dir() {
         Some(folder) => load_in(&folder),
-        None => read(Settings::load_member(&Family::QUVYTA, APP)),
+        None => read(Settings::load_member(&Ecosystem::QUVYTA, APP)),
     }
 }
 
@@ -385,14 +411,14 @@ pub fn load() -> Loaded {
 /// person's own settings.
 #[must_use]
 pub fn load_in(config_dir: &Path) -> Loaded {
-    read(Settings::open(config_dir.join(format!("{APP}.conf"))).member_of(&Family::QUVYTA))
+    read(Settings::open(config_dir.join(format!("{APP}.conf"))).member_of(&Ecosystem::QUVYTA))
 }
 
 /// Reads the settings file at `path` again, as [`load_in`] reads it: for a running desktop whose
 /// file was changed by another program or by hand.
 #[must_use]
 pub fn reread(path: &Path) -> Loaded {
-    read(Settings::open(path).member_of(&Family::QUVYTA))
+    read(Settings::open(path).member_of(&Ecosystem::QUVYTA))
 }
 
 /// Checks `settings` against the desktop's keys and reads the preferences out of them.

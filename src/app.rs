@@ -16,14 +16,15 @@ use qframe::date::{DateTime, local_offset};
 use qframe::desktop::XdgDirs;
 use qframe::env::Env;
 use qframe::graphics::Graphics;
+use qframe::i18n::I18n;
 use qframe::keymap::Scope;
 use qframe::prelude::*;
 use qframe::runtime::{ClipboardEvent, Confirm, FrameLimit, Task, Termination, Update, UpdateCheck};
-use qframe::storage::{Family, FolderChanges, FolderWatch, Settings, machine_name};
+use qframe::storage::{Ecosystem, FolderChanges, FolderWatch, Preferences, Settings, machine_name};
 use qframe::widgets::{
-    BigText, ContextItem, ContextMenu, EmptyState, Field, FileChange, FileManager, FileManagerMsg, FileManagerState,
-    FilePickerMsg, FileView, FolderEntry, Form, HelpLayer, ImageData, ImageError, KeyHints, Modal, NameFor, Panel,
-    RowMark, TextInput, Toast, Tooltip,
+    Appearance, AppearanceChange, BigText, ContextItem, ContextMenu, EmptyState, Field, FileChange, FileManager,
+    FileManagerMsg, FileManagerState, FilePickerMsg, FileView, FolderEntry, Form, HelpLayer, ImageData, ImageError,
+    KeyHints, Modal, NameFor, Panel, RowMark, TextInput, Toast, Tooltip,
 };
 
 use crate::apps::{
@@ -103,7 +104,9 @@ pub fn run() -> io::Result<()> {
     let loaded = environment.load();
     notices.extend(loaded.diagnostics);
     let catalog = Catalog::with_environment(loaded.entries, &environment);
-    let chosen = settings::load();
+    // The settings an older qdesk wrote are settled with the ecosystem before anything reads them.
+    let chosen = settings::start();
+    let stored = chosen.settings;
     let probe = Probe::new(&environment);
     let notes = qframe::storage::data_dir("quvyta").map(|dir| dir.join("desktop").join("notes"));
     let mut app = Desk::new(machine_name(), local_offset(), Box::new(wall_now)).probe(probe);
@@ -115,11 +118,14 @@ pub fn run() -> io::Result<()> {
         .catalog(catalog)
         .desktop(desktop)
         .config(path)
-        .settings(chosen.settings, chosen.prefs, chosen.diagnostics)
+        .settings(stored.clone(), chosen.prefs, chosen.diagnostics)
         .remote(remote_link())
         .notices(notices)
         .update_notice(UpdateFolders::here());
-    let mut runtime = Runtime::new(app);
+    // A member of the Quvyta ecosystem: the shared language, theme, icons and reduced motion are
+    // applied before the first frame and followed while the desktop runs. The desktop's own file
+    // is handed over as qdesk read it, so it is not read a second time.
+    let mut runtime = Runtime::new(app).settings(&stored).member(Ecosystem::QUVYTA, settings::APP);
     for &(file, text) in crate::locales() {
         runtime = runtime.locale_source(file, text);
     }
@@ -251,6 +257,9 @@ pub enum Msg {
     SendTo(WindowId, usize),
     /// Something happened on the Settings screen of a window.
     Settings(settings::Msg),
+    /// The shared preferences as the runtime resolved them at start or after the ecosystem's files
+    /// changed; see [`App::preferences`].
+    Preferences(Preferences),
     /// A wait on the folder of the settings file, on the watch of this run, heard this.
     SettingsFolder(u64, FolderNews),
     /// Something happened in the file manager of a Files window.
@@ -404,6 +413,10 @@ pub struct Desk {
     /// Whether the terminal is reached over a network, as the framework's environment says.
     remote: bool,
     screen: settings::Screen,
+    /// The appearance section of the Settings screen: the language, the theme, the icons and
+    /// reduced motion as the Quvyta ecosystem shares them, where each comes from, and where a
+    /// change is saved. See [`Desk::settings`] and [`App::preferences`].
+    appearance: Appearance,
     windows: Windows,
     programs: Sessions,
     /// The windows whose programs called for attention while they did not have the keys.
@@ -514,6 +527,7 @@ impl Desk {
             written: Vec::new(),
             remote: false,
             screen: settings::Screen::default(),
+            appearance: detached_appearance(),
             // The terminal says how large it is before the first frame; until then the desktop
             // has no room and no window.
             windows: Windows::new(Size::new(0, 0)),
@@ -560,12 +574,22 @@ impl Desk {
     }
 
     /// The settings file, what it says and what it could not be read as.
+    ///
+    /// The file is in the ecosystem's folder, so the appearance section saves its changes in that
+    /// folder too: the shared file beside `desktop.conf`, or `desktop.conf` itself. Settings kept
+    /// only in memory save nothing there either. What the section starts with is what the two
+    /// files say now; a desktop started as a member hears it again from the runtime before its
+    /// first frame and whenever the files change ([`App::preferences`]).
     #[must_use]
     pub fn settings(mut self, stored: Settings, prefs: Prefs, problems: Vec<Diagnostic>) -> Self {
+        if let Some(folder) = stored.path().and_then(Path::parent) {
+            let preferences = Ecosystem::QUVYTA.preferences_without_saving_in(folder, settings::APP, &I18n::builtin());
+            self.appearance = Appearance::new(Ecosystem::QUVYTA, settings::APP, preferences).in_folder(folder);
+        }
         self.stored = stored;
         self.prefs = prefs;
         // The switch of the update notice is kept, in whichever order the two were given.
-        self.screen = settings::Screen::new(problems).with_update_notice(self.screen.update_notice());
+        self.screen = settings::Screen::new(problems).with_updates(self.screen.updates());
         self.programs.set_prefs(self.prefs, self.remote);
         let picture = settings::wallpaper(&self.stored);
         self.name_wallpaper(picture);
@@ -631,8 +655,7 @@ impl Desk {
     /// nothing and shows no switch, which is every test that has not said otherwise.
     #[must_use]
     pub fn update_notice(mut self, folders: Option<UpdateFolders>) -> Self {
-        let on = folders.as_ref().map(|folders| Family::QUVYTA.update_notice_in(&folders.config));
-        self.screen = std::mem::take(&mut self.screen).with_update_notice(on);
+        self.screen = std::mem::take(&mut self.screen).with_updates(folders.is_some());
         self.updates = folders;
         self
     }
@@ -748,6 +771,13 @@ impl Desk {
     #[must_use]
     pub fn settings_screen(&self) -> &settings::Screen {
         &self.screen
+    }
+
+    /// The appearance section of the Settings screen, with the shared preferences as it last heard
+    /// them.
+    #[must_use]
+    pub fn appearance(&self) -> &Appearance {
+        &self.appearance
     }
 
     /// The ids of the selected icons.
@@ -1808,11 +1838,7 @@ impl Desk {
                 let reading = self.sample(Duration::ZERO);
                 Command::batch([self.store(), reading])
             }
-            Some(settings::Request::Shared(shared)) => {
-                self.share(&shared);
-                self.store()
-            }
-            Some(settings::Request::UpdateNotice(on)) => self.store_update_notice(on),
+            Some(settings::Request::Appearance(change)) => self.on_appearance(change),
             Some(settings::Request::Wallpaper(asked)) => self.on_wallpaper_asked(asked),
             None => Command::none(),
         };
@@ -1825,11 +1851,11 @@ impl Desk {
     /// asks nothing at all, whoever runs the question.
     fn ask_for_update(&self) -> Command<Msg> {
         let Some(folders) = &self.updates else { return Command::none() };
-        if !Family::QUVYTA.update_notice_in(&folders.config) {
+        if !Ecosystem::QUVYTA.update_notice_in(&folders.config) {
             return Command::none();
         }
         let check = UpdateCheck::new(
-            Family::QUVYTA,
+            Ecosystem::QUVYTA,
             settings::APP,
             env!("CARGO_PKG_NAME"),
             env!("CARGO_PKG_VERSION"),
@@ -1839,14 +1865,18 @@ impl Desk {
         Command::check_for_update(check)
     }
 
-    /// Turns the ecosystem's update notice on or off in its shared file, off the render path.
-    fn store_update_notice(&self, on: bool) -> Command<Msg> {
-        let Some(folders) = &self.updates else { return Command::none() };
-        let folder = folders.config.clone();
-        Command::perform(move || {
-            let stored = Family::QUVYTA.set_update_notice_in(&folder, on).map_err(|error| error.to_string());
-            Msg::Settings(settings::Msg::Stored(stored))
-        })
+    /// A change on the appearance section: the section applies it and saves it in the file the box
+    /// under its row names, the shared one or `desktop.conf`, and keeps the settings in memory as the
+    /// file now says them. A change to `desktop.conf` is then written once more from those
+    /// settings, as every other choice on the screen is: a write of the desktop's own still on its
+    /// way, made before this change, cannot then be the last word in the file and take it back.
+    fn on_appearance(&mut self, change: AppearanceChange) -> Command<Msg> {
+        let shared_only = matches!(change, AppearanceChange::UpdateNotice(_));
+        let shown = self.appearance.update(change, &mut self.stored);
+        if shared_only {
+            return shown;
+        }
+        Command::batch([shown, self.store()])
     }
 
     /// Writes the settings on a background thread, so a slow disk never holds up drawing. The
@@ -1854,15 +1884,6 @@ impl Desk {
     fn store(&mut self) -> Command<Msg> {
         self.remember_write();
         self.stored.save_command(|result| Msg::Settings(settings::Msg::Stored(result)))
-    }
-
-    /// Puts a setting every Quvyta application shares into the settings file.
-    fn share(&mut self, shared: &settings::Shared) {
-        let _ = match shared {
-            settings::Shared::Language(code) => self.stored.set(Settings::LANGUAGE, code.clone()),
-            settings::Shared::Theme(id) => self.stored.set(Settings::THEME, id.clone()),
-            settings::Shared::Icons(mode) => self.stored.set(Settings::ICONS, mode.name().to_owned()),
-        };
     }
 
     /// Installs an application: qpac and quvyta do the installing, each in a window of its own, and
@@ -2086,6 +2107,12 @@ impl Desk {
             Msg::Workspace(space) => self.switch(space),
             Msg::SendTo(id, space) => self.send_to(id, space),
             Msg::Settings(message) => self.on_settings(message),
+            // The runtime has switched the screen already; the section only shows where each
+            // value now comes from, so the next change is saved where its box says.
+            Msg::Preferences(preferences) => {
+                self.appearance.refresh(preferences);
+                Command::none()
+            }
             Msg::SettingsFolder(run, news) => self.on_settings_folder(run, news),
             Msg::Files(id, message) => self.on_files(id, message),
             Msg::OpenFile(file) => self.open_file(&file),
@@ -2368,7 +2395,7 @@ impl Desk {
     fn settings_body(&self, ui: &mut View<'_, Msg>) {
         let folders = self.apps.folders();
         let apps = settings::Applications { folders: &folders, diagnostics: &self.notices };
-        settings::view(&self.screen, &self.prefs, self.remote, &apps, ui);
+        settings::view(&self.screen, &self.prefs, self.remote, &self.appearance, &apps, ui);
     }
 
     /// The folder of a Files window, drawn by the framework's file manager in the window's shape.
@@ -2953,6 +2980,21 @@ impl Desk {
     }
 }
 
+/// The appearance section of a desktop given no settings file: it saves nothing, and starts from
+/// what the machine is detected to have, since there are no files to read.
+///
+/// The framework resolves preferences only from a folder, so it is given one that cannot exist: a
+/// folder inside `/dev/null`, which is not a folder. Nothing is read there and nothing written.
+/// The machine is looked at once for all such desktops, since detecting the icons reads the font
+/// folders.
+fn detached_appearance() -> Appearance {
+    static DETECTED: std::sync::OnceLock<Preferences> = std::sync::OnceLock::new();
+    let preferences = DETECTED.get_or_init(|| {
+        Ecosystem::QUVYTA.preferences_without_saving_in(Path::new("/dev/null/quvyta"), settings::APP, &I18n::builtin())
+    });
+    Appearance::new(Ecosystem::QUVYTA, settings::APP, preferences.clone()).without_saving()
+}
+
 impl From<settings::Msg> for Msg {
     fn from(message: settings::Msg) -> Self {
         Self::Settings(message)
@@ -3001,34 +3043,34 @@ impl App for Desk {
         let notices: Vec<Command<Msg>> = problems.iter().map(|problem| self.told(problem)).collect();
         let watching = self.watch();
         let following = self.watch_settings();
-        // The theme, the language and the rest every Quvyta application shares, as the file says
-        // them, before the first frame is drawn.
-        let shared = self.stored.apply();
         let reading = self.read_folder();
         let picture = self.start_wallpaper();
         let asked = self.ask_for_update();
         let notes = self.read_notes();
         let ticks = self.gadget_ticks();
         Command::batch(
-            [
-                self.next_minute(),
-                shared,
-                watching,
-                following,
-                reading,
-                picture,
-                Command::focus(FLOOR),
-                asked,
-                notes,
-                ticks,
-            ]
-            .into_iter()
-            .chain(notices),
+            [self.next_minute(), watching, following, reading, picture, Command::focus(FLOOR), asked, notes, ticks]
+                .into_iter()
+                .chain(notices),
         )
     }
 
     fn resized(&self, size: Size) -> Option<Msg> {
         Some(Msg::Resized(size))
+    }
+
+    /// The desktop runs as a member of the Quvyta ecosystem ([`run`]), so the runtime applies the
+    /// shared language, theme, icons and reduced motion before the first frame and follows both
+    /// files, the shared `quvyta.conf` and `desktop.conf`, while the desktop runs. What it resolved
+    /// reaches the appearance section here, at start and after every change, so the boxes under
+    /// its rows say where each value comes from now.
+    ///
+    /// The desktop's own watch on `desktop.conf` (its `follow` module) takes care of the desktop's own keys
+    /// only, and the runtime of the shared ones: neither applies what the other does, so the two
+    /// never undo each other. The runtime reads the files without writing them and applies only
+    /// what differs from what it heard last, so the desktop's own writes start no loop either.
+    fn preferences(&self, preferences: &Preferences) -> Option<Msg> {
+        Some(Msg::Preferences(preferences.clone()))
     }
 
     /// The wallpaper is decoded at the size the terminal shows: a kitty terminal is sent many
