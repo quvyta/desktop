@@ -1,6 +1,8 @@
 //! The desktop screen: the floor and the dock, at several sizes, glyph modes and colour depths,
 //! in a terminal too small for it, and quitting.
 
+mod support;
+
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -46,13 +48,19 @@ fn env() -> Env {
         }),
         ..AssetDirs::default()
     };
-    Env::load(&dirs).expect("the built-in files load")
+    Env::load_with(&dirs, support::terminal).expect("the built-in files load")
 }
 
 /// A desktop with nothing on its floor and the welcome line already seen, so the tests of the
 /// dock and the floor's tone see nothing else.
 fn desk_on(machine: Option<&str>, offset: Option<i16>, clock: &Clock, width: u16, height: u16) -> Harness<Desk> {
-    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
+    let desktop = Desktop {
+        icons: Vec::new(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     let app = Desk::new(machine.map(str::to_owned), offset, clock.reader()).desktop(desktop);
     let mut harness = Harness::with_env(app, env(), width, height);
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);

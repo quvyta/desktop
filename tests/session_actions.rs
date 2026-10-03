@@ -13,7 +13,7 @@ mod support;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use qdesk::app::{Desk, LOCK_FIELD};
 use qdesk::apps::Environment;
@@ -58,14 +58,20 @@ impl Scratch {
         );
     }
 
+    /// Where the test's `unix_chkpwd` writes a line every time it is asked.
+    fn checked(&self) -> PathBuf {
+        self.0.join("checked")
+    }
+
     /// A `unix_chkpwd` that says yes to [`PASSWORD`] alone, read from a pipe up to its NUL byte as
-    /// the system's own does.
+    /// the system's own does, and writes a line to [`checked`](Self::checked) every time it runs.
     fn chkpwd(&self) {
         script(
             &self.0.join("bin/unix_chkpwd"),
             &format!(
-                "[ \"$1 $2\" = 'ada nullok' ] || exit 8\n[ -t 0 ] && exit 9\n\
-                 got=$(od -An -c | tr -d ' \\n')\n[ \"$got\" = '{PASSWORD}\\0' ]"
+                "echo asked >> '{}'\n[ \"$1 $2\" = 'ada nullok' ] || exit 8\n[ -t 0 ] && exit 9\n\
+                 got=$(od -An -c | tr -d ' \\n')\n[ \"$got\" = '{PASSWORD}\\0' ]",
+                self.checked().display()
             ),
         );
     }
@@ -118,15 +124,16 @@ fn env() -> Env {
         }),
         ..AssetDirs::default()
     };
-    Env::load(&dirs).expect("the built-in files load")
+    Env::load_with(&dirs, support::terminal).expect("the built-in files load")
 }
 
-/// The usual floor at 80 × 24 in the environment of `scratch`, on a terminal that is `remote` or
-/// not.
+/// The usual floor at 80 × 24 in the environment of `scratch`, keeping its state in `scratch` too,
+/// on a terminal that is `remote` or not.
 fn desk(scratch: &Scratch, remote: bool) -> Harness<Desk> {
     let desktop = Desktop {
         icons: ICONS.map(str::to_owned).to_vec(),
         welcome_seen: true,
+        recommended_seen: true,
         resize_hint_seen: true,
         ..Desktop::default()
     };
@@ -135,6 +142,7 @@ fn desk(scratch: &Scratch, remote: bool) -> Harness<Desk> {
         .catalog(support::catalog())
         .desktop(desktop)
         .remote(remote)
+        .state_folder(&scratch.0.join("state"))
         .watch_within(PATIENCE);
     let mut harness = Harness::with_env(app, env(), 80, 24);
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true).set_remote(remote);
@@ -183,6 +191,14 @@ fn open_terminal(harness: &mut Harness<Desk>) {
         harness.app().windows().iter().any(|window| window.run() == Some(Run::Running))
     });
 }
+
+/// How many times the test's `unix_chkpwd` was asked.
+fn checks(scratch: &Scratch) -> usize {
+    fs::read_to_string(scratch.checked()).unwrap_or_default().lines().count()
+}
+
+/// A little more than a second: the waits of the lock screen count whole seconds.
+const STEP: Duration = Duration::from_millis(1_100);
 
 /// What the test's `systemctl` was asked, empty when it never ran.
 fn asked(scratch: &Scratch) -> String {
@@ -338,11 +354,62 @@ fn the_lock_screen_covers_everything_and_only_the_right_password_opens_it() {
     assert!(harness.app().locked());
     assert!(harness.is_focused(LOCK_FIELD), "the keys stay in the field");
     assert!(harness.screen().contains("Password for ada"), "the field is empty again:\n{}", harness.screen());
+    // The next attempt waits a second.
+    harness.advance(STEP);
 
     harness.type_text(PASSWORD).press("enter");
     until(&mut harness, "the desktop", |harness| !harness.app().locked());
     assert!(harness.screen().contains('❖'), "the dock is back:\n{}", harness.screen());
     assert_eq!(harness.app().windows().len(), 1, "the window is where it was");
+}
+
+#[test]
+fn every_wrong_password_makes_the_next_attempt_wait_longer_until_the_right_one() {
+    let scratch = Scratch::new();
+    scratch.chkpwd();
+    let mut harness = desk(&scratch, false);
+    open_launcher(&mut harness);
+    press(&mut harness, "Lock");
+    let answered = |harness: &Harness<Desk>| harness.screen().contains("That is not the password");
+
+    harness.type_text("yanlis").press("enter");
+    until(&mut harness, "the first answer", answered);
+    assert_eq!(checks(&scratch), 1);
+    assert!(harness.screen().contains("Try again in 1 s"), "{}", harness.screen());
+    // Enter during the wait asks nothing.
+    harness.press("enter");
+    assert_eq!(checks(&scratch), 1, "an attempt during the wait is refused:\n{}", harness.screen());
+    assert!(harness.is_focused(LOCK_FIELD), "the keys stay in the field");
+
+    // Once the second is over the field takes an attempt again, and the next wait is two seconds.
+    harness.advance(STEP);
+    assert!(harness.screen().contains("That is not the password. Try again."), "{}", harness.screen());
+    harness.type_text("x").press("enter");
+    until(&mut harness, "the second answer", |harness| harness.screen().contains("Try again in 2 s"));
+    assert_eq!(checks(&scratch), 2);
+    harness.advance(STEP);
+    assert!(harness.screen().contains("Try again in 1 s"), "the wait counts down:\n{}", harness.screen());
+    harness.press("enter");
+    assert_eq!(checks(&scratch), 2, "still waiting:\n{}", harness.screen());
+
+    // Then four seconds.
+    harness.advance(STEP);
+    harness.type_text("y").press("enter");
+    until(&mut harness, "the third answer", |harness| harness.screen().contains("Try again in 4 s"));
+    assert_eq!(checks(&scratch), 3);
+
+    // The right password, once the wait is over, opens it and starts the count again.
+    for _ in 0..4 {
+        harness.advance(STEP);
+    }
+    harness.type_text(PASSWORD).press("enter");
+    until(&mut harness, "the desktop", |harness| !harness.app().locked());
+    assert_eq!(checks(&scratch), 4);
+    open_launcher(&mut harness);
+    press(&mut harness, "Lock");
+    harness.type_text("yanlis").press("enter");
+    until(&mut harness, "the answer after the right one", answered);
+    assert!(harness.screen().contains("Try again in 1 s"), "{}", harness.screen());
 }
 
 #[test]
@@ -388,6 +455,34 @@ fn a_machine_going_down_is_not_kept_waiting_by_the_lock_screen() {
     // The system ending qdesk is not a person at the keyboard: nobody is there to unlock and answer.
     harness.terminate(qframe::runtime::Termination::Terminate);
     assert!(harness.quit_requested(), "{}", harness.screen());
+}
+
+#[test]
+fn a_locked_desktop_that_is_ended_starts_locked_until_the_right_password() {
+    let scratch = Scratch::new();
+    scratch.chkpwd();
+    let mut first = desk(&scratch, false);
+    open_launcher(&mut first);
+    press(&mut first, "Lock");
+    // The terminal goes away: qdesk ends at once, locked.
+    first.terminate(qframe::runtime::Termination::Hangup);
+    assert!(first.quit_requested(), "{}", first.screen());
+    drop(first);
+
+    // A session service starts qdesk again over the same folders: it opens on the lock screen.
+    let mut second = desk(&scratch, false);
+    assert!(second.app().locked(), "a restart is no way past the lock:\n{}", second.screen());
+    let screen = second.screen();
+    assert!(screen.contains("Password for ada") && !screen.contains('❖'), "{screen}");
+    assert!(second.is_focused(LOCK_FIELD), "the keys are in the password field at once");
+    second.type_text(PASSWORD).press("enter");
+    until(&mut second, "the desktop", |harness| !harness.app().locked());
+    drop(second);
+
+    // Once it was opened, the next start is the desktop.
+    let third = desk(&scratch, false);
+    assert!(!third.app().locked(), "{}", third.screen());
+    assert!(third.screen().contains('❖'), "{}", third.screen());
 }
 
 #[test]

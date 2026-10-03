@@ -31,14 +31,23 @@ struct SettingsApp {
 impl App for SettingsApp {
     type Msg = Msg;
 
+    /// The keyboard goes where the desktop gives it as the screen opens: to the list, or to the
+    /// button that puts away what the settings file could not be read as while that is shown.
+    fn init(&mut self) -> Command<Msg> {
+        Command::focus(self.screen.keyboard())
+    }
+
     fn update(&mut self, msg: Msg) -> Command<Msg> {
+        // As on the desktop, the list takes the keyboard back when that button goes.
+        let read = msg == Msg::ReadProblems;
         let (command, request) = settings::update(&mut self.screen, &self.prefs, msg);
+        let command = if read { Command::batch([command, Command::focus(self.screen.keyboard())]) } else { command };
         match request {
             Some(settings::Request::Prefs(prefs)) => self.prefs = prefs,
             Some(settings::Request::Appearance(change)) => {
                 return Command::batch([command, self.appearance.update(change, &mut self.stored)]);
             }
-            Some(settings::Request::Wallpaper(_)) | None => {}
+            Some(settings::Request::Wallpaper(_) | settings::Request::ShowRecommended) | None => {}
         }
         command
     }
@@ -87,7 +96,7 @@ fn env() -> Env {
         locale_sources: qdesk::locales().iter().map(|(file, text)| ((*file).to_owned(), (*text).to_owned())).collect(),
         ..AssetDirs::default()
     };
-    Env::load(&dirs).expect("the built-in files load")
+    Env::load_with(&dirs, support::terminal).expect("the built-in files load")
 }
 
 /// The folders a machine with one user folder and one system folder reads entries from.
@@ -229,20 +238,49 @@ fn a_changed_drag_style_is_shown_at_once_with_what_it_comes_to_here() {
     let before = scrolled_to(&mut harness, "a shaded area follows the mouse");
     assert!(before.contains("a shaded area follows the mouse"), "ghost is the default everywhere:\n{before}");
 
-    harness.send(Msg::Drag(DragStyle::Live));
+    support::pick(&mut harness, "Dragging a window", "Ghost", "Live");
 
     assert_eq!(harness.app().prefs.drag, DragStyle::Live, "the change is applied, not only drawn");
     let shown = harness.screen();
-    assert!(shown.contains("Live"), "{shown}");
+    assert!(support::on_row(&harness, "Dragging a window", "Live").is_some(), "the field shows it:\n{shown}");
     assert!(shown.contains("the window itself follows the mouse"), "the line says what it comes to:\n{shown}");
+
+    // And back: the list gives the style that was clicked, whichever place it has in the list.
+    support::pick(&mut harness, "Dragging a window", "Live", "Ghost");
+    assert_eq!(harness.app().prefs.drag, DragStyle::Ghost);
+    assert!(harness.screen().contains("a shaded area follows the mouse"), "{}", harness.screen());
+}
+
+#[test]
+fn the_drag_style_is_changed_from_the_keyboard_too() {
+    let prefs = Prefs { drag: DragStyle::Live, ..Prefs::default() };
+    let mut harness = screen_of(prefs, false, Vec::new(), 100, 30);
+    // The list has the keyboard from the start; ↓ walks its rows, and the keyboard's row is
+    // raised with the pillar at its edge. As many presses as the list has rows, at most.
+    let reached = |harness: &Harness<SettingsApp>| {
+        harness.screen().lines().any(|line| line.trim_start().starts_with('▌') && line.contains("Dragging a window"))
+    };
+    for _ in 0..40 {
+        if reached(&harness) {
+            break;
+        }
+        harness.press("down");
+    }
+    assert!(reached(&harness), "the keys reach the row:\n{}", harness.screen());
+
+    harness.press("enter").press("down").press("enter");
+
+    assert_eq!(harness.app().prefs.drag, DragStyle::Ghost, "{}", harness.screen());
+    assert!(harness.screen().contains("a shaded area follows the mouse"), "{}", harness.screen());
 }
 
 #[test]
 fn the_dock_moves_to_the_edge_that_was_chosen() {
     let mut harness = screen(80, 24);
-    harness.send(Msg::Dock(DockPosition::Top));
+    scrolled_to(&mut harness, "Dock");
+    support::click_on_row(&mut harness, "Dock", "Top");
     assert_eq!(harness.app().prefs.dock, DockPosition::Top);
-    harness.send(Msg::Dock(DockPosition::Bottom));
+    support::click_on_row(&mut harness, "Dock", "Bottom");
     assert_eq!(harness.app().prefs.dock, DockPosition::Bottom);
 }
 
@@ -251,31 +289,68 @@ fn a_chosen_frame_cap_opens_a_field_under_it_and_is_held_inside_its_range() {
     let mut harness = screen_of(Prefs::default(), true, Vec::new(), 100, 30);
     let shown = scrolled_to(&mut harness, "at most 20 times a second");
     assert!(shown.contains("at most 20 times a second"), "a remote link caps at 20:\n{shown}");
+    assert!(support::on_row(&harness, "Frames", "").is_none(), "no field while it follows the link:\n{shown}");
 
-    harness.send(Msg::FrameCap(Some(45)));
+    support::click_on_row(&mut harness, "Frames a second", "A number");
 
+    assert_eq!(harness.app().prefs.frame_cap, Some(20), "the number starts at what the link gave");
+    let shown = scrolled_to(&mut harness, "Remembered lines");
+    let field = support::on_row(&harness, "Frames", "20");
+    assert!(field.is_some(), "the field for the number is there, holding it:\n{shown}");
+
+    // A number typed in the field is the one in force.
+    let (x, y) = field.expect("the field");
+    harness.click(x, y).press("ctrl+a").type_text("45");
     assert_eq!(harness.app().prefs.frame_cap, Some(45));
-    let shown = harness.screen();
-    assert!(shown.contains("Frames"), "the field for the number is there:\n{shown}");
-    assert!(shown.contains("at most 45 times a second"), "{shown}");
+    assert!(harness.screen().contains("at most 45 times a second"), "{}", harness.screen());
 
-    harness.send(Msg::FrameCap(Some(10_000)));
-    assert_eq!(harness.app().prefs.frame_cap, Some(240), "a number past the range stops at the range");
-    harness.send(Msg::FrameCap(Some(0)));
+    // The field never gives a number outside the range: a number past it is not taken, and the
+    // keys stop at its ends.
+    harness.press("ctrl+a").type_text("999");
+    assert_eq!(harness.app().prefs.frame_cap, Some(99), "a fourth digit past the range is not taken");
+    for _ in 0..30 {
+        harness.press("pgup");
+    }
+    assert_eq!(harness.app().prefs.frame_cap, Some(240), "the keys stop at the top of the range");
+    harness.press("ctrl+a").type_text("1").press("down");
     assert_eq!(harness.app().prefs.frame_cap, Some(1), "never nought frames a second");
-    harness.send(Msg::FrameCap(None));
+
+    support::click_on_row(&mut harness, "Frames a second", "Automatic");
     assert_eq!(harness.app().prefs.frame_cap, None, "it can follow the link again");
+    let shown = harness.screen();
+    assert!(support::on_row(&harness, "Frames", "").is_none(), "the field goes with the number:\n{shown}");
+    assert!(shown.contains("at most 20 times a second"), "{shown}");
 }
 
 #[test]
 fn the_scrollback_is_held_inside_its_range() {
     let mut harness = screen(80, 24);
-    harness.send(Msg::Scrollback(0));
+    let shown = scrolled_to(&mut harness, "Remembered lines");
+    let (x, y) = support::on_row(&harness, "Remembered lines", "2000")
+        .unwrap_or_else(|| panic!("the field holds the default:\n{shown}"));
+    harness.click(x, y).press("ctrl+a").type_text("0");
     assert_eq!(harness.app().prefs.scrollback, 0);
-    harness.send(Msg::Scrollback(10_000));
+    harness.press("ctrl+a").type_text("10000");
     assert_eq!(harness.app().prefs.scrollback, 10_000);
-    harness.send(Msg::Scrollback(u16::MAX));
+    support::click_on_row(&mut harness, "Remembered lines", "+");
     assert_eq!(harness.app().prefs.scrollback, 10_000, "more than ten thousand lines is not offered");
+    harness.click(x, y).press("ctrl+a").type_text("99999");
+    assert_eq!(harness.app().prefs.scrollback, 9_999, "a fifth digit past the range is not taken");
+}
+
+/// The screen holds a number that reaches it by a message inside its range too, wherever the
+/// message came from: this tests that clamp alone. The fields that send these messages are
+/// driven by the tests above.
+#[test]
+fn a_number_sent_past_its_range_is_held_at_the_range() {
+    let prefs = Prefs::default();
+    let held = |msg| match settings::update::<Msg>(&mut Screen::default(), &prefs, msg).1 {
+        Some(settings::Request::Prefs(prefs)) => prefs,
+        other => panic!("no preferences: {other:?}"),
+    };
+    assert_eq!(held(Msg::FrameCap(Some(10_000))).frame_cap, Some(240), "a number past the range stops at it");
+    assert_eq!(held(Msg::FrameCap(Some(0))).frame_cap, Some(1), "never nought frames a second");
+    assert_eq!(held(Msg::Scrollback(u16::MAX)).scrollback, 10_000, "more than ten thousand lines is not offered");
 }
 
 #[test]
@@ -329,16 +404,22 @@ fn a_settings_file_that_could_not_be_read_is_said_above_the_settings_and_can_be_
     let mut harness = Harness::with_env(app, env(), 120, 40);
     harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
 
+    // What a person sees the moment the screen opens, before any scrolling: the list takes the
+    // keyboard then, and the notice above it must stay in view with the way to put it away.
     let shown = harness.screen();
     assert!(shown.contains("Part of the settings file could not be read"), "{shown}");
     assert!(shown.contains("desktop.conf:2:1"), "{shown}");
     assert!(shown.contains("must be a whole number"), "the framework's own words are kept:\n{shown}");
+    assert!(shown.contains("Understood"), "the way to put it away is in view:\n{shown}");
+    assert!(harness.is_focused(settings::READ), "the keyboard is on it");
 
-    harness.send(Msg::ReadProblems);
+    // Enter on the button puts the notice away, and the keys go back to the list.
+    harness.press("enter");
 
     let after = harness.screen();
     assert!(!after.contains("Part of the settings file could not be read"), "{after}");
     assert!(after.contains("Appearance"), "the settings are still there:\n{after}");
+    assert!(harness.is_focused(settings::LIST), "the list has the keyboard again");
 }
 
 #[test]
@@ -368,7 +449,7 @@ fn a_change_on_the_appearance_section_is_handed_to_it_and_changes_the_whole_scre
     assert!(settings::update::<Msg>(&mut shown, &prefs, off).1.is_some());
 
     let mut harness = screen(80, 24);
-    harness.send(Msg::Appearance(AppearanceChange::Language("tr".to_owned())));
+    support::pick(&mut harness, "Language", "English", "Türkçe");
     assert!(harness.screen().contains("Görünüm"), "the language changes the screen at once:\n{}", harness.screen());
     assert!(harness.screen().contains("Renk teması"), "{}", harness.screen());
 }
@@ -475,4 +556,24 @@ fn the_floor_colour_is_chosen_on_the_desktop_section_in_both_languages() {
         assert!(shown.contains(text), "no `{text}`:\n{shown}");
     }
     assert_eq!(decoration(&shown), None, "{shown}");
+}
+
+#[test]
+fn settings_opened_on_the_desktop_over_an_unreadable_file_show_what_it_could_not_read_at_once() {
+    let config = folder("unreadable");
+    std::fs::write(config.join("desktop.conf"), "scrollback = \"many\"\n").expect("file");
+    let mut harness = support::desk_in(&config, 140, 44);
+
+    open_settings(&mut harness);
+
+    // What a person sees the moment the window opens, before any scrolling.
+    let shown = harness.screen();
+    assert!(shown.contains("Part of the settings file could not be read"), "{shown}");
+    assert!(shown.contains("Understood"), "the way to put it away is in view:\n{shown}");
+    harness.click_text("Understood");
+    let after = harness.screen();
+    assert!(!after.contains("Part of the settings file could not be read"), "{after}");
+    assert!(after.contains("Appearance"), "the settings are still there:\n{after}");
+    assert!(harness.is_focused(settings::LIST), "the list has the keyboard again");
+    let _ = std::fs::remove_dir_all(&config);
 }

@@ -1,5 +1,5 @@
 //! The notifications on the dock: the count of what has not been read at the row's right end, and
-//! the list it opens (design 3.4 and 3.6).
+//! the list it opens.
 //!
 //! Every program here is one this file writes itself (`/bin/sh -c ...`): a screen test never runs
 //! a program of the person's. Nothing here is timed; what a program says is waited for in a loop
@@ -75,8 +75,14 @@ fn done(id: &str, name: &str, code: u8) -> Entry {
 
 /// A desktop whose catalog holds `entries`, all of them installed, and nothing on its floor.
 fn desk(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> {
-    let catalog = Catalog::new(entries, |entry| !matches!(entry.launch, Launch::Open(_)));
-    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
+    let catalog = Catalog::new(support::sealed(entries), |entry| !matches!(entry.launch, Launch::Open(_)));
+    let desktop = Desktop {
+        icons: Vec::new(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     harness_with(catalog, desktop, width, height)
 }
 
@@ -107,7 +113,7 @@ fn until_dock(harness: &mut Harness<Desk>, text: &str) {
 /// A desktop where one window's program ended while another had the keys: one notification, unread.
 ///
 /// The program is told to end by a file, after the window beside it has taken the keys, so the end
-/// really is heard while the person is looking elsewhere — the case the design notifies about.
+/// really is heard while the person is looking elsewhere — the case a notification is for.
 fn one_notification() -> Harness<Desk> {
     let signal = signal_path("biten");
     let _ = std::fs::remove_file(&signal);
@@ -265,7 +271,7 @@ fn the_count_gives_way_before_the_machine_name_on_a_narrow_row() {
     assert!(dock(&harness).contains("●1"));
     harness.resize(40, 20);
     let row = dock(&harness);
-    assert!(row.contains("sunucu-1"), "the machine is the last thing to go (3.4): {row}");
+    assert!(row.contains("sunucu-1"), "the machine is the last thing to go: {row}");
     harness.resize(100, 30);
     assert!(dock(&harness).contains("●1"), "a wide row shows it again: {}", dock(&harness));
 }

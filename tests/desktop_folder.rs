@@ -110,7 +110,7 @@ fn env() -> Env {
         }),
         ..AssetDirs::default()
     };
-    Env::load(&dirs).expect("the built-in files load")
+    Env::load_with(&dirs, support::terminal).expect("the built-in files load")
 }
 
 /// The desktop of `scratch` with `desktop` as its file says it, writing that file where the
@@ -134,7 +134,12 @@ fn desk_from(scratch: &Scratch, apps: Environment, desktop: Desktop, width: u16,
 /// The usual floor of these tests: Terminal, Settings and Midnight Commander, and the Desktop
 /// folder of `scratch` after them.
 fn desk(scratch: &Scratch) -> Harness<Desk> {
-    let desktop = Desktop { icons: ICONS.map(str::to_owned).to_vec(), welcome_seen: true, ..Desktop::default() };
+    let desktop = Desktop {
+        icons: ICONS.map(str::to_owned).to_vec(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     desk_from(scratch, scratch.environment(), desktop, 80, 24)
 }
 
@@ -193,7 +198,12 @@ fn the_entries_of_the_desktop_folder_stand_after_the_applications_folders_first(
 fn without_a_desktop_folder_the_floor_holds_the_applications_alone() {
     let scratch = Scratch::new();
     let apps = Environment { desktop: None, ..scratch.environment() };
-    let desktop = Desktop { icons: ICONS.map(str::to_owned).to_vec(), welcome_seen: true, ..Desktop::default() };
+    let desktop = Desktop {
+        icons: ICONS.map(str::to_owned).to_vec(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     let mut harness = desk_from(&scratch, apps, desktop, 80, 24);
     assert_eq!(harness.find("Projeler"), None);
     harness.mouse(MouseKind::Down(MouseButton::Right), 45, 2);
@@ -228,7 +238,12 @@ fn two_clicks_on_a_folder_open_it_in_the_explorer_when_it_is_on_the_path() {
 /// The usual floor of these tests on a screen tall enough for the Settings window to show its
 /// Desktop section whole.
 fn tall_desk(scratch: &Scratch) -> Harness<Desk> {
-    let desktop = Desktop { icons: ICONS.map(str::to_owned).to_vec(), welcome_seen: true, ..Desktop::default() };
+    let desktop = Desktop {
+        icons: ICONS.map(str::to_owned).to_vec(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     desk_from(scratch, scratch.environment(), desktop, 140, 44)
 }
 
@@ -236,6 +251,9 @@ fn tall_desk(scratch: &Scratch) -> Harness<Desk> {
 /// it is drawn, at the right edge of its row, and closes the window again from its title.
 fn switch_explorer_in_settings(harness: &mut Harness<Desk>) {
     open_icon(harness, "Settings");
+    // The first window of a start brings the note on resizing windows, which covers the right end
+    // of the rows near the bottom of the page for its twelve seconds; a person waits it out.
+    harness.advance(std::time::Duration::from_secs(20));
     let (_, row) = harness.find("Open folders with qexp").unwrap_or_else(|| panic!("the row:\n{}", harness.screen()));
     // A switch is colour alone; it stands at the right edge of its row, where the arrow of the
     // language drop-down stands too.
@@ -286,18 +304,26 @@ fn the_explorer_switched_off_stays_off_after_a_restart() {
 }
 
 #[test]
-fn two_clicks_on_a_file_open_it_in_a_window_of_its_own() {
+fn two_clicks_on_a_note_open_it_in_qdesk_s_text_viewer_in_a_window_of_its_own() {
     let scratch = Scratch::new();
     let said = scratch.0.join("opened");
     let script = scratch.0.join("editor.sh");
     fs::write(&script, format!("printf '%s' \"$1\" > '{}'\n", said.display())).expect("the editor is written");
     let apps = Environment { editor: Some(format!("/bin/sh {}", script.display())), ..scratch.environment() };
-    let desktop = Desktop { icons: ICONS.map(str::to_owned).to_vec(), welcome_seen: true, ..Desktop::default() };
+    let desktop = Desktop {
+        icons: ICONS.map(str::to_owned).to_vec(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     let mut harness = desk_from(&scratch, apps, desktop, 80, 24);
     open_icon(&mut harness, "notlar.t");
-    until(&mut harness, "the editor's word", |_| said.is_file());
-    let given = fs::read_to_string(&said).expect("the editor wrote what it was given");
-    assert_eq!(Path::new(&given), scratch.desktop().join("notlar.txt"));
+    // A note opens in the text viewer, which shows it; the editor is a key away, not started.
+    until(&mut harness, "the note's text", |harness| harness.screen().contains("bir iki üç"));
+    let front = harness.app().windows().front().expect("the note's window");
+    assert_eq!(front.entry().name.get("en"), "notlar.txt", "named after the file");
+    assert!(harness.app().text(front.id()).is_some(), "a text viewer");
+    assert!(!said.exists(), "the editor was not started");
 }
 
 #[test]

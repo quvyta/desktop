@@ -1,0 +1,8 @@
+name = "w3m"
+comment = { en = "A text web browser", tr = "Metin tabanlı bir web tarayıcısı" }
+command = ["w3m"]
+category = "network"
+keywords = ["browser", "web", "internet", "tarayıcı"]
+
+[install]
+qpac = "w3m"

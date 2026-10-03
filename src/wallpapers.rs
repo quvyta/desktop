@@ -1,4 +1,4 @@
-//! Pictures for the floor (design 3.9): which files can be one, the three qdesk brings, and how
+//! Pictures for the floor: which files can be one, the three qdesk brings, and how
 //! the settings file names either.
 //!
 //! A picture of the person's is named in the settings file by its absolute path. qdesk's own

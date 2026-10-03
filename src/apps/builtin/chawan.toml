@@ -1,0 +1,5 @@
+name = "Chawan"
+comment = { en = "A web browser that draws pages as text", tr = "Sayfaları metin olarak çizen bir web tarayıcısı" }
+command = ["cha"]
+category = "network"
+keywords = ["browser", "web", "internet", "cha", "tarayıcı"]

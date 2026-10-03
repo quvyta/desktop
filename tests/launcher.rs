@@ -79,6 +79,16 @@ fn typing_filters_over_the_whole_catalog_and_enter_opens_the_first_hit() {
 }
 
 #[test]
+fn searching_brow_from_the_dock_button_finds_the_quvyta_browser() {
+    let mut harness = desk(80, 24);
+    harness.click(button(24).0, button(24).1);
+    harness.type_text("brow");
+    let screen = harness.screen();
+    assert!(screen.contains("qbrow"), "the Quvyta browser is found:\n{screen}");
+    assert!(!screen.contains("qcode"), "what does not match is gone:\n{screen}");
+}
+
+#[test]
 fn a_search_that_finds_nothing_says_so() {
     let mut harness = desk(80, 24);
     harness.press("space");
@@ -106,6 +116,19 @@ fn the_installable_shelf_shows_what_is_missing_faded_with_how_it_arrives() {
     let (x, y) = (u16::try_from(x).unwrap_or(0), u16::try_from(y).unwrap_or(0));
     let theme = harness.env().theme();
     assert_eq!(harness.fg(x, y), theme.color("muted"), "an application that is not there is faint");
+}
+
+#[test]
+fn the_installable_cards_say_how_they_arrive_in_whole_words() {
+    // With more cards than fit, the shelf's scroll bar takes a column from the cards; the way an
+    // application arrives is still read in full.
+    let mut harness = desk(100, 30);
+    harness.click(button(30).0, button(30).1);
+    harness.click_text("Installable");
+    let screen = harness.screen();
+    assert!(screen.contains("install with quvyta"), "a Quvyta application:\n{screen}");
+    assert!(screen.contains("install with qpac"), "a package qpac installs:\n{screen}");
+    assert!(!screen.contains("install with quvy…"), "no hint is cut short:\n{screen}");
 }
 
 #[test]
@@ -306,9 +329,9 @@ fn the_launcher_is_one_fixed_size_in_the_corner_of_every_screen() {
         let mut harness = desk(width, height);
         harness.press("space");
         let (top, hints, close) = bounds(&harness);
-        // Seventy-two columns and twenty rows, standing on the dock: its last row is the one above
+        // Seventy-four columns and twenty rows, standing on the dock: its last row is the one above
         // the dock's, and its first is twenty rows up.
-        assert_eq!(close, 67, "{width}x{height}: the close mark stands at column {close}:\n{}", harness.screen());
+        assert_eq!(close, 69, "{width}x{height}: the close mark stands at column {close}:\n{}", harness.screen());
         assert_eq!(hints + 2, usize::from(height) - 1, "{width}x{height}:\n{}", harness.screen());
         assert_eq!(usize::from(height) - 1 - top, 19, "{width}x{height}:\n{}", harness.screen());
     }

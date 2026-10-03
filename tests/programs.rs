@@ -173,9 +173,15 @@ fn desk(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> {
     let mut all = builtins();
     all.extend(entries);
     // Every program of these tests is one of the machine's own, so every entry is installed.
-    let catalog = Catalog::new(all, |entry| !matches!(entry.launch, Launch::Open(_)));
-    let desktop =
-        Desktop { icons, recents: Vec::new(), welcome_seen: true, resize_hint_seen: true, ..Desktop::default() };
+    let catalog = Catalog::new(support::sealed(all), |entry| !matches!(entry.launch, Launch::Open(_)));
+    let desktop = Desktop {
+        icons,
+        recents: Vec::new(),
+        welcome_seen: true,
+        recommended_seen: true,
+        resize_hint_seen: true,
+        ..Desktop::default()
+    };
     harness_with(catalog, desktop, width, height)
 }
 
@@ -190,9 +196,15 @@ fn desk_over_ssh(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> 
     let icons: Vec<String> = entries.iter().map(|entry| entry.id.clone()).collect();
     let mut all = builtins();
     all.extend(entries);
-    let catalog = Catalog::new(all, |entry| !matches!(entry.launch, Launch::Open(_)));
-    let desktop =
-        Desktop { icons, recents: Vec::new(), welcome_seen: true, resize_hint_seen: true, ..Desktop::default() };
+    let catalog = Catalog::new(support::sealed(all), |entry| !matches!(entry.launch, Launch::Open(_)));
+    let desktop = Desktop {
+        icons,
+        recents: Vec::new(),
+        welcome_seen: true,
+        recommended_seen: true,
+        resize_hint_seen: true,
+        ..Desktop::default()
+    };
     let dirs = AssetDirs {
         locale_sources: qdesk::locales().iter().map(|(file, text)| ((*file).to_owned(), (*text).to_owned())).collect(),
         keymap_source: Some({
@@ -201,7 +213,7 @@ fn desk_over_ssh(entries: Vec<Entry>, width: u16, height: u16) -> Harness<Desk> 
         }),
         ..AssetDirs::default()
     };
-    let env = Env::load(&dirs).expect("the built-in files load");
+    let env = Env::load_with(&dirs, support::terminal).expect("the built-in files load");
     let clock = Box::new(|| MOMENT * 1_000);
     let apps = Environment { shell: Some(PathBuf::from(HARMLESS)), ..Environment::default() };
     let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), clock)
@@ -411,6 +423,9 @@ fn leaving_qdesk_with_nothing_running_quits_at_once() {
     let ended = done("bitti", "Bitti", 0);
     let mut harness = desk(vec![ended.clone()], 80, 24);
     open(&mut harness, &ended);
+    // On a busy machine the program may not have ended yet when the keys come; it is the ended
+    // program this test is about.
+    until_ended(&mut harness);
     harness.press("ctrl+q");
     assert!(harness.quit_requested(), "an ended program holds nobody up:\n{}", harness.screen());
 }
@@ -477,8 +492,8 @@ fn the_windows_that_do_not_fit_on_the_dock_go_behind_a_control_that_opens_them()
 
 #[test]
 fn a_bell_marks_the_item_of_a_window_that_does_not_have_the_keys_and_the_mark_goes_when_it_does() {
-    // The bell rings once the window has lost the keys to another one, which is when the design
-    // asks for the mark.
+    // The bell rings once the window has lost the keys to another one, which is when the
+    // mark appears.
     let signal = signal_path("zil");
     let _ = std::fs::remove_file(&signal);
     let ringing = entry("zil", "Zil", &["/bin/sh", "-c", &on_signal("hazir", &signal, "\\a")]);
@@ -590,8 +605,8 @@ fn colors_of(harness: &Harness<Desk>, text: &str) -> (Rgb, Rgb) {
 
 #[test]
 fn the_last_screen_of_an_ended_program_is_drawn_faint() {
-    // The same word, said by a program that is still going and by one that has ended. The design
-    // asks for the second to read as faded, so a person can see at a glance which window is alive.
+    // The same word, said by a program that is still going and by one that has ended. The second
+    // reads as faded, so a person can see at a glance which window is alive.
     let word = "solgun";
     let live = entry("canli", "Canlı", &["/bin/sh", "-c", &format!("printf '{word}\\n'; {ANSWERS}")]);
     let mut running = desk(vec![live.clone()], 120, 30);
@@ -833,10 +848,58 @@ fn the_title_a_live_program_gives_itself_reaches_the_strip_while_it_is_still_run
     assert!(front(&harness).is_running(), "the title came from a program that is still running");
 }
 
+/// `text` the way an OSC 52 copy carries it: base64 of its own bytes.
+///
+/// It is written out here rather than asked of the machine, so a test says what it means without
+/// a program of the person's to say it for it. Base64 is a byte encoding, so a group of fewer
+/// than three bytes is finished with zeros and the characters that fall out of those are the
+/// padding.
+fn base64(text: &str) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for group in text.as_bytes().chunks(3) {
+        let mut bytes = [0; 3];
+        bytes[..group.len()].copy_from_slice(group);
+        let word = usize::from(bytes[0]) << 16 | usize::from(bytes[1]) << 8 | usize::from(bytes[2]);
+        let written = (group.len() * 8).div_ceil(6);
+        for (at, shift) in [18, 12, 6, 0].into_iter().enumerate() {
+            out.push(if at < written { char::from(ALPHABET[(word >> shift) & 0b11_1111]) } else { '=' });
+        }
+    }
+    out
+}
+
+#[test]
+fn a_live_program_can_copy_to_the_clipboard_and_nothing_is_said_about_it() {
+    // A program that offers a text to be copied, as vim's `"+y` and tmux do, and then goes on
+    // waiting to be typed into: what it copied is the person's, not a word on the screen.
+    let text = "qdesk çay";
+    let copying = entry(
+        "kopyalayan",
+        "Kopyalayan",
+        &["/bin/sh", "-c", &format!("printf 'hazir\\033]52;c;{}\\007'; {ANSWERS}", base64(text))],
+    );
+    let mut harness = desk(vec![copying.clone()], 100, 30);
+    open(&mut harness, &copying);
+    until(&mut harness, "the copy the program asked for", |harness| harness.copied().contains(&text.to_owned()));
+    // Copying is silent: the text is not said in the corner, nothing is written in the list, and
+    // the window's item on the dock carries no mark.
+    let screen = harness.screen();
+    assert!(!screen.contains(text), "the copy is not said on the screen:\n{screen}");
+    assert!(!dock(&harness).contains('●'), "nothing is written down: {}", dock(&harness));
+    // The window goes on being listened to, as after every other change but the end.
+    let body = qdesk::wm::view::body_id(front(&harness).id());
+    assert!(harness.is_focused(&body), "the running program has the keys:\n{screen}");
+    harness.type_text("merhaba");
+    harness.press("enter");
+    until_screen(&mut harness, "yanit: merhaba");
+    assert!(front(&harness).is_running(), "the program is still there after it copied:\n{}", harness.screen());
+}
+
 #[test]
 fn a_live_program_rings_the_bell_and_keeps_running_with_the_mark_on_its_window() {
-    // The bell rings once the window has lost the keys, which is when the design asks for the
-    // mark, and the program is alive on both sides of the ring.
+    // The bell rings once the window has lost the keys, which is when the mark
+    // appears, and the program is alive on both sides of the ring.
     let signal = signal_path("canli-zil");
     let _ = std::fs::remove_file(&signal);
     let ringing = entry("zil", "Zil", &["/bin/sh", "-c", &on_signal("hazir", &signal, "\\a")]);
@@ -942,7 +1005,7 @@ fn the_x_key_of_desktop_mode_asks_about_a_running_program_and_closes_one_that_ha
 
 #[test]
 fn the_close_row_of_a_window_s_menu_asks_about_a_running_program_over_ssh_too() {
-    // The desktop over SSH is the main way qdesk is used (design), so the question has to hold
+    // The desktop over SSH is the main way qdesk is used, so the question has to hold
     // there as much as it does locally; the remote flag is forced rather than read off the
     // sandbox this test happens to run in.
     let program = waiting("bekleyen", "Bekleyen");
@@ -1004,4 +1067,38 @@ fn alt_and_the_right_button_size_the_window_of_a_program_that_reads_the_mouse() 
         "the top left corner followed the pointer:\n{}",
         harness.screen()
     );
+}
+
+#[test]
+fn a_program_started_here_gets_nothing_of_the_person_s_session_and_opens_nothing_on_it() {
+    // The program writes down what it was given, tries to open a page, and says it is done by a
+    // file of its own: whether it got that far is read from the file, not guessed from a time.
+    let seen = signal_path("session-seen");
+    let script = signal_path("session-script");
+    let names = support::SESSION.join(" ");
+    let text = format!(
+        "for name in {names} BROWSER; do eval \"printf '%s=%s\\n' $name \\\"\\${{$name-}}\\\"\"; done > {seen}.part\n\
+         xdg-open https://example.org/qdesk-test\n\
+         mv {seen}.part {seen}\n",
+        seen = seen.display()
+    );
+    std::fs::write(&script, text).expect("the program");
+    let look = entry("look", "Look", &["/bin/sh", &script.display().to_string()]);
+    let mut harness = desk(vec![look], 80, 24);
+    harness.click(3, 1);
+    harness.click(3, 1);
+    until(&mut harness, "the program's note", |_| seen.exists());
+
+    let written = std::fs::read_to_string(&seen).expect("the note");
+    for name in support::SESSION {
+        assert!(written.lines().any(|line| line == format!("{name}=")), "{name} reached the program:\n{written}");
+    }
+    assert!(written.lines().any(|line| line == "BROWSER=true"), "{written}");
+    assert!(
+        support::opened().contains("xdg-open https://example.org/qdesk-test"),
+        "the stand-in took the call: {}",
+        support::opened()
+    );
+    let _ = std::fs::remove_file(&seen);
+    let _ = std::fs::remove_file(&script);
 }

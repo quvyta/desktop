@@ -1,4 +1,4 @@
-//! A picture over the floor (design 3.9): chosen where a person chooses one — the Settings
+//! A picture over the floor: chosen where a person chooses one — the Settings
 //! screen and its file picker, a picture's menu in a Files window, a picture on the floor from the
 //! Desktop folder — drawn in the picture's own colours behind the icons, kept through a restart,
 //! and left out where it cannot be drawn or decoded.

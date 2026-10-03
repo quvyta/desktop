@@ -1,0 +1,9 @@
+name = "qcli"
+comment = { en = "Talk about your code and have it read and changed", tr = "Kodun hakkında konuş; okusun ve değiştirsin" }
+icon = "prompt"
+command = ["qcli"]
+category = "quvyta"
+keywords = ["quvyta", "code", "chat", "assistant", "kod", "sohbet"]
+
+[install]
+quvyta = "quvyta-cli"

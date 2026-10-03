@@ -1,5 +1,5 @@
 //! Workspaces from where a person starts them: the digits of desktop mode, the marks beside the
-//! launcher button, and a window's menu on the dock (design 3.10).
+//! launcher button, and a window's menu on the dock.
 //!
 //! Every window here is one of qdesk's own screens or a program this file writes itself
 //! (`/bin/sh -c ...`); nothing of the person's is run. What a program says is waited for in a loop
@@ -255,8 +255,14 @@ fn a_program_that_ends_on_another_workspace_says_so_and_its_notice_goes_there() 
     let _ = std::fs::remove_file(&signal);
     let command = format!("while [ ! -e {} ]; do sleep 0.02; done; exit 4", signal.display());
     let ending = entry("biten", "Biten", &["/bin/sh", "-c", &command]);
-    let catalog = Catalog::new(vec![ending], |entry| !matches!(entry.launch, Launch::Open(_)));
-    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
+    let catalog = Catalog::new(support::sealed(vec![ending]), |entry| !matches!(entry.launch, Launch::Open(_)));
+    let desktop = Desktop {
+        icons: Vec::new(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     let mut harness = harness_with(catalog, desktop, 100, 30);
     // Opened from the launcher, as a person opens it.
     harness.press("ctrl+alt+space").press("space");

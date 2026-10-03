@@ -39,7 +39,9 @@ use qframe::runtime::FrameLimit;
 use qframe::storage::{Ecosystem, Schema, Setting, SettingKind, Settings};
 
 pub use floor_color::{FloorColor, FloorStyle, GLYPHS_READ, NAMES_READ, Palette, Shades, ground, is_dot};
-pub use screen::{Applications, CHOOSE_WALLPAPER, LIST, Msg, Request, Screen, Wallpaper, WallpaperRow, update, view};
+pub use screen::{
+    Applications, CHOOSE_WALLPAPER, LIST, Msg, READ, Request, Screen, Wallpaper, WallpaperRow, update, view,
+};
 
 use crate::apps::{Diagnostic, DiagnosticKind, Position};
 use crate::wallpapers::Picture;
@@ -78,13 +80,13 @@ pub const DOCK_POSITION: &str = "dock-position";
 pub const FLOOR_COLOR: &str = "floor-color";
 /// The key of the floor's pattern: `plain`, `gradient`, `dots` or `gradient-dots`.
 pub const FLOOR_STYLE: &str = "floor-style";
-/// The key of the picture laid over the floor (design 3.9): its absolute path. Without it the
+/// The key of the picture laid over the floor: its absolute path. Without it the
 /// floor has no picture.
 pub const WALLPAPER: &str = "wallpaper";
 /// The key of whether a folder opens in the ecosystem's file explorer when it is on the machine:
 /// `true` or `false`.
 pub const FOLDERS_IN_EXPLORER: &str = "folders-in-explorer";
-/// The key of whether the dock shows the status strip (design 3.10): `true` or `false`.
+/// The key of whether the dock shows the status strip: `true` or `false`.
 pub const STATUS_STRIP: &str = "status-on-dock";
 /// The key of the drag style: `live` or `ghost`.
 pub const DRAG_STYLE: &str = "drag-style";

@@ -28,7 +28,7 @@ mod property;
 
 use qframe::geometry::{Rect, Size};
 
-use crate::apps::{Entry, Launch, Screen};
+use crate::apps::{Entry, Launch, Localized, Screen};
 use crate::dock;
 
 pub use layout::{Grip, MIN_SIZE};
@@ -557,6 +557,30 @@ impl Windows {
         Exit::Kept
     }
 
+    /// Names the window `id` anew and gives it the icon `icon`: a viewer that moved on to another
+    /// file is called by that file's name on its strip and on the dock.
+    pub fn rename(&mut self, id: WindowId, name: &str, icon: &str) -> bool {
+        let Some(window) = self.window_mut(id) else { return false };
+        window.entry.name = Localized::plain(name);
+        window.entry.icon = Some(icon.to_owned());
+        true
+    }
+
+    /// Gives the window `id`, which holds no program, the program `launch` to run in its place: a
+    /// viewer whose file is opened in an editor keeps its place, its size, its name and its
+    /// workspace, and holds a program that has yet to start. `false` when there is no such window
+    /// or it already holds a program.
+    pub fn hold_program(&mut self, id: WindowId, launch: Launch) -> bool {
+        let Some(window) = self.window_mut(id) else { return false };
+        if window.run().is_some() || !matches!(launch, Launch::Command(_)) {
+            return false;
+        }
+        window.entry.launch = launch;
+        window.body = Body::Program(Run::Waiting);
+        window.title = None;
+        true
+    }
+
     /// Sets the title the program of the window `id` gave itself, or clears it.
     pub fn set_title(&mut self, id: WindowId, title: Option<String>) -> bool {
         let Some(window) = self.window_mut(id) else { return false };
@@ -630,6 +654,24 @@ mod tests {
     /// A desktop on an 80x24 terminal: 23 rows for windows and one for the dock.
     fn desk() -> Windows {
         Windows::new(Size::new(80, 24))
+    }
+
+    #[test]
+    fn a_viewer_given_a_program_keeps_its_place_and_name_and_waits_for_it() {
+        let mut desk = desk();
+        let mut viewer = entry("notlar.txt");
+        viewer.launch = Launch::Open(std::path::PathBuf::from("/srv/notlar.txt"));
+        let id = desk.open(&viewer);
+        assert!(desk.move_by(id, 3, 2));
+        let rect = desk.get(id).map(Window::rect);
+        let editor = Launch::Command(vec!["nano".into(), "/srv/notlar.txt".into()]);
+        assert!(!desk.hold_program(id, Launch::Open(std::path::PathBuf::from("/x"))), "only a program is held");
+        assert!(desk.hold_program(id, editor.clone()));
+        let window = desk.get(id).expect("still there");
+        assert_eq!((window.rect(), window.run()), (rect.expect("a place"), Some(Run::Waiting)));
+        assert_eq!(window.entry().name.get("en"), "notlar.txt");
+        assert_eq!(window.launch(), &editor);
+        assert!(!desk.hold_program(id, editor), "a window that holds a program is not given another");
     }
 
     #[test]

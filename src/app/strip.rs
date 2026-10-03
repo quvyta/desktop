@@ -1,4 +1,4 @@
-//! The desktop's side of the status strip (design 3.10): the items the dock draws from the last
+//! The desktop's side of the status strip: the items the dock draws from the last
 //! reading, what a press on each does, the menu of tmux sessions and the windows it opens.
 //!
 //! The readings themselves are the system gadget's: one probe and one task read the machine for

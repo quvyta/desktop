@@ -1,5 +1,6 @@
 //! What this person's desktop looks like: the order of the icons, the cells they were put in, the
-//! applications they opened last, and whether the welcome line has been seen.
+//! applications they opened last, and whether the welcome line and the recommended applications
+//! have been seen.
 //!
 //! All of it lives in one file, `~/.config/quvyta/desktop/desktop.toml`, because they are answers
 //! to the same question — what the desktop should look like when it opens — and they are read
@@ -28,7 +29,7 @@ use crate::gadgets::{self, Gadget};
 /// The name of the file inside the desktop's configuration folder.
 pub const FILE: &str = "desktop.toml";
 
-/// The icons a desktop nobody has changed shows (design 3.7): the shell, the folders and the
+/// The icons a desktop nobody has changed shows: the shell, the folders and the
 /// settings, the three things a person reaches for first on a machine they have just opened.
 pub const DEFAULT_ICONS: [&str; 3] = ["terminal", "files", "settings"];
 
@@ -59,6 +60,9 @@ pub struct Desktop {
     pub recents: Vec<String>,
     /// Whether the welcome line has been closed; once it has, it never comes back.
     pub welcome_seen: bool,
+    /// Whether the recommended applications offered at the first start have been seen: closed, or
+    /// one of them chosen to be installed. Settings brings them back on request.
+    pub recommended_seen: bool,
     /// Whether the note saying how a window is resized has been shown: it is shown once, when the
     /// first window opens.
     pub resize_hint_seen: bool,
@@ -74,6 +78,7 @@ impl Default for Desktop {
             places: BTreeMap::new(),
             recents: Vec::new(),
             welcome_seen: false,
+            recommended_seen: false,
             resize_hint_seen: false,
             widgets: Vec::new(),
         }
@@ -236,8 +241,12 @@ impl Desktop {
         text.push_str(&format!("recents = {}\n\n", list(&self.recents)));
         text.push_str("# The welcome line is shown once and never again.\n");
         text.push_str(&format!("welcome_seen = {}\n", self.welcome_seen));
-        // Written only once it is true, so a file of a qdesk that never showed the note is left
-        // as that qdesk wrote it.
+        // Written only once they are true, so a file of a qdesk that never showed them is left as
+        // that qdesk wrote it.
+        if self.recommended_seen {
+            text.push_str("# The recommended applications are offered once, at the first start.\n");
+            text.push_str("recommended_seen = true\n");
+        }
         if self.resize_hint_seen {
             text.push_str("# The note on how a window is resized is shown once, with the first window.\n");
             text.push_str("resize_hint_seen = true\n");
@@ -367,6 +376,8 @@ pub fn parse(file: &Path, bytes: &[u8]) -> (Desktop, Vec<Diagnostic>) {
             ("places", _) => diagnostics.push(wrong(name, Expected::Table, offset)),
             ("welcome_seen", DeValue::Boolean(seen)) => desktop.welcome_seen = *seen,
             ("welcome_seen", _) => diagnostics.push(wrong(name, Expected::Boolean, offset)),
+            ("recommended_seen", DeValue::Boolean(seen)) => desktop.recommended_seen = *seen,
+            ("recommended_seen", _) => diagnostics.push(wrong(name, Expected::Boolean, offset)),
             ("resize_hint_seen", DeValue::Boolean(seen)) => desktop.resize_hint_seen = *seen,
             ("resize_hint_seen", _) => diagnostics.push(wrong(name, Expected::Boolean, offset)),
             ("widgets", _) => {
@@ -528,9 +539,22 @@ mod tests {
         desktop.places.insert(file_id("Masaüstü notları"), (2, 3));
         desktop.remember("vim");
         desktop.welcome_seen = true;
+        desktop.recommended_seen = true;
         let (read_back, diagnostics) = read(&desktop.to_toml());
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(read_back, desktop);
+    }
+
+    #[test]
+    fn the_recommended_applications_are_remembered_only_once_seen() {
+        let unseen = Desktop { welcome_seen: true, ..Desktop::default() };
+        assert!(!unseen.to_toml().contains("recommended_seen"), "a desktop that never showed them says nothing");
+        let (desktop, diagnostics) = read("welcome_seen = true\nrecommended_seen = true\n");
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert!(desktop.recommended_seen);
+        let (desktop, diagnostics) = read("recommended_seen = \"yes\"\n");
+        assert!(!desktop.recommended_seen);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
     }
 
     #[test]

@@ -1,7 +1,7 @@
-//! The help of the desktop: `f1` lists what qdesk can be told from the keyboard (design 10.1).
+//! The help of the desktop: `f1` lists what qdesk can be told from the keyboard.
 //!
 //! The list is the framework's help layer, which reads the keymap itself. What is checked here is
-//! that it opens on the key the design asks for, that it is honest — every line names a key that
+//! that it opens on `f1`, that it is honest — every line names a key that
 //! really does something today — and that it reads in both languages.
 
 mod support;

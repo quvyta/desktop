@@ -272,6 +272,19 @@ fn the_title_the_folder_the_bell_and_both_kinds_of_notification_arrive() {
 }
 
 #[test]
+fn the_text_a_program_offers_to_copy_arrives_as_it_wrote_it() {
+    let scratch = Scratch::new("copy");
+    let home = Scratch::new("home");
+    // A program that encodes the text itself, as a yanked line or a copied path comes to: what
+    // the watch hears is the offer, not the bytes it travelled in.
+    let entry = script(&scratch.0, "printf '\\033]52;c;%s\\007' $(printf hello | base64); printf 'son\\r\\n'", &[]);
+    let (mut sessions, window) = desk(&entry, &home.0, Prefs::default(), false);
+    assert!(matches!(sessions.start(window, &entry, BODY), Start::Running));
+    let changes = until_ended(&mut sessions, window);
+    assert!(changes.contains(&Change::Copied("hello".to_owned())), "{changes:?}");
+}
+
+#[test]
 fn a_cleared_title_leaves_the_folder_the_program_reported() {
     let scratch = Scratch::new("cleared");
     let home = Scratch::new("home");

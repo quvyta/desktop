@@ -29,9 +29,10 @@ pub const CARDS: &str = "launcher-cards";
 /// The launcher's width, in columns, on any screen wide enough for it.
 ///
 /// Wide enough for the shelves and two columns of cards that each hold a name and a few words of
-/// what it does, and the four session actions in a row in every language; no wider, so on a
-/// server's wide screen it still gathers the applications in the corner the button is in.
-pub const WIDTH: u16 = 72;
+/// what it does, "install with quvyta" whole even while the scroll bar takes a column, and the
+/// four session actions in a row in every language; no wider, so on a server's wide screen it
+/// still gathers the applications in the corner the button is in.
+pub const WIDTH: u16 = 74;
 
 /// The launcher's height, in rows, on any screen tall enough for it: an 80 × 24 terminal keeps a
 /// few rows of the floor above it besides the dock's row. What does not fit scrolls.
@@ -121,6 +122,40 @@ impl Way {
             }
             Self::Qpac(package) => t!("launcher.install-qpac", name = name, package = package.as_str()),
         }
+    }
+
+    /// The program that does the installing.
+    #[must_use]
+    pub fn installer(&self) -> &'static str {
+        match self {
+            Self::Quvyta(_) => "quvyta",
+            Self::Qpac(_) => "qpac",
+        }
+    }
+
+    /// The crate the installer itself comes in, for `cargo install`.
+    #[must_use]
+    pub fn installer_crate(&self) -> &'static str {
+        match self {
+            Self::Quvyta(_) => "quvyta",
+            Self::Qpac(_) => "quvyta-packages",
+        }
+    }
+
+    /// What starts the installer on the application: quvyta on the member's own page, qpac as
+    /// it is, since qdesk does not invent a command line for another application.
+    #[must_use]
+    pub fn opening(&self) -> Vec<String> {
+        match self {
+            Self::Quvyta(member) => vec![self.installer().to_owned(), "show".to_owned(), member.clone()],
+            Self::Qpac(_) => vec![self.installer().to_owned()],
+        }
+    }
+
+    /// The command that installs the installer and then starts it, as the person reads it.
+    #[must_use]
+    pub fn install_here(&self) -> String {
+        format!("cargo install --locked {} && {}", self.installer_crate(), self.opening().join(" "))
     }
 }
 

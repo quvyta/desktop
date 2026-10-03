@@ -678,6 +678,7 @@ fn the_first_window_says_once_how_windows_are_resized_and_a_restart_remembers() 
     let first = qdesk::desktop::Desktop {
         icons: support::ICONS.map(str::to_owned).to_vec(),
         welcome_seen: true,
+        recommended_seen: true,
         ..qdesk::desktop::Desktop::default()
     };
     let mut harness = support::desk_writing(&file, first);

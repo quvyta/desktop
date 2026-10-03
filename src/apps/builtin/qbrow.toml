@@ -1,0 +1,9 @@
+name = "qbrow"
+comment = { en = "A real web browser in the terminal", tr = "Terminalde gerçek bir web tarayıcısı" }
+icon = "category-network"
+command = ["qbrow"]
+category = "quvyta"
+keywords = ["quvyta", "browser", "web", "internet", "chromium", "tarayıcı"]
+
+[install]
+quvyta = "quvyta-browser"

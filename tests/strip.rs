@@ -1,4 +1,4 @@
-//! The status strip on the dock (design 3.10): what it shows beside the machine name, how it gives
+//! The status strip on the dock: what it shows beside the machine name, how it gives
 //! way on a narrow row, what a click on its items opens, and the Settings switch that takes it away.
 //!
 //! The machine it reads is a folder the test wrote, and tmux, btop and htop are scripts the test
@@ -145,6 +145,7 @@ fn strip_desk(scratch: &Scratch, widgets: Vec<Gadget>, width: u16, height: u16) 
     let desktop = Desktop {
         icons: ICONS.map(str::to_owned).to_vec(),
         welcome_seen: true,
+        recommended_seen: true,
         resize_hint_seen: true,
         widgets,
         ..Desktop::default()

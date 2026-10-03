@@ -75,15 +75,25 @@ fn env() -> Env {
         }),
         ..AssetDirs::default()
     };
-    // The machine's language and region stay out: a test that starts from the machine's `LANG`
-    // would see the week begin on Monday on a Turkish machine and on Sunday elsewhere. The
-    // terminal is the one qdesk gives its own windows, whatever the test was started in.
-    let terminal = |name: &str| match name {
+    Env::load_with(&dirs, terminal).expect("the built-in files load")
+}
+
+/// What a screen test's environment is read from, in place of the process's own: the terminal
+/// is the one qdesk gives its own windows, whatever the tests were started in, and the rest of
+/// the machine stays out.
+///
+/// A screen drawn from the shell's `TERM` changes with it: under `TERM=dumb` or a terminal that
+/// does not say `COLORTERM` the colours fall to fewer, and a test of a tone fails on one machine
+/// and passes on another with nothing broken. The machine's language and region stay out too: a
+/// test that starts from the machine's `LANG` would see the week begin on Monday on a Turkish
+/// machine and on Sunday elsewhere. Pass it to [`Env::load_with`].
+#[must_use]
+pub fn terminal(name: &str) -> Option<String> {
+    match name {
         "TERM" => Some("xterm-256color".to_owned()),
         "COLORTERM" => Some("truecolor".to_owned()),
         _ => None,
-    };
-    Env::load_with(&dirs, terminal).expect("the built-in files load")
+    }
 }
 
 /// One entry written for the tests.
@@ -114,7 +124,7 @@ pub fn catalog() -> Catalog {
         "btop",
         "name = \"btop\"\ncomment = \"Processes and load\"\ncommand = [\"btop\"]\ncategory = \"system\"\n\n[install]\nqpac = \"btop\"\n",
     ));
-    Catalog::new(entries, |entry| {
+    Catalog::new(sealed(entries), |entry| {
         // A screen of qdesk is always there; a command needs its program.
         matches!(entry.launch, Launch::Screen(_)) || INSTALLED.contains(&entry.id.as_str())
     })
@@ -127,6 +137,7 @@ pub fn desk_with(icons: &[&str], width: u16, height: u16) -> Harness<Desk> {
         icons: icons.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        recommended_seen: true,
         resize_hint_seen: true,
         ..Desktop::default()
     };
@@ -139,7 +150,8 @@ pub fn desk(width: u16, height: u16) -> Harness<Desk> {
     desk_with(&ICONS, width, height)
 }
 
-/// A desktop nobody has touched yet: the welcome line is still there.
+/// A desktop nobody has touched yet: the welcome line is still there, with the recommended
+/// applications the pretend machine does not have.
 #[must_use]
 pub fn untouched(width: u16, height: u16) -> Harness<Desk> {
     harness(Desktop { icons: ICONS.iter().map(|id| (*id).to_owned()).collect(), ..Desktop::default() }, width, height)
@@ -167,6 +179,7 @@ pub fn desk_over_ssh(width: u16, height: u16) -> Harness<Desk> {
         icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        recommended_seen: true,
         resize_hint_seen: true,
         ..Desktop::default()
     };
@@ -211,6 +224,7 @@ pub fn desk_in(config: &Path, width: u16, height: u16) -> Harness<Desk> {
         icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        recommended_seen: true,
         resize_hint_seen: true,
         ..Desktop::default()
     };
@@ -251,6 +265,7 @@ pub fn base(clock: qdesk::app::WallClock) -> Desk {
         icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        recommended_seen: true,
         resize_hint_seen: true,
         ..Desktop::default()
     };
@@ -294,6 +309,7 @@ pub fn desk_over(
         icons: icons.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        recommended_seen: true,
         resize_hint_seen: true,
         ..Desktop::default()
     };
@@ -315,15 +331,15 @@ pub fn desk_over(
 /// reduced motion before the first frame. The folder is not watched; after writing a file, as
 /// another application would, [`Harness::poll_preferences`] reads it the way the runtime does.
 ///
-/// The framework's member harness draws with the framework's own files only, so the desktop's own
-/// words show as their keys here; these tests read the framework's appearance section, the names
-/// of the entries and colours, never the desktop's own words.
+/// The runtime is the one the `qdesk` program builds ([`qdesk::app::runtime`]), with the desktop's
+/// own words and keys, so the screen is the one a person sees; only the folder differs.
 #[must_use]
 pub fn member_in(config: &Path, width: u16, height: u16) -> Harness<Desk> {
     let loaded = qdesk::settings::start_in(config);
+    let stored = loaded.settings.clone();
     let app = base(Box::new(|| MOMENT * 1_000)).settings(loaded.settings, loaded.prefs, loaded.diagnostics);
     let mut harness =
-        Harness::member_in(app, qframe::storage::Ecosystem::QUVYTA, config, qdesk::settings::APP, width, height);
+        qdesk::app::runtime(app, &stored).harness_in(config, width, height).expect("the desktop's runtime starts");
     harness.set_glyph_mode(GlyphMode::Unicode).render();
     harness
 }
@@ -342,4 +358,126 @@ pub fn scroll_to(harness: &mut Harness<Desk>, text: &str) -> bool {
         harness.mouse(qframe::event::MouseKind::ScrollDown, x, y);
     }
     harness.screen().contains(text)
+}
+
+/// Where `option` is drawn on the row of the Settings screen whose label is `label`: the cell a
+/// person clicks to choose it. `None` while that row is not on screen.
+///
+/// The label stands alone at the start of its row, set off from its control by a gap, so `Floor`
+/// does not find the row of `Floor pattern`, nor `Frames` the row of `Frames a second`. The option
+/// is looked for only after the label, so a word the screen also shows elsewhere is found on this
+/// row and nowhere else.
+#[must_use]
+pub fn on_row<A: App>(harness: &Harness<A>, label: &str, option: &str) -> Option<(i32, i32)> {
+    harness.screen().lines().enumerate().find_map(|(y, line)| {
+        let end = line.match_indices(label).map(|(start, _)| start + label.len()).find(|&end| {
+            let rest = &line[end..];
+            rest.starts_with("  ") || rest.trim().is_empty()
+        })?;
+        let at = end + line[end..].find(option)?;
+        Some((i32::from(qframe::text::width(&line[..at])), i32::try_from(y).ok()?))
+    })
+}
+
+/// Where `option` is drawn in the list a drop-down opened on row `row`: the nearest line to the
+/// field that shows it, below it or, where the list opened upwards for want of room, above it.
+#[must_use]
+pub fn in_list_near<A: App>(harness: &Harness<A>, row: i32, option: &str) -> Option<(i32, i32)> {
+    let screen = harness.screen();
+    let lines: Vec<&str> = screen.lines().collect();
+    let row = usize::try_from(row).ok()?;
+    (1..lines.len()).flat_map(|step| [row.checked_add(step), row.checked_sub(step)]).flatten().find_map(|y| {
+        let line = lines.get(y)?;
+        let at = line.find(option)?;
+        Some((i32::from(qframe::text::width(&line[..at])), i32::try_from(y).ok()?))
+    })
+}
+
+/// Opens the drop-down on the row labelled `label`, showing `shown`, with a click, and clicks
+/// `option` in the list it opens: the way a person changes a drop-down.
+///
+/// # Panics
+///
+/// Panics when the row, the field or the option is not on screen.
+pub fn pick<A: App>(harness: &mut Harness<A>, label: &str, shown: &str, option: &str) {
+    let (x, y) = on_row(harness, label, shown)
+        .unwrap_or_else(|| panic!("no `{shown}` on the row `{label}`:\n{}", harness.screen()));
+    harness.click(x, y);
+    // The list unfolds as it opens; where motion is not reduced it is whole only after that.
+    harness.advance(Duration::from_millis(300));
+    let (x, y) = in_list_near(harness, y, option)
+        .unwrap_or_else(|| panic!("the list under `{label}` has no `{option}`:\n{}", harness.screen()));
+    harness.click(x, y);
+}
+
+/// Clicks `option` on the row labelled `label`: a segment of a row of segments, or a button.
+///
+/// # Panics
+///
+/// Panics when the row or the option is not on screen.
+pub fn click_on_row<A: App>(harness: &mut Harness<A>, label: &str, option: &str) {
+    let (x, y) = on_row(harness, label, option)
+        .unwrap_or_else(|| panic!("no `{option}` on the row `{label}`:\n{}", harness.screen()));
+    harness.click(x, y);
+}
+
+/// The variables through which a program reaches the person's own session: their display, their
+/// session bus and their runtime folder. A program a test starts is started without them.
+pub const SESSION: [&str; 4] = ["DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"];
+
+/// The programs that open a page or a file on the person's desktop.
+pub const OPENERS: [&str; 4] = ["xdg-open", "gio", "sensible-browser", "www-browser"];
+
+/// A folder of stand-ins for [`OPENERS`], made once per test binary under the system's temporary
+/// folder: each writes its name and its words as a line of the file `called` beside it and does
+/// nothing else. Put first on a program's `PATH`, they keep a test from opening anything on the
+/// person's desktop, and `called` says whether the program tried.
+///
+/// # Panics
+///
+/// Panics when the folder cannot be written.
+#[must_use]
+pub fn openers() -> &'static Path {
+    static FOLDER: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    FOLDER.get_or_init(|| {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = std::env::temp_dir().join(format!("qdesk-test-openers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("the openers' folder");
+        let called = folder.join("called");
+        for name in OPENERS {
+            let script = folder.join(name);
+            let text = format!("#!/bin/sh\nprintf '%s %s\\n' {name} \"$*\" >> '{}'\n", called.display());
+            std::fs::write(&script, text).expect("a stand-in opener");
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("it runs");
+        }
+        folder
+    })
+}
+
+/// What the stand-in openers were called with so far, one call a line.
+#[must_use]
+pub fn opened() -> String {
+    std::fs::read_to_string(openers().join("called")).unwrap_or_default()
+}
+
+/// `entries` as a test starts them: without [`SESSION`], with the stand-in [`openers`] first on
+/// their `PATH` and a `BROWSER` that does nothing.
+///
+/// The desktop hands the programs it starts its own environment, and a test's is the person's
+/// shell's: a program started from a test would find their display and could open a browser on
+/// it. The variables an entry unsets go after its own, so these hold whatever the entry says.
+#[must_use]
+pub fn sealed(entries: Vec<Entry>) -> Vec<Entry> {
+    let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_owned());
+    let path = format!("{}:{path}", openers().display());
+    entries
+        .into_iter()
+        .map(|mut entry| {
+            entry.env.push(("PATH".to_owned(), path.clone()));
+            entry.env.push(("BROWSER".to_owned(), "true".to_owned()));
+            entry.unset.extend(SESSION.iter().map(|name| (*name).to_owned()));
+            entry
+        })
+        .collect()
 }

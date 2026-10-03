@@ -219,8 +219,12 @@ fn where_a_dragged_icon_would_land_is_a_tone_mixed_into_the_floor_with_no_line()
 
 #[test]
 fn a_place_the_screen_became_too_small_for_is_drawn_nearby_and_kept() {
-    let mut desktop =
-        Desktop { icons: support::ICONS.map(str::to_owned).to_vec(), welcome_seen: true, ..Desktop::default() };
+    let mut desktop = Desktop {
+        icons: support::ICONS.map(str::to_owned).to_vec(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     desktop.places.insert("terminal".to_owned(), (6, 4));
     let mut harness = support::harness_with(support::catalog(), desktop, 80, 24);
     assert_eq!(
@@ -422,7 +426,12 @@ fn a_selection_dragged_by_one_of_its_icons_lands_together_and_stays_after_a_rest
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).expect("a folder of the test's own");
     let file = folder.join("desktop.toml");
-    let first = Desktop { icons: support::ICONS.map(str::to_owned).to_vec(), welcome_seen: true, ..Desktop::default() };
+    let first = Desktop {
+        icons: support::ICONS.map(str::to_owned).to_vec(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     let mut harness = support::desk_writing(&file, first);
 
     // A band over the three icons, as a person draws it from bare floor.

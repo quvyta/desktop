@@ -1,4 +1,4 @@
-//! The picture over the floor (design 3.9).
+//! The picture over the floor.
 //!
 //! The settings name a picture, one of qdesk's own or a file; the desktop decodes it off the
 //! drawing thread with the framework's decoder, shrunk to the size [`wallpapers::decode_size`]
@@ -159,7 +159,7 @@ impl Desk {
     }
 
     /// The size a picture is decoded at for this floor, this terminal and this link.
-    fn wallpaper_size(&self) -> (u32, u32) {
+    pub(super) fn wallpaper_size(&self) -> (u32, u32) {
         let graphics = self.wallpaper.graphics.unwrap_or(Graphics::HalfBlock);
         wallpapers::decode_size(self.wallpaper.floor, graphics, self.remote)
     }

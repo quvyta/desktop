@@ -283,7 +283,7 @@ pub fn view<Msg: 'static>(
             .icon(Glyph::literal((strip.glyph)(window)))
             .focused(focused)
             .maximized(window.is_maximized())
-            // Only the focused window casts a shadow (design 3.1): it is the one that is meant to
+            // Only the focused window casts a shadow: it is the one that is meant to
             // look lifted, and over a remote link every shadow is cells sent again.
             .shadow(look.shadow && focused)
             .on_event(move |event| send(action(id, event)))

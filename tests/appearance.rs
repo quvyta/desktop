@@ -193,3 +193,14 @@ fn a_theme_another_application_shares_is_shown_by_the_open_desktop_and_taken_as_
     assert_eq!(harness.env().theme().id(), "nordic", "{}", harness.screen());
     assert!(!theme_box_checked(&harness), "{}", harness.screen());
 }
+
+#[test]
+fn the_desktop_started_as_a_member_speaks_its_own_words_and_not_their_keys() {
+    // The Settings window's own sections are qdesk's words, which only its own language files
+    // hold; a runtime started without them would show the keys instead.
+    let config = Config::new("iris", None);
+    let harness = settings_open(&config.0);
+    let screen = harness.screen();
+    assert!(screen.contains("Which edge the row of open windows sits on."), "{screen}");
+    assert!(!screen.contains("settings.dock"), "no key is shown in place of its words:\n{screen}");
+}

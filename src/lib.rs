@@ -10,10 +10,13 @@ pub mod gadgets;
 pub mod inbox;
 pub mod launcher;
 pub mod notice;
+pub mod pictures;
 pub mod power;
+pub mod secret;
 pub mod session;
 pub mod settings;
 pub mod status;
+pub mod texts;
 pub mod wallpapers;
 pub mod wm;
 

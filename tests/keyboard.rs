@@ -91,10 +91,17 @@ fn the_whole_desktop_is_driven_from_the_keyboard_from_opening_an_application_to_
         &["/bin/sh", "-c", &format!("while [ ! -e {} ]; do sleep 0.02; done; exit 4", signal.display())],
     );
     let waiting = entry("bekleyen", "Bekleyen", &["/bin/sh", "-c", WAITS]);
-    let catalog = Catalog::new(vec![ending, waiting], |entry| !matches!(entry.launch, Launch::Open(_)));
+    let catalog =
+        Catalog::new(support::sealed(vec![ending, waiting]), |entry| !matches!(entry.launch, Launch::Open(_)));
     // A floor with no icons on it: everything below goes through the launcher, which is the way a
     // person who knows what they want reaches an application.
-    let desktop = Desktop { icons: Vec::new(), recents: Vec::new(), welcome_seen: true, ..Desktop::default() };
+    let desktop = Desktop {
+        icons: Vec::new(),
+        recents: Vec::new(),
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     let mut harness = harness_with(catalog, desktop, 100, 30);
 
     // The launcher, from the floor: space, a few letters, Enter.
@@ -108,7 +115,7 @@ fn the_whole_desktop_is_driven_from_the_keyboard_from_opening_an_application_to_
     assert!(harness.app().launcher().is_none(), "and the launcher stepped out of the way");
 
     // A second application. The keys are the program's now, so the way to the launcher is through
-    // desktop mode — the door the design puts on every window (3.3).
+    // desktop mode — the door every window has.
     harness.press("ctrl+alt+space");
     assert_eq!(harness.app().keys(), Some(Keys::Pick));
     harness.press("space");

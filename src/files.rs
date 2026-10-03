@@ -11,7 +11,7 @@
 //! taken from them; a graphical one could show nothing over SSH or on a console.
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -81,6 +81,31 @@ pub fn opener(editor: Option<&str>, file: &Path) -> Option<Vec<String>> {
         editor.map(|editor| editor.split_whitespace().map(str::to_owned).collect()).unwrap_or_default();
     if words.is_empty() {
         words.push(READER.to_owned());
+    }
+    words.push(file.to_str()?.to_owned());
+    Some(words)
+}
+
+/// The editors the text viewer's Edit looks for when the person has named none, in order: one a
+/// newcomer finds their way out of first, then the one every Unix has.
+pub const EDITORS: [&str; 2] = ["nano", "vi"];
+
+/// The command the text viewer's Edit runs on `file`: the person's editor (`editor`, from
+/// `VISUAL` or `EDITOR`) with its own arguments, else the first of [`EDITORS`] found on `path`,
+/// else `vi` by name, and the file last.
+///
+/// Unlike [`opener`] it never falls back to a reader: Edit is asked for to change the file. `None`
+/// when the file's path is not text.
+#[must_use]
+pub fn editor_command(editor: Option<&str>, path: Option<&OsStr>, file: &Path) -> Option<Vec<String>> {
+    let mut words: Vec<String> =
+        editor.map(|editor| editor.split_whitespace().map(str::to_owned).collect()).unwrap_or_default();
+    if words.is_empty() {
+        let found = EDITORS
+            .iter()
+            .find_map(|name| crate::apps::find_program(name, path, crate::apps::is_executable))
+            .and_then(|program| program.to_str().map(str::to_owned));
+        words.push(found.unwrap_or_else(|| EDITORS[1].to_owned()));
     }
     words.push(file.to_str()?.to_owned());
     Some(words)
@@ -223,6 +248,33 @@ mod tests {
         assert_eq!(opener(Some("emacs -nw"), file), Some(vec!["emacs".into(), "-nw".into(), "/srv/notes.txt".into()]));
         assert_eq!(opener(None, file), Some(vec![READER.into(), "/srv/notes.txt".into()]));
         assert_eq!(opener(Some("  "), file), Some(vec![READER.into(), "/srv/notes.txt".into()]));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn edit_runs_the_person_s_editor_else_nano_else_vi_and_never_the_reader() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = std::env::temp_dir().join(format!("qdesk-editors-{}", std::process::id()));
+        let (first, second) = (folder.join("bir"), folder.join("iki"));
+        std::fs::create_dir_all(&first).expect("a folder");
+        std::fs::create_dir_all(&second).expect("a folder");
+        for (dir, name) in [(&first, "vi"), (&second, "nano"), (&second, "vi")] {
+            let program = dir.join(name);
+            std::fs::write(&program, "").expect("written");
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).expect("made runnable");
+        }
+        let path = std::env::join_paths([&first, &second]).expect("a PATH");
+        let file = Path::new("/srv/notes.txt");
+        let named = editor_command(Some("emacs -nw"), Some(&path), file);
+        let nano = editor_command(None, Some(&path), file);
+        let vi = editor_command(Some(" "), Some(first.as_os_str()), file);
+        let none = editor_command(None, None, file);
+        let _ = std::fs::remove_dir_all(&folder);
+        assert_eq!(named, Some(vec!["emacs".into(), "-nw".into(), "/srv/notes.txt".into()]));
+        let nano_path = second.join("nano").display().to_string();
+        assert_eq!(nano, Some(vec![nano_path, "/srv/notes.txt".into()]), "nano before an earlier vi");
+        assert_eq!(vi, Some(vec![first.join("vi").display().to_string(), "/srv/notes.txt".into()]));
+        assert_eq!(none, Some(vec!["vi".into(), "/srv/notes.txt".into()]), "vi by name when none is found");
     }
 
     #[cfg(unix)]

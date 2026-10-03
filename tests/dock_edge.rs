@@ -16,8 +16,10 @@ use qframe::prelude::*;
 
 use support::{MACHINE, desk, screen, untouched};
 
-/// The desktop with the dock moved to `side`, the way the Settings screen moves it: a message,
-/// not a restart.
+/// The desktop with the dock moved to `side` by the message the Settings screen sends: the
+/// other tests here are about where the dock and what hangs off it are drawn, not about the
+/// screen. That the dock's control on the Settings screen sends it, and to the side clicked, is
+/// [`the_setting_moves_the_dock_at_once_and_back_again`]'s part.
 fn moved(harness: &mut Harness<Desk>, side: DockPosition) {
     harness.send(Msg::Settings(settings::Msg::Dock(side)));
     harness.render();
@@ -102,10 +104,18 @@ fn the_dock_is_drawn_on_the_row_the_setting_names() {
 fn the_setting_moves_the_dock_at_once_and_back_again() {
     let mut harness = desk(80, 24);
     assert!(dock(&harness, DockPosition::Bottom, 24).contains(MACHINE), "it starts at the bottom");
-    moved(&mut harness, DockPosition::Top);
+    with_settings(&mut harness);
+    assert!(support::scroll_to(&mut harness, "Which edge"), "the dock's row:\n{}", harness.screen());
+
+    support::click_on_row(&mut harness, "Dock", "Top");
+
+    assert_eq!(harness.app().prefs().dock, DockPosition::Top);
     assert!(dock(&harness, DockPosition::Top, 24).contains(MACHINE), "and moves without a restart");
     assert!(!dock(&harness, DockPosition::Bottom, 24).contains(MACHINE), "the bottom row is the desktop's again");
-    moved(&mut harness, DockPosition::Bottom);
+
+    support::click_on_row(&mut harness, "Dock", "Bottom");
+
+    assert_eq!(harness.app().prefs().dock, DockPosition::Bottom);
     assert!(dock(&harness, DockPosition::Bottom, 24).contains(MACHINE), "and moves back");
     assert!(!dock(&harness, DockPosition::Top, 24).contains(MACHINE));
 }
@@ -182,7 +192,7 @@ fn the_launcher_hangs_off_the_dock_at_either_edge() {
         assert!(dock(&harness, side, 24).contains(MACHINE), "{side:?}: the dock keeps its row");
         near_dock(&screen(&harness), side, &["Search", "close"])
     };
-    // The design has it rise from the dock (3.5); a dock on the top row is above it, so it comes
+    // It rises from the dock; a dock on the top row is above it, so it comes
     // down from there instead. Either way it stands the same way off the dock's own row.
     assert_eq!(reach(DockPosition::Top), reach(DockPosition::Bottom));
 }

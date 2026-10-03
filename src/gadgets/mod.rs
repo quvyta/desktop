@@ -1,5 +1,5 @@
 //! The small things that stand on the floor beside the icons: a clock, a calendar, the machine's
-//! readings and a note (design 3.12). The code calls them gadgets, because the framework's own
+//! readings and a note. The code calls them gadgets, because the framework's own
 //! `widgets` and `Widget` are everywhere here already; the person reads "widget".
 //!
 //! This module is pure: what a gadget is, which of its options differ from the defaults, how
@@ -424,7 +424,7 @@ fn corners(columns: u16, rows: u16, size: (u16, u16)) -> impl Iterator<Item = Ce
 /// Where a new gadget of `size` goes on a floor of `columns` and `rows` cells, among the gadgets
 /// drawn at `gadgets` and the icons drawn in `icons`.
 ///
-/// Gadgets gather on the right and icons flow down the left (design 3.12), so the floor is looked
+/// Gadgets gather on the right and icons flow down the left, so the floor is looked
 /// at from its top right corner: columns right to left, each from the top down. The first spot
 /// that touches neither an icon nor a gadget is taken; failing that the first that touches no
 /// gadget, and the icons make way. `None` when even that is not there.

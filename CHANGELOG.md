@@ -2,6 +2,35 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.1.11 - 2026-10-03
+
+### Added
+
+- Text, code and Markdown open in qdesk's own viewer: a double click on a note, a log, a source file, a settings file or a readme in Files or on the desktop, or an entry that says `open = "<file>"`, opens a window named after it showing the text with line numbers and the code's colours, and Markdown drawn as a document. A file longer than 4 MiB shows its first 4 MiB and says so, and one that cannot be read says why. `e`, or the Edit button under the text, opens your editor (`$VISUAL`, else `$EDITOR`, else nano, else vi) on the file in the same window. Before, such a file opened straight in the terminal program your system sets for its kind or in your editor; Open with still offers them.
+- A picture opens in qdesk's own viewer: a double click on a PNG, JPEG, GIF or WebP file in Files or on the desktop, or an entry that says `open = "<picture>"`, opens a window named after it with the picture fitted whole. The arrows, `n`, `p`, space and backspace walk the pictures of its folder (Home and End go to the ends), `f` switches to its actual size and back, and a click on the right or left third of the picture moves on or back; the line under it gives its name, size and place in the folder. A picture that cannot be read says why, and a terminal that cannot show pictures says so. Before, a picture opened in a terminal program, usually an editor showing its bytes. Open with still offers the terminal programs.
+- A program in a window can copy to your clipboard (OSC 52), as vim's `"+y` and tmux with `set-clipboard on` do: qdesk puts the text on the clipboard in silence, with no notice, no mark and no word on the screen. The other direction is closed: no program in a window can read your clipboard, and none is ever told what you copied.
+- The first start offers the recommended applications this machine does not have yet, beside the welcome line: qexp, w3m, qcode, qfocus and qtools, each with an Install button that starts the launcher's own install. qdesk still installs nothing by itself. The panel is shown once (`recommended_seen = true` in `desktop.toml` once it is closed), and the Desktop section of Settings has a Recommended applications row whose Show button opens it again. A desktop that saw the welcome line in an earlier version sees the recommended applications once, without the welcome line.
+- The launcher lists qbrow (a real web browser in the terminal), qcli (where you talk about your code and it reads and changes it) and qexp (the ecosystem's file explorer) with the other Quvyta applications; when one is missing, Installable says quvyta installs it.
+- The launcher's Network shelf has two web browsers that draw pages as text, Chawan and w3m; each opens when it is on the machine, and w3m is offered through qpac when it is not.
+- When quvyta or qpac is not on the machine and cargo is, the launcher offers to install it here: it shows the exact `cargo install` command, runs it in a window you can watch and stop once you say so, then opens the installer on the application.
+- After a wrong password the lock screen waits 1, 2, 4 and up to 30 seconds before it takes another, and says how long; the right password resets the wait.
+- A desktop that ends while locked starts on the lock screen again, until the right password opens it.
+
+### Changed
+
+- Over SSH the keyboard row of a list and the cursor hold still after a key, as with reduced motion, instead of breathing for five seconds: a page down in a folder of 2 000 files costs about 360 bytes instead of 8.4 KB. On this machine nothing changes.
+- The launcher's search finds an application by scattered letters (`hp` finds htop) the way every Quvyta list does, word starts first.
+- The launcher is two columns wider (74), so a card on the Installable shelf says "install with quvyta" in full even when the shelf scrolls; before, it was cut to "install with quvy…".
+- The lock screen keeps the typed password in one place in memory and overwrites it once it is checked, replaced or let go.
+- German, Spanish, French and Portuguese no longer show a few English words: the drag styles in German, and the desktop mode's words for sending a window to the dock and for moving it.
+- The README says what Files does since it became a file explorer: a click chooses, a double click or Enter opens.
+- Built on quvyta-framework 0.1.32.
+
+### Fixed
+
+- Settings opened over a settings file that could not be read shows what it could not read and the button to put it away at once, instead of scrolling them out of sight.
+- nvim opens in a window without its line saying the terminal did not answer: the terminal of a window answers a program's questions about the cursor, the terminal's kind and its colours.
+
 ## 0.1.10 - 2026-09-25
 
 ### Changed

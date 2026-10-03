@@ -1,4 +1,4 @@
-//! The widgets on the floor (design 3.12): added from the floor's menu, carried by the mouse,
+//! The widgets on the floor: added from the floor's menu, carried by the mouse,
 //! changed and removed from their own menus, and kept in the desktop file, at several sizes,
 //! glyph modes and colour depths. The time is the test's own clock, and the machine the system
 //! widget reads is a folder the test wrote: nothing here reads the machine it runs on.
@@ -106,6 +106,7 @@ fn desktop(widgets: Vec<Gadget>) -> Desktop {
     Desktop {
         icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
         welcome_seen: true,
+        recommended_seen: true,
         resize_hint_seen: true,
         widgets,
         ..Desktop::default()

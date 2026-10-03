@@ -77,6 +77,9 @@
 //!         Change::Title(title) => { self.windows.set_title(id, title); }
 //!         Change::Bell => self.dock.mark(id),
 //!         Change::Notify { title, body } => return self.notify(id, title, body),
+//!         // A copy is the person's own business: the text goes to the clipboard and nothing is
+//!         // said about it anywhere on the screen.
+//!         Change::Copied(text) => return Command::copy(text),
 //!         Change::Ended { code } => match self.windows.mark_ended(id, code) {
 //!             Exit::Closed => { self.programs.close(id); }
 //!             Exit::Kept | Exit::Unknown => {}
@@ -145,6 +148,11 @@ pub enum Change {
         /// The message.
         body: String,
     },
+    /// The program asked the terminal to copy this text to the clipboard (OSC 52): what a yanked
+    /// line, a copied path or a selected passage comes to as. The text is the person's to paste,
+    /// and this is the only direction the clipboard is ever asked in: a program asking what the
+    /// person copied is told nothing, so the framework never reports one.
+    Copied(String),
     /// The program ended.
     Ended {
         /// The exit code the system gave, `None` when it could not be read. A program ended by a
@@ -249,6 +257,7 @@ impl Watch {
             TerminalChange::WorkingFolder(folder) => Change::Folder(folder),
             TerminalChange::Bell => Change::Bell,
             TerminalChange::Notify { title, body } => Change::Notify { title, body },
+            TerminalChange::Copied(text) => Change::Copied(text),
             TerminalChange::Exited(code) => Change::Ended { code: exit_code(code) },
             // A notice a later framework adds is nothing this qdesk knows what to do with;
             // waiting for the next change again is what ignoring it means.
@@ -463,7 +472,7 @@ impl Sessions {
         match &report.change {
             Change::Title(title) => program.title = title.clone(),
             Change::Folder(folder) => program.folder = Some(folder.clone()),
-            Change::Output | Change::Bell | Change::Notify { .. } | Change::Ended { .. } => {}
+            Change::Output | Change::Bell | Change::Copied(_) | Change::Notify { .. } | Change::Ended { .. } => {}
         }
         Some(report.change)
     }

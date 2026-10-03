@@ -4,6 +4,8 @@
 //! nothing would be worse than no setting at all. The runtime asks the application with
 //! `App::frame_limit`, so that is what these tests ask too.
 
+mod support;
+
 use std::time::Duration;
 
 use qdesk::app::Desk;
@@ -47,4 +49,30 @@ fn the_cap_the_person_changes_is_the_one_the_next_frame_is_drawn_by() {
     let frames = desk.frame_limit().frames_per_second(false).expect("the desktop always caps its own frames");
     assert_eq!(frames, 5, "the runtime asks before every frame, so the change is the next frame's");
     assert_eq!(Duration::from_secs(1) / frames, Duration::from_millis(200), "a fifth of a second between frames");
+}
+
+#[test]
+fn the_number_chosen_on_the_settings_screen_is_the_one_the_runtime_draws_by() {
+    let mut harness = support::desk_over_ssh(120, 40);
+    let (x, y) = harness.find("Settings").expect("the Settings icon is on the floor");
+    harness.click(x, y).click(x, y);
+    assert!(support::scroll_to(&mut harness, "Frames a second"), "{}", harness.screen());
+    let drawn_by =
+        |harness: &qframe::runtime::Harness<Desk>, remote| harness.app().frame_limit().frames_per_second(remote);
+    assert_eq!(drawn_by(&harness, false), Some(u32::from(FRAME_CAP_LOCAL)), "it follows the link to begin with");
+
+    support::click_on_row(&mut harness, "Frames a second", "A number");
+
+    // The number starts at what the link gave, and from now on it holds on any link.
+    assert_eq!(drawn_by(&harness, false), Some(u32::from(FRAME_CAP_REMOTE)), "{}", harness.screen());
+    assert!(support::scroll_to(&mut harness, "Remembered lines"), "{}", harness.screen());
+    let (x, y) = support::on_row(&harness, "Frames", "20")
+        .unwrap_or_else(|| panic!("the field holds the number:\n{}", harness.screen()));
+    harness.click(x, y).press("ctrl+a").type_text("45");
+    assert_eq!(drawn_by(&harness, false), Some(45));
+    assert_eq!(drawn_by(&harness, true), Some(45));
+
+    support::click_on_row(&mut harness, "Frames a second", "Automatic");
+    assert_eq!(drawn_by(&harness, false), Some(u32::from(FRAME_CAP_LOCAL)), "{}", harness.screen());
+    assert_eq!(drawn_by(&harness, true), Some(u32::from(FRAME_CAP_REMOTE)));
 }

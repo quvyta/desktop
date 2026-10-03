@@ -13,7 +13,7 @@
 //! cargo test --release --test ssh_bytes -- --ignored --nocapture --test-threads 1
 //! ```
 //!
-//! What came out of them is written down beside the budgets of the design's section 5.
+//! What came out of them is written down beside the byte budgets qdesk keeps over SSH.
 //!
 //! They touch nothing of the person running them: the desktop is opened with a home folder, a
 //! settings folder and an application folder of the test's own under the system's temporary
@@ -31,7 +31,7 @@ use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 /// The size of the terminal most of these measurements are made on.
 const SIZE: (u16, u16) = (100, 30);
-/// A second terminal size, the one the design's section 5.3 does its arithmetic for.
+/// A second terminal size, the large one the byte budgets are worked out for.
 const LARGE: (u16, u16) = (200, 50);
 
 /// How long a phase may go on writing before it is called settled.
@@ -78,7 +78,7 @@ impl Scratch {
         // window are the same every run.
         write(
             &path.join(".config/quvyta/desktop/desktop.toml"),
-            "icons = []\nwelcome_seen = true\nresize_hint_seen = true\n",
+            "icons = []\nwelcome_seen = true\nrecommended_seen = true\nresize_hint_seen = true\n",
         );
         write(&path.join(".config/quvyta/desktop.conf"), settings);
         Self(path)
@@ -562,8 +562,8 @@ fn four_windows_pouring_out_lines_cost_what_one_screen_costs() {
 ///
 /// The other drag measurement lets the screen settle between steps, so each step is a frame of
 /// its own and the cap has nothing to merge. A hand sends far more steps a second than that, and
-/// this is where the two answers of the design's section 5.3 can be told apart: the frame cap
-/// (decision 2) and the ghost (decision 4).
+/// this is where the two answers to a hand's drag can be told apart: the frame cap
+/// and the ghost.
 ///
 /// A key, a paste, a press and a release are never held back — that is the runtime's promise, and
 /// it is what keeps typing from lagging. The pointer's motion is merged by the cap like the
@@ -669,8 +669,7 @@ fn a_hand_paced_drag_over_ssh_is_drawn_at_the_remote_frame_cap() {
 
 /// What a desktop nobody is touching costs a connection.
 ///
-/// The design's section 5.3 asks for nought bytes while nothing happens and a dozen cells when
-/// the clock changes. The span is longer than a minute, so exactly one minute change falls inside
+/// Nothing happening should cost nought bytes, and a dozen cells when the clock changes. The span is longer than a minute, so exactly one minute change falls inside
 /// it and what is written is that change and nothing else.
 #[test]
 #[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
@@ -693,7 +692,7 @@ fn a_desktop_nobody_touches_writes_only_its_clock() {
 }
 
 /// The memory a window's remembered lines really cost: windows whose programs have filled the
-/// scrollback the settings allow, which is what the design's section 5.2 weighs.
+/// scrollback the settings allow, which is what the scrollback setting weighs.
 #[test]
 #[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
 fn memory_with_ten_windows_whose_scrollback_is_full() {
@@ -714,7 +713,7 @@ fn memory_with_ten_windows_whose_scrollback_is_full() {
     }
 }
 
-/// Going to another workspace and back: one frame each way (design 3.10).
+/// Going to another workspace and back: one frame each way.
 ///
 /// Two quiet windows stand on the first workspace. Going to the empty second one takes them off
 /// the screen and puts the floor there instead; coming back draws them again. The digit is
@@ -746,7 +745,7 @@ fn going_to_another_workspace_and_back_is_one_frame_each_way() {
     assert!(away < screen * 2 && back < screen * 2, "a switch costs about a screen at most");
 }
 
-/// What the floor's pattern costs a connection (design 3.9): the first screen at both sizes, and
+/// What the floor's pattern costs a connection: the first screen at both sizes, and
 /// one step of a window dragged over the floor, as a ghost (the default) and alive.
 ///
 /// The floor is drawn again only where something on it changes, so a drag over a patterned floor
@@ -797,7 +796,7 @@ fn a_clock_widget_writes_nothing_between_minutes_unless_it_shows_seconds() {
         write(
             &scratch.0.join(".config/quvyta/desktop/desktop.toml"),
             &format!(
-                "icons = []\nwelcome_seen = true\nresize_hint_seen = true\n\
+                "icons = []\nwelcome_seen = true\nrecommended_seen = true\nresize_hint_seen = true\n\
                  [[widgets]]\nkind = \"clock\"\nplace = [6, 0]\n{options}"
             ),
         );
@@ -809,6 +808,88 @@ fn a_clock_widget_writes_nothing_between_minutes_unless_it_shows_seconds() {
     }
     // Five seconds may cross the turn of a minute once; seconds are drawn every one of them.
     assert!(quiet[1] > quiet[0], "seconds cost more than minutes: {quiet:?}");
+}
+
+/// What scrolling a large folder in the Files window costs a connection: the first draw of a
+/// folder of 2 000 files, then one step of the mouse wheel and one page down, fifty of each, with
+/// motion as it comes, with reduced motion chosen in the ecosystem's shared settings, and over SSH
+/// with motion as it comes, where the keyboard row holds still as with reduced motion.
+///
+/// The folder is opened by an entry that names it, through the launcher as a person would. Each
+/// step waits for the screen to settle before the next, as [`drag`] does, so a step is paid for
+/// in full, however many frames it takes, and what it costs does not depend on how busy the
+/// machine was that second.
+#[test]
+#[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
+fn scrolling_a_folder_of_two_thousand_files_costs_a_window_of_rows_a_step() {
+    let steps = 50u64;
+    let mut pages_by_case = Vec::new();
+    for (reduced, remote) in [(false, false), (true, false), (false, true)] {
+        let mut runs = Vec::new();
+        for _ in 0..RUNS {
+            let scratch = Scratch::new("files", "");
+            if reduced {
+                write(&scratch.0.join(".config/quvyta/quvyta.conf"), "reduced-motion = true\n");
+            }
+            let folder = scratch.0.join("kutu");
+            std::fs::create_dir_all(&folder).expect("the large folder");
+            for number in 0..2_000 {
+                std::fs::write(folder.join(format!("d{number:04}.bin")), [0u8; 3_000]).expect("a file of the folder");
+            }
+            write(
+                &scratch.0.join(".local/share/quvyta/desktop/apps/boxes.toml"),
+                &format!("name = \"Boxes\"\nopen = \"{}\"\ncategory = \"system\"\n", folder.display()),
+            );
+            let mut desktop = Desktop::open_answering(&scratch, SIZE, Answer::Attributes, remote);
+            desktop.send(b"\x1b\x00"); // ctrl+alt+space: the keys are the desktop's
+            desktop.settle();
+            desktop.send(b" "); // the launcher
+            desktop.settle();
+            desktop.send(b"Boxes");
+            desktop.settle();
+            desktop.send(b"\r");
+            let opened = desktop.settle();
+            // The middle of the window that opened in the middle of the screen.
+            let (column, row) = (SIZE.0 / 2, title_row(SIZE.1) + 8);
+            let (before, frames) = (desktop.written(), desktop.frames());
+            for _ in 0..steps {
+                desktop.send(format!("\x1b[<65;{column};{row}M").as_bytes());
+                desktop.settle();
+            }
+            let wheel = (desktop.written() - before, desktop.frames() - frames);
+            let (before, frames) = (desktop.written(), desktop.frames());
+            for _ in 0..steps {
+                desktop.send(b"\x1b[6~");
+                desktop.settle();
+            }
+            let pages = (desktop.written() - before, desktop.frames() - frames);
+            // The keyboard row breathes for a few seconds after the last key and then holds
+            // still: what ten seconds cost once those seconds are over.
+            desktop.over(Duration::from_secs(6));
+            let still = desktop.over(Duration::from_secs(10));
+            runs.push((opened, wheel.0 / steps, wheel.1, pages.0 / steps, pages.1, still, desktop.written()));
+        }
+        let motion = match (reduced, remote) {
+            (true, _) => "reduced motion",
+            (false, false) => "motion as it comes",
+            (false, true) => "over SSH, motion as it comes",
+        };
+        println!(
+            "a folder of 2 000 files at {}x{}, {motion}: (first draw, bytes a wheel step, frames of 50 wheel \
+             steps, bytes a page down, frames of 50 page downs, bytes of ten untouched seconds after, total) {runs:?}",
+            SIZE.0, SIZE.1
+        );
+        assert!(
+            runs.iter().all(|(opened, wheel, _, page, _, _, _)| *opened > 0 && *wheel > 0 && *page > 0),
+            "the folder was drawn and both the wheel and page down moved it: {runs:?}"
+        );
+        pages_by_case.push(runs.iter().map(|run| run.3).min().expect("a run"));
+    }
+    // Over SSH a page down is paid for by its rows, not by the breath of the keyboard row after
+    // it: at most twice what it costs with reduced motion, where locally it is many times that.
+    let (local, reduced, remote) = (pages_by_case[0], pages_by_case[1], pages_by_case[2]);
+    assert!(remote <= reduced * 2, "a page down over SSH costs {remote} bytes, with reduced motion {reduced}");
+    assert!(local > remote * 4, "a page down here costs {local} bytes, over SSH {remote}");
 }
 
 /// Writes a picture that looks like a photo to a terminal at `path`: a sky and a sea of soft
@@ -844,7 +925,7 @@ fn photo_of(path: &Path, (width, height): (u32, u32)) {
     image.save_with_format(path, image::ImageFormat::Png).expect("the picture is written");
 }
 
-/// What a picture over the floor costs a connection (design 3.9): the first screen at both sizes,
+/// What a picture over the floor costs a connection: the first screen at both sizes,
 /// and one step of a window dragged over it, as a ghost (the default) and alive, against the plain
 /// floor.
 ///
@@ -898,7 +979,7 @@ fn a_picture_floor_costs_a_screen_of_colours_and_a_drag_uncovers_it() {
 }
 
 /// What a picture floor costs a terminal that draws pictures itself, with the kitty graphics
-/// protocol or with sixel (design 3.9), against the same picture in half blocks and the plain
+/// protocol or with sixel, against the same picture in half blocks and the plain
 /// floor, on this machine and over SSH: the first screen at both sizes, then at the smaller size
 /// a window opened over it, one step of a drag and the drop.
 ///

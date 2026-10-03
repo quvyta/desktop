@@ -2,6 +2,8 @@
 
 use std::cmp::Ordering;
 
+use qframe::text::fuzzy;
+
 use super::Category;
 use super::entry::Entry;
 use super::sources::Environment;
@@ -120,24 +122,25 @@ impl Catalog {
     /// comment, the keywords and the command. A name that starts with it comes first, then a
     /// word that starts with it, then text that holds it, then a name that holds its letters in
     /// order. Within a rank installed entries come first, so Enter opens something that runs.
-    /// An empty query lists every entry.
+    /// Among the names that only hold the letters in order, the one whose letters sit at word
+    /// starts comes first, as in every other Quvyta list. An empty query lists every entry.
     #[must_use]
     pub fn search(&self, query: &str, language: &str) -> Vec<Hit<'_>> {
         let query = fold(query.trim());
-        let mut hits: Vec<(Hit<'_>, usize)> = self
+        let mut hits: Vec<(Hit<'_>, i32)> = self
             .items
             .iter()
             .filter_map(|(entry, installed)| {
-                let (rank, name_matches, spread) =
+                let (rank, name_matches, weakness) =
                     if query.is_empty() { (Rank::NamePrefix, Vec::new(), 0) } else { rank(entry, &query, language)? };
-                Some((Hit { entry, installed: *installed, rank, name_matches }, spread))
+                Some((Hit { entry, installed: *installed, rank, name_matches }, weakness))
             })
             .collect();
-        hits.sort_by(|(a, a_spread), (b, b_spread)| {
+        hits.sort_by(|(a, a_weakness), (b, b_weakness)| {
             a.rank
                 .cmp(&b.rank)
                 .then(b.installed.cmp(&a.installed))
-                .then(a_spread.cmp(b_spread))
+                .then(a_weakness.cmp(b_weakness))
                 .then_with(|| by_name(a.entry, b.entry, language))
         });
         hits.into_iter().map(|(hit, _)| hit).collect()
@@ -177,33 +180,10 @@ fn find_in(text: &str, query: &str) -> Option<(usize, bool)> {
         .or(starts.first().map(|start| (*start, false)))
 }
 
-/// The positions of the letters of `query` in `text`, in order, spaces in the query ignored,
-/// taking the tightest run that starts earliest.
-fn scattered(text: &str, query: &str) -> Option<Vec<usize>> {
-    let chars: Vec<char> = text.chars().collect();
-    let wanted: Vec<char> = query.chars().filter(|c| !c.is_whitespace()).collect();
-    let first = *wanted.first()?;
-    let mut best: Option<Vec<usize>> = None;
-    for start in (0..chars.len()).filter(|index| chars[*index] == first) {
-        let mut positions = vec![start];
-        for c in &wanted[1..] {
-            let from = positions[positions.len() - 1] + 1;
-            match (from..chars.len()).find(|index| chars[*index] == *c) {
-                Some(index) => positions.push(index),
-                None => return best,
-            }
-        }
-        let spread = |run: &[usize]| run[run.len() - 1] - run[0];
-        if best.as_ref().is_none_or(|kept| spread(&positions) < spread(kept)) {
-            best = Some(positions);
-        }
-    }
-    best
-}
-
-/// How `entry` matches `query`, the positions in its name, and how spread out a scattered match
-/// is; `None` when it does not match.
-fn rank(entry: &Entry, query: &str, language: &str) -> Option<(Rank, Vec<usize>, usize)> {
+/// How `entry` matches `query`, the positions in its name, and how much weaker it is than another
+/// entry of the same rank that matched better; `None` when it does not match. A weaker score is
+/// a higher number, so one ordering can read every rule the same way.
+fn rank(entry: &Entry, query: &str, language: &str) -> Option<(Rank, Vec<usize>, i32)> {
     let name = fold(entry.name.get(language));
     let length = query.chars().count();
     let run = |start: usize| (start..start + length).collect::<Vec<_>>();
@@ -249,9 +229,8 @@ fn rank(entry: &Entry, query: &str, language: &str) -> Option<(Rank, Vec<usize>,
     if let Some((rank, positions)) = best {
         return Some((rank, positions, 0));
     }
-    let positions = scattered(&name, query)?;
-    let spread = positions[positions.len() - 1] - positions[0];
-    Some((Rank::Scattered, positions, spread))
+    let found = fuzzy(query, &name)?;
+    Some((Rank::Scattered, found.positions().to_vec(), -found.score()))
 }
 
 #[cfg(test)]
@@ -430,6 +409,25 @@ mod tests {
         assert_eq!((hits[0].entry.id.as_str(), hits[0].rank), ("mc", Rank::Scattered));
         assert_eq!(hits[0].name_matches, vec![0, 2, 9]);
         assert!(catalog.search("zzz", "en").is_empty());
+    }
+
+    #[test]
+    fn scattered_hits_lead_with_the_letters_at_word_starts() {
+        // Both names hold the letters of `vc` in order and neither holds them as text, so the
+        // letters at word starts are what tells them apart; the names alone would sort the other
+        // way round.
+        let catalog = Catalog::new(
+            vec![
+                command("holiday", "Vacation", Category::Other),
+                command("code-editor", "Visual Code", Category::Development),
+            ],
+            |_| true,
+        );
+        let hits = catalog.search("vc", "en");
+        let entries: Vec<&Entry> = hits.iter().map(|hit| hit.entry).collect();
+        assert_eq!(ids(&entries), vec!["code-editor", "holiday"]);
+        assert!(hits.iter().all(|hit| hit.rank == Rank::Scattered));
+        assert_eq!(hits[0].name_matches, vec![0, 7]);
     }
 
     #[test]

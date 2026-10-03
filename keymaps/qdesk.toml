@@ -8,7 +8,7 @@
 # the keys (ctrl+alt+space); at any other time the desktop says nothing to them and they go on to
 # whatever is on screen, so a letter typed in a window stays the window's.
 
-# The framework binds the help layer to `?`. The design asks for `f1` (10.1), so both open it: a
+# The framework binds the help layer to `?`. qdesk adds `f1`, so both open it: a
 # key with a name on it is what a person reaches for, and `?` is the one every Quvyta application uses.
 [global]
 help = ["f1", "?"]
@@ -27,7 +27,7 @@ window-close = "x"
 window-tile = "t"
 notices = "b"                 # the list of recent notifications (bildirimler)
 
-# Workspaces (design 3.10). A digit goes to that workspace and hands the keys to its window. Sending
+# Workspaces. A digit goes to that workspace and hands the keys to its window. Sending
 # the focused window takes alt and not shift: a terminal sends shift+1 as `!`, and which sign comes
 # for shift+2 depends on the keyboard layout (`'` on a Turkish Q, `@` on a US one), while alt with a
 # digit arrives the same from every terminal.

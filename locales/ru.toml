@@ -44,6 +44,13 @@ too-small-hint = "Для рабочего стола нужно не меньш�
 # Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
 line = "Приложения — за {icon}, либо ctrl alt space, а затем space."
 close = "Понятно"
+# The recommended applications, offered with the welcome line at the first start.
+recommended = "Рекомендуемые приложения"
+recommended-text = "В qdesk почти ничего нет. Вот что большинство людей добавляет в первую очередь; до нажатия «Установить» ничего не устанавливается."
+recommended-none = "Все рекомендуемые приложения уже установлены."
+install = "Установить"
+again = "Настройки могут показать это снова."
+recommended-close = "Close"
 
 [category]
 system = "Система"
@@ -66,10 +73,16 @@ empty-hint = "Записи находятся в ~/.local/share/quvyta/desktop/a
 no-hits = "Ничего не найдено по запросу {query}"
 no-hits-hint = "Поиск идёт по названиям, описаниям и командам."
 # The second line of a card whose program is not on this machine.
-with-qpac = "установить через qpac"
-with-quvyta = "установить через quvyta"
+with-qpac = "через qpac"
+with-quvyta = "через quvyta"
 install-quvyta = "Выполните это, чтобы установить {name}: {command}"
 install-qpac = "Откройте qpac и установите {package}; {name} появится здесь сразу после установки."
+here-title = "Установить {installer} здесь?"
+here-quvyta = "{name} устанавливается через quvyta, а quvyta на этой машине ещё нет. qdesk может установить quvyta за вас через cargo в окне, где видно, как идёт установка, и её можно прервать, а затем откроет quvyta на {name}. Выполняется команда: {command}"
+here-qpac = "{name} устанавливается через qpac, а qpac на этой машине ещё нет. qdesk может установить qpac за вас через cargo в окне, где видно, как идёт установка, и её можно прервать, а затем откроет qpac, чтобы вы установили там {package}. Выполняется команда: {command}"
+here-button = "Установить здесь"
+here-window = "Установка {installer}"
+no-cargo = "Сначала установите cargo из Rust или установите {installer} пакетами вашей системы."
 menu-open = "Открыть {name}"
 menu-install-qpac = "Установить {name} через qpac"
 menu-install-quvyta = "Установить {name} через quvyta"
@@ -280,6 +293,9 @@ folders-in-explorer = "Открывать папки через {program}"
 folders-in-explorer-text = "Папка на рабочем столе или в разделе Файлы открывается в файловом менеджере экосистемы. Если {program} не установлен, вместо него открываются Файлы."
 status-strip = "Состояние в доке"
 status-strip-text = "Сеансы tmux, сеть, процессор, память и аккумулятор рядом с именем компьютера. Если выключено, состояние компьютера не считывается."
+recommended = "Рекомендуемые приложения"
+recommended-text = "Панель первого запуска, где предлагается установить qexp, веб-браузер и другие приложения Quvyta."
+recommended-show = "Show"
 
 connection = "Соединение"
 drag = "Перетаскивание окна"
@@ -342,6 +358,7 @@ killed = "Процесс был остановлен, прежде чем усп
 lock-password = "Пароль для {user}"
 lock-checking = "Проверяем…"
 lock-wrong = "Неверный пароль. Попробуйте ещё раз."
+lock-wait = "Неверный пароль. Попробуйте ещё раз через {n} с"
 lock-hint = "Введите пароль и нажмите enter"
 
 [widget]
@@ -376,3 +393,26 @@ refused = "{name} не может быть обоями"
 not-text = "Его путь — не текст, который может хранить файл настроек"
 pick-title = "Выберите обои"
 pick-cancel = "Отмена"
+
+[pictures]
+position = "{n} / {total}"
+keys = "{left} {right} далее   f вся или фактический размер"
+decoding = "Чтение картинки"
+unreadable = "{name} нельзя показать"
+cannot-draw = "Этот терминал не умеет показывать картинки"
+cannot-draw-hint = "Откройте его в терминале вроде kitty или foot"
+help-next = "Следующая картинка в папке"
+help-previous = "Предыдущая картинка в папке"
+help-ends = "Первая или последняя картинка"
+help-fit = "Вся картинка или фактический размер"
+
+[texts]
+lines = { one = "{n} строка", few = "{n} строки", many = "{n} строк", other = "{n} строки" }
+edit = "Изменить"
+reading = "Чтение файла"
+unreadable = "{name} нельзя показать"
+missing = "Файла больше нет"
+denied = "Нет прав на чтение"
+cut = "Показаны первые 4 МиБ из {size} МиБ; «Изменить» откроет весь файл"
+not-utf8 = "Некоторые символы показать не удалось; «Изменить» откроет файл как есть"
+help-edit = "Изменить файл в этом окне"

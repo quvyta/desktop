@@ -31,8 +31,12 @@ use support::{BUDGET, HARMLESS, MACHINE, MOMENT, OFFSET, PATIENCE};
 struct Scratch(PathBuf);
 
 impl Scratch {
-    /// A home with a Rust file and a text file, the databases that say what they are and which
-    /// programs open them, and the scripts those programs are.
+    /// A home with a Rust file, a text file, a song and a book, the databases that say what they
+    /// are and which programs open them, and the scripts those programs are.
+    ///
+    /// Two clicks on the Rust file or the note open qdesk's own text viewer (tests/texts.rs), so
+    /// what the databases choose on two clicks is shown with the song and the book, which qdesk
+    /// has no viewer for; "Open with" is shown with the Rust file.
     fn new() -> Self {
         static NEXT: AtomicU32 = AtomicU32::new(0);
         let once = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -41,14 +45,21 @@ impl Scratch {
         let scratch = Self(path);
         scratch.write("ev/main.rs", "fn main() {}\n");
         scratch.write("ev/notlar.txt", "bir iki üç\n");
-        scratch.write("veri/mime/globs2", "50:text/x-rust:*.rs\n50:text/plain:*.txt\n");
-        scratch.program("kedi", "Kedi", true, "text/x-rust;text/plain;");
-        scratch.program("tavsan", "Tavşan", true, "text/x-rust;");
-        scratch.program("pencereli", "Pencereli", false, "text/x-rust;text/plain;");
-        // The person chose a terminal program for Rust and a graphical one for text.
+        scratch.write("ev/sarki.ogg", "OggS");
+        scratch.write("ev/kitap.pdf", "%PDF-1.4\n");
+        scratch.write(
+            "veri/mime/globs2",
+            "50:text/x-rust:*.rs\n50:text/plain:*.txt\n50:audio/ogg:*.ogg\n50:application/pdf:*.pdf\n",
+        );
+        scratch.program("kedi", "Kedi", true, "text/x-rust;text/plain;audio/ogg;");
+        scratch.program("tavsan", "Tavşan", true, "text/x-rust;audio/ogg;");
+        scratch.program("pencereli", "Pencereli", false, "text/x-rust;text/plain;application/pdf;");
+        // The person chose a terminal program for Rust and songs, and a graphical one for text and
+        // books.
         scratch.write(
             "ayar/mimeapps.list",
-            "[Default Applications]\ntext/x-rust=tavsan.desktop\ntext/plain=pencereli.desktop\n",
+            "[Default Applications]\ntext/x-rust=tavsan.desktop\ntext/plain=pencereli.desktop\n\
+             audio/ogg=tavsan.desktop\napplication/pdf=pencereli.desktop\n",
         );
         scratch.write("editor.sh", &format!("printf '%s' \"$1\" > '{}'\n", scratch.said("editor").display()));
         scratch
@@ -113,10 +124,11 @@ fn desk(scratch: &Scratch) -> Harness<Desk> {
         }),
         ..AssetDirs::default()
     };
-    let env = Env::load(&dirs).expect("the built-in files load");
+    let env = Env::load_with(&dirs, support::terminal).expect("the built-in files load");
     let folders = Folders { user: None, system: Vec::new(), desktop_files: Vec::new() };
-    let catalog = Catalog::new(load(&folders, None).entries, |_| true);
-    let desktop = Desktop { icons: vec!["files".to_owned()], welcome_seen: true, ..Desktop::default() };
+    let catalog = Catalog::new(support::sealed(load(&folders, None).entries), |_| true);
+    let desktop =
+        Desktop { icons: vec!["files".to_owned()], welcome_seen: true, recommended_seen: true, ..Desktop::default() };
     let clock = Box::new(|| MOMENT * 1_000);
     let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), clock)
         .apps(scratch.environment())
@@ -186,22 +198,23 @@ fn given(harness: &mut Harness<Desk>, scratch: &Scratch, id: &str) -> PathBuf {
 fn a_double_click_on_a_file_opens_it_with_the_terminal_program_chosen_for_its_kind() {
     let scratch = Scratch::new();
     let mut harness = files_open(&scratch);
-    let (x, y) = row_of(&harness, "main.rs");
+    let (x, y) = row_of(&harness, "sarki.ogg");
     harness.click(x, y).click(x, y);
-    assert_eq!(given(&mut harness, &scratch, "tavsan"), scratch.home().join("main.rs"));
+    assert_eq!(given(&mut harness, &scratch, "tavsan"), scratch.home().join("sarki.ogg"));
     assert!(!scratch.said("kedi").exists() && !scratch.said("editor").exists(), "only the chosen program ran");
     let front = harness.app().windows().front().expect("the file's window");
-    assert_eq!(front.entry().name.get("en"), "main.rs", "the window is named after the file");
-    assert_eq!(front.entry().icon.as_deref(), Some("file-rust"), "and drawn with its kind's icon");
+    assert_eq!(front.entry().name.get("en"), "sarki.ogg", "the window is named after the file");
+    let icon = qdesk::desktop::kind_icon("sarki.ogg", false, false);
+    assert_eq!(front.entry().icon.as_deref(), Some(icon), "and drawn with its kind's icon");
 }
 
 #[test]
 fn a_file_whose_chosen_program_is_graphical_opens_in_the_editor_and_nothing_graphical_starts() {
     let scratch = Scratch::new();
     let mut harness = files_open(&scratch);
-    let (x, y) = row_of(&harness, "notlar.txt");
+    let (x, y) = row_of(&harness, "kitap.pdf");
     harness.click(x, y).click(x, y);
-    assert_eq!(given(&mut harness, &scratch, "editor"), scratch.home().join("notlar.txt"));
+    assert_eq!(given(&mut harness, &scratch, "editor"), scratch.home().join("kitap.pdf"));
     assert!(!scratch.said("pencereli").exists(), "the graphical program never ran");
     assert!(harness.opens().is_empty(), "nothing was opened beside the desktop: {:?}", harness.opens());
     assert_eq!(harness.app().windows().len(), 2, "the file has a window of its own:\n{}", harness.screen());

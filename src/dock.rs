@@ -2,7 +2,7 @@
 //!
 //! Its left end holds the launcher button, then the marks of the workspaces, then the open windows
 //! of the workspace on screen in the order they were opened, and its right side the status strip
-//! (design 3.10), the name of the machine and the clock. The launcher button works like a
+//!, the name of the machine and the clock. The launcher button works like a
 //! Start button: it opens the launcher and closes it again, and it stays pressed while the launcher
 //! is open. Which of them fit in a given width is
 //! decided by [`plan`], a pure function, and drawn by [`view`] into whichever row it is given.
@@ -105,7 +105,7 @@ pub struct Label {
     /// in 16 colours.
     pub mark: Option<String>,
     /// The mark of a window whose program rang the bell or sent a notification while the window
-    /// did not have the keys (design 3.4); `None` once the window is focused again.
+    /// did not have the keys; `None` once the window is focused again.
     pub attention: Option<String>,
 }
 
@@ -203,14 +203,14 @@ pub struct Plan {
 ///
 /// The windows take what is left of the row after that. First every item shows its name; when they
 /// do not all fit they fall back to their glyphs alone, and when even those do not fit the last
-/// ones go behind a `+n` control that opens a list of them (design 3.4).
+/// ones go behind a `+n` control that opens a list of them.
 ///
-/// The workspaces stand beside the launcher button (design 3.10). Their four marks give way before
+/// The workspaces stand beside the launcher button. Their four marks give way before
 /// the windows do: when the windows would go behind `+n` beside them, only the number of the
 /// workspace on screen is left. That number outlives the clock and the count, because it is the
 /// one answer to "where am I", and goes only when the whole machine name would not fit beside it.
 ///
-/// The status strip, whose items are `strip`, gives way before everything else (design 3.10): it
+/// The status strip, whose items are `strip`, gives way before everything else: it
 /// takes only what the windows, the marks, the clock and the count leave, and its items leave from
 /// the left, the tmux sessions first and the battery last. A strip item is something to glance at;
 /// a window's name is how a window is found, and the machine name how the machine is.
@@ -330,7 +330,7 @@ fn windows(room: u16, labels: &[Label], padding: u16) -> (usize, bool, usize) {
         }
     }
     // Not even one glyph beside the control: the control alone still says how many windows are
-    // open, and when there is no room for that either the dock keeps only its ends (design 3.7).
+    // open, and when there is no room for that either the dock keeps only its ends.
     let control = item_width(&more_label(labels.len()), padding);
     if control <= room { (0, false, labels.len()) } else { (0, false, 0) }
 }
@@ -342,7 +342,7 @@ pub fn more_label(hidden: usize) -> String {
 }
 
 /// What the right side of the dock says about the notifications: how many have not been read, in
-/// the mark of the icon set, as the design writes it (`●2`, 3.4). Empty when nothing is unread.
+/// the mark of the icon set, as one word (`●2`). Empty when nothing is unread.
 #[must_use]
 pub fn count_label(mark: &str, unread: usize) -> String {
     if unread == 0 { String::new() } else { format!("{mark}{unread}") }
@@ -714,7 +714,7 @@ mod tests {
         let plan = super::plan(80, "sunucu-1", CLOCK, &count_label("●", 0), &[], &[], PAD);
         assert!(!plan.count, "an empty count is no count");
         assert_eq!(count_label("●", 0), "");
-        assert_eq!(count_label("●", 2), "●2", "the design writes it as one word (3.4)");
+        assert_eq!(count_label("●", 2), "●2", "the mark and the count are one word");
     }
 
     #[test]

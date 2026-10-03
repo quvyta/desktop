@@ -44,6 +44,13 @@ too-small-hint = "Der Desktop braucht mindestens {columns} Spalten und {rows} Ze
 # Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
 line = "Die Anwendungen sind hinter {icon}, oder ctrl alt space und dann space."
 close = "Verstanden"
+# The recommended applications, offered with the welcome line at the first start.
+recommended = "Empfohlene Anwendungen"
+recommended-text = "qdesk bringt wenig mit. Diese Anwendungen fügen die meisten zuerst hinzu; installiert wird nichts, bevor du Installieren drückst."
+recommended-none = "Alle empfohlenen Anwendungen sind installiert."
+install = "Installieren"
+again = "Die Einstellungen können das wieder anzeigen."
+recommended-close = "Schließen"
 
 [category]
 system = "System"
@@ -66,10 +73,16 @@ empty-hint = "Einträge liegen in ~/.local/share/quvyta/desktop/apps; beim Insta
 no-hits = "Nichts passt zu {query}"
 no-hits-hint = "Die Suche prüft Namen, Beschreibungen und Befehle."
 # The second line of a card whose program is not on this machine.
-with-qpac = "mit qpac installieren"
-with-quvyta = "mit quvyta installieren"
+with-qpac = "über qpac"
+with-quvyta = "über quvyta"
 install-quvyta = "Führe das aus, um {name} zu installieren: {command}"
 install-qpac = "Öffne qpac und installiere {package}; {name} erscheint hier, sobald es da ist."
+here-title = "{installer} hier installieren?"
+here-quvyta = "{name} wird mit quvyta installiert, und quvyta ist auf diesem Rechner noch nicht da. qdesk kann quvyta für dich mit cargo installieren, in einem Fenster, in dem du es arbeiten siehst und stoppen kannst, und öffnet dann quvyta auf {name}. Der Befehl lautet: {command}"
+here-qpac = "{name} wird mit qpac installiert, und qpac ist auf diesem Rechner noch nicht da. qdesk kann qpac für dich mit cargo installieren, in einem Fenster, in dem du es arbeiten siehst und stoppen kannst, und öffnet dann qpac, damit du {package} dort installieren kannst. Der Befehl lautet: {command}"
+here-button = "Hier installieren"
+here-window = "{installer} wird installiert"
+no-cargo = "Installiere zuerst cargo aus Rust, oder installiere {installer} mit den Paketen deines Systems."
 menu-open = "{name} öffnen"
 menu-install-qpac = "{name} mit qpac installieren"
 menu-install-quvyta = "{name} mit quvyta installieren"
@@ -280,11 +293,14 @@ folders-in-explorer = "Ordner mit {program} öffnen"
 folders-in-explorer-text = "Ein Ordner auf dem Desktop oder in Dateien öffnet sich im Datei-Explorer des Ökosystems. Ist {program} nicht installiert, öffnet stattdessen Dateien."
 status-strip = "Status im Dock"
 status-strip-text = "Die tmux-Sitzungen, das Netzwerk, der Prozessor, der Speicher und der Akku neben dem Rechnernamen. Ausgeschaltet wird der Rechner dafür nicht abgefragt."
+recommended = "Empfohlene Anwendungen"
+recommended-text = "Das Panel beim ersten Start, das qexp, einen Webbrowser und weitere Quvyta-Anwendungen zum Installieren anbietet."
+recommended-show = "Anzeigen"
 
 connection = "Verbindung"
 drag = "Fenster ziehen"
-drag-live = "Live"
-drag-ghost = "Ghost"
+drag-live = "Direkt"
+drag-ghost = "Schatten"
 drag-in-force-live = "Hier folgt das Fenster selbst der Maus."
 drag-in-force-ghost = "Hier folgt ein schattierter Bereich der Maus und das Fenster springt dorthin; über SSH ist das deutlich weniger zu übertragen."
 frame-cap = "Bilder pro Sekunde"
@@ -342,6 +358,7 @@ killed = "Es wurde gestoppt, bevor es antworten konnte."
 lock-password = "Passwort für {user}"
 lock-checking = "Wird geprüft…"
 lock-wrong = "Das ist nicht das Passwort. Versuch es noch einmal."
+lock-wait = "Das ist nicht das Passwort. Versuch es in {n} s noch einmal."
 lock-hint = "Passwort eingeben und enter drücken"
 
 [widget]
@@ -376,3 +393,31 @@ refused = "{name} ist nicht das Hintergrundbild geworden"
 not-text = "Sein Pfad ist kein Text, den die Einstellungsdatei speichern kann"
 pick-title = "Hintergrundbild auswählen"
 pick-cancel = "Abbrechen"
+
+[pictures]
+# The line under a picture: where it is among the pictures of its folder.
+position = "{n} / {total}"
+# The keys, in the line under a picture; {left} and {right} are the arrow keys.
+keys = "{left} {right} nächstes   f ganz oder tatsächliche Größe"
+# Shown in a picture's window while it is being read, after a moment.
+decoding = "Bild wird gelesen"
+# A picture that could not be read; the line under it says why.
+unreadable = "{name} kann nicht angezeigt werden"
+cannot-draw = "Dieses Terminal kann keine Bilder anzeigen"
+cannot-draw-hint = "Öffne es in einem Terminal wie kitty oder foot"
+# The help layer, while a picture's window is in front.
+help-next = "Nächstes Bild im Ordner"
+help-previous = "Vorheriges Bild im Ordner"
+help-ends = "Erstes oder letztes Bild"
+help-fit = "Ganzes Bild oder tatsächliche Größe"
+
+[texts]
+lines = { one = "{n} Zeile", other = "{n} Zeilen" }
+edit = "Bearbeiten"
+reading = "Datei wird gelesen"
+unreadable = "{name} kann nicht angezeigt werden"
+missing = "Sie ist nicht mehr da"
+denied = "Du darfst sie nicht lesen"
+cut = "Zeigt die ersten 4 MiB von {size} MiB; Bearbeiten öffnet alles"
+not-utf8 = "Einige Zeichen konnten nicht angezeigt werden; Bearbeiten öffnet die Datei, wie sie ist"
+help-edit = "Datei in diesem Fenster bearbeiten"

@@ -789,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "quvyta-desktop"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "image",
  "portable-pty",
@@ -797,13 +797,14 @@ dependencies = [
  "ratatui-core",
  "ratatui-crossterm",
  "toml",
+ "zeroize",
 ]
 
 [[package]]
 name = "quvyta-framework"
-version = "0.1.29"
+version = "0.1.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ed0f279bfa3680b86b2c3d4a8c40237f0dfe800f29b92935dac0f9ef65f43ce"
+checksum = "401df3f5b31b9e42baaaae723b3cdb8c2f462a116a0bd49fb03fbca8fd2059b3"
 dependencies = [
  "crossterm",
  "dirs",

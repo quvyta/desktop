@@ -1,0 +1,9 @@
+name = "qexp"
+comment = { en = "The file explorer of the Quvyta ecosystem", tr = "Quvyta ekosisteminin dosya gezgini" }
+icon = "folder"
+command = ["qexp"]
+category = "quvyta"
+keywords = ["quvyta", "explorer", "files", "folders", "gezgin", "dosya", "klasör"]
+
+[install]
+quvyta = "quvyta-explorer"

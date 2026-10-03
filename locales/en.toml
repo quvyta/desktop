@@ -47,6 +47,13 @@ too-small-hint = "The desktop needs at least {columns} columns and {rows} rows."
 # Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
 line = "The applications are behind {icon}, or ctrl alt space and then space."
 close = "Got it"
+# The recommended applications, offered with the welcome line at the first start.
+recommended = "Recommended applications"
+recommended-text = "qdesk comes with little. These are what most people add first; nothing is installed until you press Install."
+recommended-none = "Every recommended application is installed."
+install = "Install"
+again = "Settings can show this again."
+recommended-close = "Close"
 
 [category]
 system = "System"
@@ -73,6 +80,14 @@ with-qpac = "install with qpac"
 with-quvyta = "install with quvyta"
 install-quvyta = "Run this to install {name}: {command}"
 install-qpac = "Open qpac and install {package}; {name} appears here as soon as it is there."
+# The question when the installer is not on this machine: qdesk installs it with cargo in a
+# window of its own, then starts it on the application.
+here-title = "Install {installer} here?"
+here-quvyta = "{name} is installed with quvyta, which is not on this machine yet. qdesk can install quvyta for you with cargo, in a window where you see it work and can stop it, then open quvyta on {name}. It runs: {command}"
+here-qpac = "{name} is installed with qpac, which is not on this machine yet. qdesk can install qpac for you with cargo, in a window where you see it work and can stop it, then open qpac so you can install {package} there. It runs: {command}"
+here-button = "Install here"
+here-window = "Installing {installer}"
+no-cargo = "Install Rust's cargo first, or install {installer} with your system's packages."
 menu-open = "Open {name}"
 menu-install-qpac = "Install {name} with qpac"
 menu-install-quvyta = "Install {name} with quvyta"
@@ -291,6 +306,9 @@ folders-in-explorer = "Open folders with {program}"
 folders-in-explorer-text = "A folder on the desktop or in Files opens in the ecosystem's file explorer. When {program} is not installed, Files opens instead."
 status-strip = "Status on the dock"
 status-strip-text = "The tmux sessions, the network, the processor, the memory and the battery beside the machine name. Off, the machine is not read for it."
+recommended = "Recommended applications"
+recommended-text = "The panel of the first start that offers qexp, a web browser and other Quvyta applications to install."
+recommended-show = "Show"
 
 connection = "Connection"
 drag = "Dragging a window"
@@ -359,6 +377,8 @@ killed = "It was stopped before it could answer."
 lock-password = "Password for {user}"
 lock-checking = "Checking…"
 lock-wrong = "That is not the password. Try again."
+# After a wrong password: {n} is how many seconds are left before the next attempt.
+lock-wait = "That is not the password. Try again in {n} s"
 lock-hint = "Type the password and press enter"
 
 [widget]
@@ -407,3 +427,37 @@ refused = "{name} is not the wallpaper"
 not-text = "Its path is not text the settings file can keep"
 pick-title = "Choose a wallpaper"
 pick-cancel = "Cancel"
+
+[pictures]
+# The line under a picture: where it is among the pictures of its folder.
+position = "{n} / {total}"
+# The keys, in the line under a picture; {left} and {right} are the arrow keys.
+keys = "{left} {right} next   f whole or actual size"
+# Shown in a picture's window while it is being read, after a moment.
+decoding = "Reading the picture"
+# A picture that could not be read; the line under it says why.
+unreadable = "{name} cannot be shown"
+cannot-draw = "This terminal cannot show pictures"
+cannot-draw-hint = "Open it in a terminal such as kitty or foot"
+# The help layer, while a picture's window is in front.
+help-next = "Next picture in the folder"
+help-previous = "Previous picture in the folder"
+help-ends = "First or last picture"
+help-fit = "Whole picture or actual size"
+
+[texts]
+# The line under a text: how many lines it has.
+lines = { one = "{n} line", other = "{n} lines" }
+# The button under a text that opens the file in the person's editor, in the same window.
+edit = "Edit"
+# Shown in a text's window while it is being read, after a moment.
+reading = "Reading the file"
+# A file that could not be read; the line under it says why.
+unreadable = "{name} cannot be shown"
+missing = "It is no longer there"
+denied = "You may not read it"
+# Under a long file shown in part; {size} is the whole file's size in MiB.
+cut = "Showing the first 4 MiB of {size} MiB; Edit opens all of it"
+not-utf8 = "Some characters could not be shown; Edit opens the file as it is"
+# The help layer, while a text's window is in front.
+help-edit = "Edit the file in this window"

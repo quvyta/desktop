@@ -2,7 +2,7 @@
 //!
 //! An icon is a cell of [`CELL_WIDTH`] columns and [`CELL_HEIGHT`] rows: the icon itself, its
 //! name below it, and a row of floor under both so two icons never touch. The floor is a grid of
-//! such cells, and an icon may stand in any of them (design 3.2): one the person put somewhere
+//! such cells, and an icon may stand in any of them: one the person put somewhere
 //! stays there, and one that has no place of its own flows into the first free cell, filling a
 //! column from the top before the next column starts, because the floor is read down its left
 //! edge and the dock is at the bottom.
@@ -63,15 +63,15 @@ impl Grid {
     /// area — a terminal made smaller than when it was put there — or already taken stands in the
     /// free cell nearest to it, and its own place is not forgotten, because the grid remembers
     /// nothing. The icons with no place fill the cells left, in order. An area too small for a
-    /// whole cell holds no icons at all: half an icon is worse than none, and the narrow screen of
-    /// the design (3.7) hides them anyway. Icons for which no cell is left are not drawn.
+    /// whole cell holds no icons at all: half an icon is worse than none, and the narrow screen
+    /// hides them anyway. Icons for which no cell is left are not drawn.
     #[must_use]
     pub fn placed(area: Size, wanted: &[Option<Cell>]) -> Self {
         Self::placed_around(area, wanted, &[])
     }
 
     /// The grid of icons that want the cells `wanted`, around the cells `blocked` that the
-    /// gadgets take (design 3.12).
+    /// gadgets take.
     ///
     /// A blocked cell is as good as an icon's for the icons: one whose own place is blocked stands
     /// in the nearest free cell and keeps its place, and the icons with no place flow past the

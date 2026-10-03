@@ -40,6 +40,13 @@ too-small-hint = "Masaüstü için en az {columns} sütun ve {rows} satır gerek
 [welcome]
 line = "Uygulamalar {icon} düğmesinin ardında; ya da ctrl alt space, sonra space."
 close = "Anladım"
+# The recommended applications, offered with the welcome line at the first start.
+recommended = "Önerilen uygulamalar"
+recommended-text = "qdesk az şeyle gelir. Çoğu kişinin ilk eklediği uygulamalar bunlar; Kur'a basmadıkça hiçbir şey kurulmaz."
+recommended-none = "Önerilen uygulamaların hepsi kurulu."
+install = "Kur"
+again = "Bunu Ayarlar'dan yeniden açabilirsin."
+recommended-close = "Kapat"
 
 [category]
 system = "Sistem"
@@ -65,6 +72,14 @@ with-qpac = "qpac ile kur"
 with-quvyta = "quvyta ile kur"
 install-quvyta = "{name} kurmak için şunu çalıştır: {command}"
 install-qpac = "qpac'ı aç ve {package} paketini kur; {name} kurulur kurulmaz burada belirir."
+# Kurucu bu makinede yokken sorulan soru: qdesk onu kendi penceresinde cargo ile kurar, sonra
+# uygulamanın üstünde açar.
+here-title = "{installer} buraya kurulsun mu?"
+here-quvyta = "{name}, quvyta ile kurulur ve quvyta bu makinede henüz yok. qdesk onu senin için cargo ile kurabilir: iş bir pencerede olur, olanı görürsün, istersen durdurursun. Sonra quvyta'yı {name} sayfasında açar. Çalışacak komut: {command}"
+here-qpac = "{name}, qpac ile kurulur ve qpac bu makinede henüz yok. qdesk onu senin için cargo ile kurabilir: iş bir pencerede olur, olanı görürsün, istersen durdurursun. Sonra qpac'ı açar, {package} paketini orada kurarsın. Çalışacak komut: {command}"
+here-button = "Burada kur"
+here-window = "{installer} kuruluyor"
+no-cargo = "Önce Rust'ın cargo aracını kur ya da {installer} programını sisteminin paketleriyle kur."
 menu-open = "{name} aç"
 menu-install-qpac = "{name} uygulamasını qpac ile kur"
 menu-install-quvyta = "{name} uygulamasını quvyta ile kur"
@@ -270,6 +285,9 @@ folders-in-explorer = "Klasörleri {program} ile aç"
 folders-in-explorer-text = "Masaüstündeki ya da Dosyalar'daki bir klasör ekosistemin dosya gezgininde açılır. {program} kurulu değilse yerine Dosyalar açılır."
 status-strip = "Dock'ta durum"
 status-strip-text = "tmux oturumları, ağ, işlemci, bellek ve pil, makinenin adının yanında. Kapalıyken makine bunun için hiç okunmaz."
+recommended = "Önerilen uygulamalar"
+recommended-text = "İlk açılışta qexp'i, bir web tarayıcısını ve diğer Quvyta uygulamalarını kurmayı öneren panel."
+recommended-show = "Göster"
 
 connection = "Bağlantı"
 drag = "Pencere sürüklenirken"
@@ -338,6 +356,7 @@ killed = "Cevap veremeden durduruldu."
 lock-password = "{user} için parola"
 lock-checking = "Denetleniyor…"
 lock-wrong = "Parola bu değil. Yeniden deneyin."
+lock-wait = "Parola bu değil. {n} sn sonra yeniden deneyin."
 lock-hint = "Parolayı yazıp enter'a basın"
 
 [widget]
@@ -383,3 +402,37 @@ refused = "{name} duvar kâğıdı yapılmadı"
 not-text = "Yolu, ayar dosyasının saklayabileceği bir metin değil"
 pick-title = "Duvar kâğıdı seçin"
 pick-cancel = "Vazgeç"
+
+[pictures]
+# Resmin altındaki satır: klasördeki resimler arasında kaçıncı olduğu.
+position = "{n} / {total}"
+# Resmin altındaki satırda tuşlar; {left} ve {right} ok tuşları.
+keys = "{left} {right} sonraki   f tamamı ya da gerçek boyut"
+# Resim okunurken, bir an geçince penceresinde.
+decoding = "Resim okunuyor"
+# Okunamayan bir resim; altındaki satır nedenini söyler.
+unreadable = "{name} gösterilemiyor"
+cannot-draw = "Bu terminal resim gösteremiyor"
+cannot-draw-hint = "kitty ya da foot gibi bir terminalde açın"
+# Bir resim penceresi öndeyken yardım katmanında.
+help-next = "Klasördeki sonraki resim"
+help-previous = "Klasördeki önceki resim"
+help-ends = "İlk ya da son resim"
+help-fit = "Resmin tamamı ya da gerçek boyutu"
+
+[texts]
+# Metnin altındaki satır: kaç satır olduğu.
+lines = { one = "{n} satır", other = "{n} satır" }
+# Metnin altındaki, dosyayı aynı pencerede kişinin düzenleyicisinde açan düğme.
+edit = "Düzenle"
+# Dosya okunurken, bir an geçince penceresinde.
+reading = "Dosya okunuyor"
+# Okunamayan bir dosya; altındaki satır nedenini söyler.
+unreadable = "{name} gösterilemiyor"
+missing = "Artık orada değil"
+denied = "Okuma izniniz yok"
+# Bir kısmı gösterilen uzun bir dosyanın altında; {size} dosyanın tamamının MiB cinsinden boyutu.
+cut = "{size} MiB'lık dosyanın ilk 4 MiB'ı gösteriliyor; Düzenle dosyanın tamamını açar"
+not-utf8 = "Bazı karakterler gösterilemedi; Düzenle dosyayı olduğu gibi açar"
+# Bir metin penceresi öndeyken yardım katmanında.
+help-edit = "Dosyayı bu pencerede düzenle"

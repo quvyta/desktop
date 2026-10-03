@@ -4,15 +4,20 @@
 //! user entry of the same id replaces one exactly as it would replace a system entry.
 
 /// Each built-in entry as its id and its file.
-pub(super) const ENTRIES: [(&str, &str); 8] = [
+pub(super) const ENTRIES: [(&str, &str); 13] = [
     ("terminal", include_str!("builtin/terminal.toml")),
     ("files", include_str!("builtin/files.toml")),
     ("settings", include_str!("builtin/settings.toml")),
+    ("qbrow", include_str!("builtin/qbrow.toml")),
+    ("qcli", include_str!("builtin/qcli.toml")),
     ("qcode", include_str!("builtin/qcode.toml")),
+    ("qexp", include_str!("builtin/qexp.toml")),
     ("qfocus", include_str!("builtin/qfocus.toml")),
     ("qpac", include_str!("builtin/qpac.toml")),
     ("qtools", include_str!("builtin/qtools.toml")),
     ("quvyta", include_str!("builtin/quvyta.toml")),
+    ("chawan", include_str!("builtin/chawan.toml")),
+    ("w3m", include_str!("builtin/w3m.toml")),
 ];
 
 #[cfg(test)]
@@ -64,7 +69,10 @@ mod tests {
         let entries = built_in();
         let member = |id: &str| entries.iter().find(|entry| entry.id == id).expect("a Quvyta application");
         for (id, package) in [
+            ("qbrow", "quvyta-browser"),
+            ("qcli", "quvyta-cli"),
             ("qcode", "quvyta-code"),
+            ("qexp", "quvyta-explorer"),
             ("qfocus", "quvyta-focus"),
             ("qpac", "quvyta-packages"),
             ("qtools", "quvyta-tools"),
@@ -77,6 +85,27 @@ mod tests {
         // quvyta installs the others; it cannot install itself.
         assert_eq!(member("quvyta").launch.program(), Some("quvyta"));
         assert!(!member("quvyta").install.is_known());
+    }
+
+    #[test]
+    fn the_explorer_entry_runs_the_program_folders_open_in() {
+        let entries = built_in();
+        let explorer = entries.iter().find(|entry| entry.id == crate::app::EXPLORER).expect("qexp is built in");
+        assert_eq!(explorer.launch.program(), Some(crate::app::EXPLORER));
+    }
+
+    #[test]
+    fn text_web_browsers_run_when_they_are_there_and_w3m_installs_with_qpac() {
+        let entries = built_in();
+        let browser = |id: &str| entries.iter().find(|entry| entry.id == id).expect("a web browser");
+        for (id, program) in [("chawan", "cha"), ("w3m", "w3m")] {
+            let entry = browser(id);
+            assert_eq!(entry.category, Category::Network, "{id}");
+            assert_eq!(entry.launch.program(), Some(program), "{id}");
+            assert!(entry.install.quvyta.is_none(), "{id} is not a Quvyta application");
+        }
+        assert_eq!(browser("w3m").install.qpac.as_deref(), Some("w3m"));
+        assert!(!browser("chawan").install.is_known());
     }
 
     #[test]

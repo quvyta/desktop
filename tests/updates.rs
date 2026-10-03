@@ -50,7 +50,7 @@ fn env() -> Env {
         }),
         ..AssetDirs::default()
     };
-    Env::load(&dirs).expect("the built-in files load")
+    Env::load_with(&dirs, support::terminal).expect("the built-in files load")
 }
 
 /// qdesk started over the ecosystem's `folders`, as a person starts it, with the usual floor.
@@ -59,6 +59,7 @@ fn started(folders: Option<UpdateFolders>) -> Harness<Desk> {
         icons: ICONS.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        recommended_seen: true,
         ..Desktop::default()
     };
     let apps = Environment { shell: Some(PathBuf::from(HARMLESS)), ..Environment::default() };

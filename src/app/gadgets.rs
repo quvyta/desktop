@@ -1,4 +1,4 @@
-//! The desktop's side of the gadgets (design 3.12): what their menus offer, what choosing a row
+//! The desktop's side of the gadgets: what their menus offer, what choosing a row
 //! does, the readings and the ticks that keep them current, the note files, and the nodes the
 //! floor draws.
 //!
@@ -22,7 +22,7 @@ use crate::inbox::Notice;
 use crate::status::{self, Probe, SAMPLE_EVERY, Status};
 
 /// The share of the processor or the memory from which a meter turns to the warning tone: the
-/// status strip's own limit (3.10).
+/// status strip's own limit.
 const WARN: f32 = 75.0;
 /// The share from which it turns to the danger tone.
 const DANGER: f32 = 90.0;
@@ -203,7 +203,7 @@ impl Desk {
         }
     }
 
-    /// Puts a gadget of `kind` on the floor where the design says (3.12), or says there is no room.
+    /// Puts a gadget of `kind` on the floor where gadgets gather, or says there is no room.
     fn add_gadget(&mut self, kind: Kind) -> Command<Msg> {
         let file = gadgets::next_note(&self.desktop.widgets);
         let mut gadget = Gadget::new(kind, (0, 0), &file);

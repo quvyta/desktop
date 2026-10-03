@@ -28,11 +28,17 @@ use crate::apps::{Diagnostic, Folders};
 /// The widget id of the list of settings, which takes the keyboard when the screen opens.
 pub const LIST: &str = "settings-list";
 
+/// The widget id of the button that puts away what the settings file could not be read as.
+pub const READ: &str = "settings-read";
+
 /// The widget id of the field that holds a chosen frame cap.
 pub const FRAME_CAP_FIELD: &str = "settings-frame-cap";
 
 /// The widget id of the button that chooses a picture for the floor.
 pub const CHOOSE_WALLPAPER: &str = "settings-choose-wallpaper";
+
+/// The widget id of the button that shows the recommended applications again.
+pub const SHOW_RECOMMENDED: &str = "settings-show-recommended";
 
 /// Width of the desktop's own drop-downs: enough for the longest drag style and picture name.
 const CONTROL_WIDTH: u16 = 18;
@@ -68,6 +74,8 @@ pub enum Msg {
     FoldersInExplorer(bool),
     /// The status strip was shown on the dock (`true`) or taken off it.
     StatusStrip(bool),
+    /// "Show" beside the recommended applications: the panel of the first start is to open again.
+    ShowRecommended,
     /// A drag style was chosen.
     Drag(DragStyle),
     /// A frame cap was chosen, or `None` to follow the link again.
@@ -91,6 +99,8 @@ pub enum Request {
     /// Do what was asked about the floor's picture: nothing about it has changed yet, since a
     /// picture is decoded before it is taken.
     Wallpaper(Wallpaper),
+    /// Show the panel of recommended applications again; nothing is written.
+    ShowRecommended,
 }
 
 /// What the Settings screen asks about the floor's picture.
@@ -183,6 +193,22 @@ impl Screen {
     pub fn updates(&self) -> bool {
         self.updates
     }
+
+    /// The widget that takes the keyboard when the screen is shown: the button that puts away
+    /// what the settings file could not be read as while that is shown, else the list.
+    ///
+    /// The list is taller than most windows, and a scroll view shows a widget that takes the
+    /// keyboard from its top: given to the list, the keyboard would scroll the notice above it
+    /// out of sight the moment the screen opens.
+    #[must_use]
+    pub fn keyboard(&self) -> &'static str {
+        if self.problems_shown() { READ } else { LIST }
+    }
+
+    /// Whether what the settings file could not be read as is shown above the settings.
+    fn problems_shown(&self) -> bool {
+        !self.problems_read && !self.problems.is_empty()
+    }
 }
 
 /// Applies `msg` over the preferences `prefs` and says what the application should do.
@@ -206,6 +232,7 @@ pub fn update<M: From<Msg> + Clone + Send + 'static>(
             (Command::none(), Some(Request::Prefs(Prefs { folders_in_explorer, ..*prefs })))
         }
         Msg::StatusStrip(status_strip) => (Command::none(), Some(Request::Prefs(Prefs { status_strip, ..*prefs }))),
+        Msg::ShowRecommended => (Command::none(), Some(Request::ShowRecommended)),
         Msg::Drag(drag) => (Command::none(), Some(Request::Prefs(Prefs { drag, ..*prefs }))),
         Msg::FrameCap(frames) => {
             let frame_cap = frames.map(|frames| frames.clamp(FRAME_CAP_LEAST, FRAME_CAP_MOST));
@@ -240,7 +267,7 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
 ) {
     ui.add_with(ScrollView::new(), |ui| {
         ui.column(|ui| {
-            if !screen.problems_read && !screen.problems.is_empty() {
+            if screen.problems_shown() {
                 file_problems(&screen.problems, ui);
             }
             if let Some(reason) = &screen.failure {
@@ -300,6 +327,11 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
                 let row = SettingRow::new(t!("settings.status-strip")).description(t!("settings.status-strip-text"));
                 list.row(row, |ui| {
                     ui.add(Switch::new(prefs.status_strip).on_toggle(|on| M::from(Msg::StatusStrip(on))));
+                });
+                let row = SettingRow::new(t!("settings.recommended")).description(t!("settings.recommended-text"));
+                list.row(row, |ui| {
+                    ui.add(Button::new(t!("settings.recommended-show")).on_press(M::from(Msg::ShowRecommended)))
+                        .id(SHOW_RECOMMENDED);
                 });
 
                 list.heading(t!("settings.connection"));
@@ -441,7 +473,7 @@ fn file_problems<M: From<Msg> + Clone + Send + 'static>(problems: &[Diagnostic],
         for diagnostic in problems {
             problem(diagnostic, ui);
         }
-        ui.add(Button::new(t!("settings.read")).on_press(M::from(Msg::ReadProblems)));
+        ui.add(Button::new(t!("settings.read")).on_press(M::from(Msg::ReadProblems))).id(READ);
     })
     .gap(0)
     .fill_width();

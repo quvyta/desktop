@@ -2,11 +2,11 @@
 //!
 //! Everything the corner says is also written down here, so a person who was looking somewhere
 //! else can read it afterwards: the dock's right side counts what has not been read and opens the
-//! list (design 3.4 and 3.6). A notice that came from a window carries it, and choosing that
+//! list. A notice that came from a window carries it, and choosing that
 //! notice brings the window forward — the same thing a press on the toast does.
 //!
-//! **Nothing here is written to disk.** The design says the list is forgotten when qdesk closes
-//! (3.6), and it is meant literally: these are the words of one sitting, and a list that came back
+//! **Nothing here is written to disk.** The list is forgotten when qdesk closes, and it
+//! is meant literally: these are the words of one sitting, and a list that came back
 //! the next morning with yesterday's bells in it would be a thing to clear, not a thing to read.
 //! So the inbox lives in memory only and no path is ever given to it.
 
@@ -91,7 +91,7 @@ impl Inbox {
     /// anywhere.
     ///
     /// What a program said is worth reading after its window is gone — that is the same reason a
-    /// window whose program ended stays open at all (design 3.3). What cannot stay is the way
+    /// window whose program ended stays open at all. What cannot stay is the way
     /// forward: a row that offers to bring back a window that is not there would be a lie. The
     /// name of the window goes with it for the same reason: it is read from the window itself, and
     /// there is no window left to read.

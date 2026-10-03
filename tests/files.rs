@@ -76,7 +76,7 @@ fn catalog(extra: Vec<Entry>) -> Catalog {
     let folders = Folders { user: None, system: Vec::new(), desktop_files: Vec::new() };
     let mut entries = load(&folders, None).entries;
     entries.extend(extra);
-    Catalog::new(entries, |_| true)
+    Catalog::new(support::sealed(entries), |_| true)
 }
 
 /// An entry of this test, written as a person writes one.
@@ -111,11 +111,12 @@ fn desk_in(environment: Environment, extra: Vec<Entry>, icons: &[&str], width: u
         }),
         ..AssetDirs::default()
     };
-    let env = Env::load(&dirs).expect("the built-in files load");
+    let env = Env::load_with(&dirs, support::terminal).expect("the built-in files load");
     let desktop = Desktop {
         icons: icons.iter().map(|id| (*id).to_owned()).collect(),
         recents: Vec::new(),
         welcome_seen: true,
+        recommended_seen: true,
         ..Desktop::default()
     };
     let clock = Box::new(|| MOMENT * 1_000);
@@ -267,10 +268,12 @@ fn an_entry_that_names_a_folder_opens_a_files_window_on_it() {
 }
 
 #[test]
-fn an_entry_that_names_a_file_still_says_there_is_no_viewer() {
+fn an_entry_that_names_a_file_qdesk_has_no_viewer_for_still_says_so() {
     let scratch = Scratch::new();
     furnish(&scratch);
-    let file = scratch.home().join("notlar.txt");
+    // A text file opens in the text viewer and a picture in the picture viewer; a PDF has none.
+    let file = scratch.home().join("kitap.pdf");
+    fs::write(&file, "%PDF-1.4\n").expect("a file is written");
     let note = entry("not", &format!("name = \"Note\"\nopen = \"{}\"\n", file.display()));
     let mut harness = desk_in(environment(&scratch), vec![note], &["not"], 120, 32);
     open_icon(&mut harness, "Note");
@@ -301,7 +304,9 @@ fn the_window_s_menu_draws_the_folder_as_a_tree_or_as_icons_and_marks_the_shape_
     assert!(!screen.contains("13 B"), "a tree shows no sizes:\n{screen}");
     window_menu(&mut harness, "Files", "Show as icons");
     assert_eq!(harness.app().files(id).map(|files| files.view), Some(FileView::Icons));
-    assert!(harness.screen().contains("notlar.txt"), "the icons name the entries:\n{}", harness.screen());
+    // An icon's name may be cut to its tile, so the entries are known by the start of their names.
+    let screen = harness.screen();
+    assert!(screen.contains("belgeler") && screen.contains("notlar"), "the icons name the entries:\n{screen}");
 }
 
 #[test]
@@ -379,9 +384,11 @@ fn bring(harness: &mut Harness<Desk>, name: &str) {
 }
 
 #[test]
-fn a_double_click_on_a_file_opens_it_in_the_person_s_editor_in_a_window_of_its_own() {
+fn a_double_click_on_a_file_qdesk_has_no_viewer_for_opens_it_in_the_person_s_editor_in_a_window_of_its_own() {
     let scratch = Scratch::new();
     furnish(&scratch);
+    // A text file opens in qdesk's own text viewer (tests/texts.rs); a PDF has no viewer of qdesk's.
+    fs::write(scratch.home().join("kitap.pdf"), "%PDF-1.4\n").expect("a file is written");
     // The editor is the test's own: a script read by the system's shell, which writes down the
     // file it was given. It is read, never run as a program of its own, so nothing is executed
     // that this test has just written.
@@ -392,13 +399,13 @@ fn a_double_click_on_a_file_opens_it_in_the_person_s_editor_in_a_window_of_its_o
     let mut harness = desk_in(apps, Vec::new(), &["files"], 120, 32);
     open_icon(&mut harness, "Files");
     // A double click on a file's row is what opens it, as one on a folder's row goes into it.
-    let (x, y) = row_of(&harness, "notlar.txt");
+    let (x, y) = row_of(&harness, "kitap.pdf");
     harness.click(x, y).click(x, y);
     until(&mut harness, "the editor's word", |_| said.is_file());
     let opened = fs::read_to_string(&said).expect("the editor wrote what it was given");
-    assert_eq!(Path::new(&opened), scratch.home().join("notlar.txt"), "the editor was given the file");
+    assert_eq!(Path::new(&opened), scratch.home().join("kitap.pdf"), "the editor was given the file");
     assert_eq!(harness.app().windows().len(), 2, "the file has a window of its own:\n{}", harness.screen());
-    assert_eq!(front(&harness).entry().name.get("en"), "notlar.txt", "the window is named after the file");
+    assert_eq!(front(&harness).entry().name.get("en"), "kitap.pdf", "the window is named after the file");
 }
 
 #[test]

@@ -44,6 +44,13 @@ too-small-hint = "デスクトップには最低 {columns} 列 × {rows} 行が�
 # Shown once on an untouched desktop; {icon} is the launcher button's own glyph.
 line = "アプリケーションは {icon} の中にあります。ctrl alt space を押してから space でも開けます。"
 close = "わかりました"
+# The recommended applications, offered with the welcome line at the first start.
+recommended = "おすすめのアプリケーション"
+recommended-text = "qdesk にはほとんど何も入っていません。よく追加されるのは次のアプリケーションです。インストールボタンを押すまで、何もインストールされません。"
+recommended-none = "おすすめのアプリケーションはすべてインストール済みです。"
+install = "インストール"
+again = "設定からもう一度表示できます。"
+recommended-close = "Close"
 
 [category]
 system = "システム"
@@ -66,10 +73,16 @@ empty-hint = "エントリは ~/.local/share/quvyta/desktop/apps にあります
 no-hits = "{query} に一致するものはありません"
 no-hits-hint = "名前、説明、コマンドを検索します。"
 # The second line of a card whose program is not on this machine.
-with-qpac = "qpac でインストール"
-with-quvyta = "quvyta でインストール"
+with-qpac = "qpac で導入"
+with-quvyta = "quvyta で導入"
 install-quvyta = "これを実行すると {name} がインストールされます: {command}"
 install-qpac = "qpac を開いて {package} をインストールしてください。完了すれば {name} がここに表示されます。"
+here-title = "{installer} をここにインストールしますか？"
+here-quvyta = "{name} は quvyta でインストールしますが、quvyta はこのマシンにまだありません。qdesk は cargo を使って quvyta をインストールできます。作業の様子が見え、途中で止めることもできるウィンドウで行い、終わると quvyta で {name} を開きます。実行するコマンド：{command}"
+here-qpac = "{name} は qpac でインストールしますが、qpac はこのマシンにまだありません。qdesk は cargo を使って qpac をインストールできます。作業の様子が見え、途中で止めることもできるウィンドウで行い、終わると qpac を開いて、そこで {package} をインストールできるようにします。実行するコマンド：{command}"
+here-button = "ここにインストール"
+here-window = "{installer} をインストールしています"
+no-cargo = "まず Rust の cargo をインストールするか、{installer} をシステムのパッケージでインストールしてください。"
 menu-open = "{name} を開く"
 menu-install-qpac = "qpac で {name} をインストール"
 menu-install-quvyta = "quvyta で {name} をインストール"
@@ -280,6 +293,9 @@ folders-in-explorer = "フォルダを {program} で開く"
 folders-in-explorer-text = "デスクトップや「ファイル」のフォルダは、エコシステムのファイルエクスプローラーで開きます。{program} がインストールされていない場合は、代わりに「ファイル」が開きます。"
 status-strip = "ドックのステータス"
 status-strip-text = "tmux セッション、ネットワーク、プロセッサ、メモリ、バッテリーをマシン名の横に表示します。オフにすると、このためにマシンを読み取ることはありません。"
+recommended = "おすすめのアプリケーション"
+recommended-text = "初回起動時に開くパネルで、qexp やウェブブラウザー、その他の Quvyta アプリケーションのインストールを提案します。"
+recommended-show = "Show"
 
 connection = "接続"
 drag = "ウィンドウのドラッグ"
@@ -342,6 +358,7 @@ killed = "応答が返る前に停止されました。"
 lock-password = "{user} のパスワード"
 lock-checking = "確認中…"
 lock-wrong = "パスワードが違います。もう一度入力してください。"
+lock-wait = "パスワードが違います。{n} 秒後にもう一度入力してください。"
 lock-hint = "パスワードを入力して enter を押してください"
 
 [widget]
@@ -376,3 +393,26 @@ refused = "{name} は壁紙として使えません"
 not-text = "そのパスは設定ファイルに保存できるテキストではありません"
 pick-title = "壁紙を選択"
 pick-cancel = "キャンセル"
+
+[pictures]
+position = "{n} / {total}"
+keys = "{left} {right} 次へ   f 全体または実際のサイズ"
+decoding = "画像を読み込んでいます"
+unreadable = "{name} を表示できません"
+cannot-draw = "このターミナルでは画像を表示できません"
+cannot-draw-hint = "kitty や foot などのターミナルで開いてください"
+help-next = "フォルダ内の次の画像"
+help-previous = "フォルダ内の前の画像"
+help-ends = "最初または最後の画像"
+help-fit = "画像全体または実際のサイズ"
+
+[texts]
+lines = { other = "{n} 行" }
+edit = "編集"
+reading = "ファイルを読み込んでいます"
+unreadable = "{name} を表示できません"
+missing = "ファイルはすでにありません"
+denied = "読み取る権限がありません"
+cut = "全 {size} MiB のうち最初の 4 MiB を表示しています。「編集」で全体を開けます"
+not-utf8 = "表示できない文字がありました。「編集」でファイルをそのまま開けます"
+help-edit = "このウィンドウでファイルを編集"

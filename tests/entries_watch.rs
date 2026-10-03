@@ -57,7 +57,7 @@ fn desk(scratch: &Scratch) -> Harness<Desk> {
         }),
         ..AssetDirs::default()
     };
-    let env = Env::load(&dirs).expect("the built-in files load");
+    let env = Env::load_with(&dirs, support::terminal).expect("the built-in files load");
     let apps = Environment {
         home: Some(scratch.0.clone()),
         data_home: Some(scratch.0.join("veri")),
@@ -65,8 +65,13 @@ fn desk(scratch: &Scratch) -> Harness<Desk> {
         ..Environment::default()
     };
     let folders = Folders { user: None, system: Vec::new(), desktop_files: Vec::new() };
-    let catalog = Catalog::new(load(&folders, None).entries, |_| true);
-    let desktop = Desktop { icons: vec!["terminal".to_owned()], welcome_seen: true, ..Desktop::default() };
+    let catalog = Catalog::new(support::sealed(load(&folders, None).entries), |_| true);
+    let desktop = Desktop {
+        icons: vec!["terminal".to_owned()],
+        welcome_seen: true,
+        recommended_seen: true,
+        ..Desktop::default()
+    };
     let clock = Box::new(|| MOMENT * 1_000);
     let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), clock)
         .apps(apps)
