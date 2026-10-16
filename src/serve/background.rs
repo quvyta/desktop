@@ -7,9 +7,10 @@
 //! [snapshot](TerminalSession::snapshot), so it draws what the program had drawn before it goes on
 //! with what follows.
 //!
-//! Locks are taken in one order only: the state, then a program's relay. The thread that reads a
-//! program's output takes only the relay, and the thread that watches it takes the relay and lets
-//! go before it takes the state.
+//! Locks are taken in one order only: the state, then a program's output as its session holds it
+//! still for a snapshot, then the program's relay. The thread that reads a program's output holds
+//! its output and takes the relay, and the thread that watches it takes the relay and lets go
+//! before it takes the state.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -236,24 +237,25 @@ impl Background {
         };
         let desk = state.desktops.entry(desktop).or_default();
         desk.screen = Some(screen);
-        // Every relay is held while the desktop is described and the screens are taken, so no
-        // program's output is relayed before its screen and none falls between the two.
-        let mut relays = Vec::new();
-        let mut records = Vec::new();
-        for (program, held) in desk.shown() {
-            let relay = lock(&held.relay);
-            records.push(held.record(*program));
-            relays.push((*program, held.session.snapshot(), held.session.exit(), relay));
-        }
+        // The desktop is described first; no program's output reaches this screen before it,
+        // since none relays to it yet.
+        let records: Vec<Record> = desk.shown().map(|(program, held)| held.record(*program)).collect();
         outbox.send(&Message::Attached { desktop, locked: desk.locked, programs: records });
-        for (program, snapshot, exit, mut relay) in relays {
-            for piece in snapshot.chunks(PIECE) {
-                outbox.send(&Message::Output { program, bytes: piece.to_vec() });
-            }
-            match exit {
-                Some(code) => outbox.send(&Message::Exited { program, code }),
-                None => relay.to = Some(outbox.clone()),
-            }
+        // Then each program's screen, taken while no chunk of its output is between being read and
+        // being parsed: what is read meanwhile waits, and reaches this screen after the snapshot.
+        // The relay is locked inside, never around the call, since the reading takes the two in
+        // that order.
+        for (program, held) in desk.shown() {
+            held.session.snapshot_then(|snapshot| {
+                let mut relay = lock(&held.relay);
+                for piece in snapshot.chunks(PIECE) {
+                    outbox.send(&Message::Output { program: *program, bytes: piece.to_vec() });
+                }
+                match held.session.exit() {
+                    Some(code) => outbox.send(&Message::Exited { program: *program, code }),
+                    None => relay.to = Some(outbox.clone()),
+                }
+            });
         }
         desktop
     }

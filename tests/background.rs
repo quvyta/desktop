@@ -334,3 +334,60 @@ fn the_background_stays_while_a_program_runs_and_ends_once_it_is_alone() {
     server.join().expect("no panic").expect("served");
     assert!(!path.exists(), "the socket is taken away");
 }
+
+/// The numbers of the lines `n<number>` a session holds, oldest first, the last one left out: it
+/// may still be being written.
+fn counted(session: &TerminalSession) -> Vec<u64> {
+    // The escape sequences out first: a row placed with `ESC[24;1H` would glue its `H` to the
+    // line that follows it.
+    let mut text = String::new();
+    let mut chars = String::from_utf8_lossy(&session.snapshot()).into_owned().chars().collect::<Vec<_>>().into_iter();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            text.push(' ');
+            if chars.next() == Some('[') {
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() || c == '~' {
+                        break;
+                    }
+                }
+            }
+        } else {
+            text.push(c);
+        }
+    }
+    let mut numbers: Vec<u64> = text
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter_map(|word| word.strip_prefix('n')?.parse().ok())
+        .collect();
+    numbers.pop();
+    numbers
+}
+
+#[test]
+fn a_screen_that_attaches_while_the_program_writes_misses_none_of_it() {
+    let scratch = Scratch::new("pouring");
+    let path = scratch.background();
+    let (link, _) = attach(&path);
+    // As fast as the shell can, so a chunk is nearly always on its way when a screen attaches.
+    let pouring = script("i=0; while :; do i=$((i+1)); echo n$i; done", &scratch.0, &[]);
+    let opened = link.open(&pouring, Vec::new(), Duration::ZERO).expect("started");
+    wait_for("the first lines", || counted(&opened.session).len() > 20);
+    drop(opened);
+    drop(link);
+    for round in 0..100 {
+        wait_for("the background to see the screen go", || {
+            listed(&path).is_some_and(|desktops| desktops.first().is_some_and(|desktop| !desktop.attached))
+        });
+        let (link, again) = attach(&path);
+        let [kept] = &again.programs[..] else { panic!("one program") };
+        let first = counted(&kept.session).last().copied().unwrap_or(0);
+        // What the snapshot held and what came after it, both.
+        wait_for("lines after the snapshot", || counted(&kept.session).last().is_some_and(|last| *last > first + 50));
+        let numbers = counted(&kept.session);
+        let gap = numbers.windows(2).find(|pair| pair[1] != pair[0] + 1);
+        assert!(gap.is_none(), "round {round}: a line went missing between {gap:?} (around {first})");
+        drop(again);
+        drop(link);
+    }
+}

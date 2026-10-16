@@ -2,6 +2,16 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.2.1 - 2026-10-16
+
+### Fixed
+
+- Lines a program wrote at the very moment a screen attached to the background could go missing from that screen: the background now takes each program's screen while none of its output is on the way, so what is written then arrives after it. With a program pouring out output, a line went missing within a few dozen attaches.
+
+### Changed
+
+- Built on quvyta-framework 0.1.35.
+
 ## 0.2.0 - 2026-10-16
 
 ### Added

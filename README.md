@@ -8,7 +8,7 @@
 
 ## Where it stands
 
-This is **0.2.0**, the thirteenth release. It is a young program: what is on this page is what it does on screen today, and the end of the page says plainly what it does not do yet — other files than pictures and text have no viewer of qdesk's own.
+This is **0.2.1**, the fourteenth release. It is a young program: what is on this page is what it does on screen today, and the end of the page says plainly what it does not do yet — other files than pictures and text have no viewer of qdesk's own.
 
 ## Install
 
