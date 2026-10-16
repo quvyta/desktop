@@ -1,4 +1,4 @@
-//! The `qdesk` command: `--help`, `--version` and `wallpaper` answer and exit, no argument opens the desktop.
+//! The `qdesk` command: `--help`, `--version`, `--list`, `wallpaper` and `serve` answer and exit; no argument, or `--new`, opens the desktop.
 
 use std::process::ExitCode;
 
@@ -7,7 +7,7 @@ fn main() -> ExitCode {
     if let Some(code) = qdesk::cli::run(&args, &mut std::io::stdout(), &mut std::io::stderr()) {
         return ExitCode::from(code);
     }
-    match qdesk::run() {
+    match qdesk::run_with(qdesk::cli::choice(&args)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error}");

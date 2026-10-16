@@ -6,8 +6,9 @@ code = "zh-Hans"
 fallback = "en"
 
 [cli]
-usage = """
-qdesk                 打开桌面
+usage = """qdesk                 打开桌面；程序在连接断开后仍继续运行
+  --new               在后台的桌面旁边再开一个
+  --list              列出后台保留的桌面
   -h, --help          显示此帮助
   -V, --version       打印版本号
 qdesk wallpaper       打印背景的颜色、图案和图片
@@ -15,7 +16,8 @@ qdesk wallpaper       打印背景的颜色、图案和图片
   --pattern NAME      设置图案：plain、gradient、dots 或 both
 qdesk wallpaper FILE  把 PNG、JPEG、GIF 或 WebP 图片铺在背景上
   --no-picture        移除图片
-在桌面上按 ctrl+q 退出。"""
+qdesk serve           让程序留在后台；qdesk 自己启动它
+在桌面上按 ctrl+q 退出，分离会让程序继续运行。"""
 unknown-argument = "qdesk: 未知参数 {argument}；请查看 qdesk --help"
 wallpaper-color = "qdesk wallpaper: --color 只接受 theme、deep、mist 或 accent，而不是 {value}"
 wallpaper-pattern = "qdesk wallpaper: --pattern 只接受 plain、gradient、dots 或 both，而不是 {value}"
@@ -24,6 +26,13 @@ wallpaper-picture = "qdesk wallpaper: {file} 不能用作壁纸：{reason}"
 wallpaper-not-text = "它的路径不是设置文件能保存的文本"
 wallpaper-nowhere = "qdesk wallpaper: 没有主目录可以保存这个设置"
 wallpaper-unsaved = "qdesk wallpaper: 无法写入 {file}：{error}"
+serve-running = "qdesk serve: 已为你运行了一个后台桌面"
+serve-failed = "qdesk serve: 无法在 {path} 上监听：{error}"
+list-desktop = { other = "桌面 {desktop}：{n} 个窗口，{running} 个在运行" }
+list-desktop-shown = { other = "桌面 {desktop}：{n} 个窗口，{running} 个在运行；正在屏幕上显示" }
+list-none = "没有后台桌面在运行。"
+list-mismatch = "qdesk --list：后台桌面运行的是 qdesk {version}，此 qdesk 无法与其通信"
+list-failed = "qdesk --list：后台桌面未响应：{error}"
 
 [dock]
 workspace = "工作区 {n}"
@@ -163,6 +172,7 @@ close-running = "{name} 仍在运行。关闭窗口将结束它。"
 # Leaving qdesk while programs are running.
 quit-title = "退出 qdesk？"
 quit-running = { other = "{n} 个程序仍在运行。退出将结束它们。" }
+quit-running-attached = { other = "还有 {n} 个程序在运行。退出会结束它们；分离则让它们继续运行，等你回来。" }
 quit = "退出"
 tile-narrow = "桌面太窄，无法并排平铺窗口。"
 tile-short = "桌面最多只能并排平铺 {fits} 个窗口。"
@@ -310,6 +320,13 @@ frame-cap-frames = "帧"
 frame-cap-in-force = "这里屏幕每秒最多绘制 {frames} 次。输入永远不会因此等待。"
 scrollback = "保留行数"
 scrollback-text = "终端窗口在顶部之上保留多少行。许多满是行的窗口就是好几兆字节。"
+background-exit = "后台结束"
+background-exit-text = "连接断开时，后台会让你的程序继续运行。当没有程序和屏幕时，它会等待这么久后结束。"
+background-exit-5m = "5 分钟后"
+background-exit-10m = "10 分钟后"
+background-exit-30m = "30 分钟后"
+background-exit-1h = "一小时后"
+background-exit-never = "永不"
 
 applications = "应用程序"
 folders = "条目从这些文件夹读取。"
@@ -342,6 +359,7 @@ rate-giga = "{value}G/s"
 
 [power]
 lock = "锁定"
+detach = "分离"
 log-out = "注销"
 restart = "重启"
 power-off = "关机"
@@ -416,3 +434,8 @@ denied = "你没有读取权限"
 cut = "仅显示 {size} MiB 中的前 4 MiB；按“编辑”可打开全部内容"
 not-utf8 = "部分字符无法显示；按“编辑”可按原样打开文件"
 help-edit = "在此窗口中编辑文件"
+
+[background]
+alone-title = "程序随此屏幕结束"
+mismatch = "当前运行的后台桌面由 qdesk {version} 启动，此 qdesk 无法与其通信。它保持原状，程序继续运行；在此打开的程序将在屏幕关闭时结束。"
+unreached = "无法启动保持程序的后台：{reason}。在此打开的程序将在屏幕关闭时结束。"

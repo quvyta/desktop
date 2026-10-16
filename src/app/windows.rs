@@ -12,6 +12,7 @@ use super::{Arrow, Ask, Desk, FAR_STEP, FLOOR, Keys, Msg};
 use crate::apps::Screen;
 use crate::desktop;
 use crate::dock;
+use crate::power::Action;
 use crate::settings::DragStyle;
 use crate::wm::{self, Grip, SPACES, TooSmall, Window, WindowId, layout};
 
@@ -88,20 +89,27 @@ impl Desk {
     }
 
     /// Leaving qdesk while programs are running: the question counts them. Asking
-    /// again while it is on screen keeps the one question, instead of stacking a second.
+    /// again while it is on screen keeps the one question, instead of stacking a second. On a
+    /// screen attached to the background the question offers to detach as well, which closes the
+    /// screen and leaves the programs running.
     pub(super) fn ask_quit(&mut self) -> Command<Msg> {
         if self.leaving {
             return Command::none();
         }
         self.leaving = true;
         let running = self.programs.running();
-        Command::confirm(
-            Confirm::new(t!("window.quit-title"), Msg::Quit)
-                .message(t!("window.quit-running", n = running))
-                .confirm_label(t!("window.quit"))
-                .danger()
-                .on_cancel(Msg::KeepRunning),
-        )
+        let question = Confirm::new(t!("window.quit-title"), Msg::Quit)
+            .confirm_label(t!("window.quit"))
+            .danger()
+            .on_cancel(Msg::KeepRunning);
+        let question = if self.offers_detach() {
+            question
+                .message(t!("window.quit-running-attached", n = running))
+                .alternative(Action::Detach.label(), Msg::Power(Action::Detach))
+        } else {
+            question.message(t!("window.quit-running", n = running))
+        };
+        Command::confirm(question)
     }
 
     /// What the pointer did to a window.

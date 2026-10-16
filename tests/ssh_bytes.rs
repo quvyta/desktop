@@ -67,6 +67,12 @@ impl Scratch {
             &apps.join("quiet.toml"),
             "name = \"Quiet\"\ncommand = [\"/bin/sh\", \"-c\", \"while :; do sleep 60; done\"]\ncategory = \"system\"\n",
         );
+        // A page of numbered lines and then quiet: a window with a full screen and something in its
+        // scrollback, which is what a screen that attaches again has to draw.
+        write(
+            &apps.join("page.toml"),
+            "name = \"Page\"\ncommand = [\"/bin/sh\", \"-c\", \"seq 1 200; while :; do sleep 60; done\"]\ncategory = \"system\"\n",
+        );
         // Lines that differ, so each frame really has something new to draw: a program writing
         // the same line over and over changes nothing on screen however fast it writes.
         write(
@@ -81,14 +87,27 @@ impl Scratch {
             "icons = []\nwelcome_seen = true\nrecommended_seen = true\nresize_hint_seen = true\n",
         );
         write(&path.join(".config/quvyta/desktop.conf"), settings);
+        std::fs::create_dir_all(path.join("tmp")).expect("a temporary folder");
         Self(path)
     }
 }
 
 impl Drop for Scratch {
+    /// Ends the background the desktop started in this folder, and with it the programs it
+    /// holds, before the folder goes: a measurement leaves nothing running.
     fn drop(&mut self) {
+        end_background(&self.0.join("tmp"));
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// Ends the background listening in the temporary folder `tmp`, if one is: it is found by asking
+/// the socket who is at its other end.
+fn end_background(tmp: &Path) {
+    let path = qdesk::serve::socket::place(Some(tmp.as_os_str()), qdesk::serve::socket::own_uid());
+    let Ok(stream) = std::os::unix::net::UnixStream::connect(path) else { return };
+    let Ok(peer) = rustix::net::sockopt::socket_peercred(&stream) else { return };
+    let _ = rustix::process::kill_process(peer.pid, rustix::process::Signal::KILL);
 }
 
 fn write(path: &Path, text: &str) {
@@ -134,6 +153,8 @@ impl Desktop {
         // environment here, and the folders in it are the scratch folder's.
         command.env_clear();
         command.env("HOME", home);
+        // The background the desktop starts listens here, apart from the person's own.
+        command.env("TMPDIR", home.join("tmp"));
         command.env("XDG_CONFIG_HOME", home.join(".config"));
         command.env("XDG_DATA_HOME", home.join(".local/share"));
         command.env("XDG_DATA_DIRS", home.join("share"));
@@ -205,6 +226,10 @@ impl Desktop {
                 desktop.send(b"\x1b[?62;4;9;22c");
             }
             Answer::Attributes => {
+                desktop.settle();
+                desktop.send(b"\x1b[?62;1;2;6;9;15;22c");
+                // The keyboard's question follows; unanswered, the desktop waits for it longer than
+                // a quiet spell lasts, and the first screen would fall outside the measurement.
                 desktop.settle();
                 desktop.send(b"\x1b[?62;1;2;6;9;15;22c");
             }
@@ -294,6 +319,14 @@ impl Desktop {
         self.settle_within(quiet, at_most);
         self.send(b"\r");
         self.settle_within(quiet, at_most);
+    }
+
+    /// Hangs the desktop up as a dropped connection does, the whole process group at once, and
+    /// waits for it to end.
+    fn hang_up(&mut self) {
+        let group = rustix::process::Pid::from_raw(i32::try_from(self.pid).expect("a pid")).expect("not zero");
+        rustix::process::kill_process_group(group, rustix::process::Signal::HUP).expect("hung up");
+        let _ = self.child.wait();
     }
 
     /// How much memory the desktop itself holds, in kibibytes.
@@ -1063,4 +1096,33 @@ fn a_picture_the_terminal_draws_is_sent_once_and_what_a_window_over_it_costs() {
         );
     }
     let _ = std::fs::remove_dir_all(&pictures);
+}
+
+/// What a screen that attaches again over SSH costs: the first screen of a desktop whose ten
+/// windows each hold a page of output and its scrollback, against the first screen of an empty
+/// desktop. Only the screen's own drawing crosses the connection; the windows' screens come from
+/// the background over a socket on the same machine.
+#[test]
+#[ignore = "measures the real program on a pseudo-terminal; run it on its own"]
+fn coming_back_to_ten_windows_costs_one_screen() {
+    for count in [1, 10] {
+        let mut again = Vec::new();
+        let mut empty = Vec::new();
+        for _ in 0..RUNS {
+            let scratch = Scratch::new("again", "");
+            let mut first = Desktop::open_answering(&scratch, SIZE, Answer::Attributes, true);
+            empty.push(first.written());
+            for _ in 0..count {
+                first.open_window("Page");
+            }
+            first.settle();
+            first.hang_up();
+            let second = Desktop::open_answering(&scratch, SIZE, Answer::Attributes, true);
+            again.push(second.written());
+        }
+        println!(
+            "{count} windows at {}x{} over SSH: the first screen on coming back is {again:?} bytes, an empty desktop's {empty:?}",
+            SIZE.0, SIZE.1
+        );
+    }
 }

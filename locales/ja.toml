@@ -6,8 +6,9 @@ code = "ja"
 fallback = "en"
 
 [cli]
-usage = """
-qdesk                 デスクトップを開く
+usage = """qdesk                 デスクトップを開く。プログラムは接続が切れても生き続ける
+  --new               バックグラウンドの隣にデスクトップをもう一つ開く
+  --list              バックグラウンドに保たれたデスクトップを一覧表示
   -h, --help          このテキストを表示
   -V, --version       バージョンを表示
 qdesk wallpaper       背景の色、パターン、画像を表示
@@ -15,7 +16,8 @@ qdesk wallpaper       背景の色、パターン、画像を表示
   --pattern NAME      パターンを設定: plain, gradient, dots, both
 qdesk wallpaper FILE  背景に PNG、JPEG、GIF、WebP の画像を敷く
   --no-picture        画像を取り除く
-デスクトップでは ctrl+q で終了します。"""
+qdesk serve           プログラムをバックグラウンドに保つ。qdesk 自身が起動
+デスクトップでは ctrl+q で終了し、分離はプログラムを動かしたままにします。"""
 unknown-argument = "qdesk: 不明な引数 {argument} です。qdesk --help を参照してください"
 wallpaper-color = "qdesk wallpaper: --color には theme, deep, mist, accent を指定してください。{value} は使えません"
 wallpaper-pattern = "qdesk wallpaper: --pattern には plain, gradient, dots, both を指定してください。{value} は使えません"
@@ -24,6 +26,13 @@ wallpaper-picture = "qdesk wallpaper: {file} は壁紙として使えません: 
 wallpaper-not-text = "そのパスは設定ファイルに保存できるテキストではありません"
 wallpaper-nowhere = "qdesk wallpaper: 設定を保存するホームフォルダがありません"
 wallpaper-unsaved = "qdesk wallpaper: {file} を書き込めませんでした: {error}"
+serve-running = "qdesk serve: バックグラウンドのデスクトップがすでに実行中です"
+serve-failed = "qdesk serve: {path} で待ち受けできません: {error}"
+list-desktop = { other = "デスクトップ {desktop}: {n} ウィンドウ、{running} 実行中" }
+list-desktop-shown = { other = "デスクトップ {desktop}: {n} ウィンドウ、{running} 実行中；画面に表示中" }
+list-none = "バックグラウンドのデスクトップは実行されていません。"
+list-mismatch = "qdesk --list: バックグラウンドのデスクトップは qdesk {version} で実行中ですが、この qdesk では問い合わせできません"
+list-failed = "qdesk --list: バックグラウンドのデスクトップが応答しません: {error}"
 
 [dock]
 workspace = "ワークスペース {n}"
@@ -163,6 +172,7 @@ close-running = "{name} は実行中です。ウィンドウを閉じると終�
 # Leaving qdesk while programs are running.
 quit-title = "qdesk を終了しますか？"
 quit-running = { other = "{n} 個のプログラムが実行中です。終了するとそれらも終了します。" }
+quit-running-attached = { other = "{n} 個のプログラムがまだ実行中です。終了すると停止します。分離すると、戻ってきたときに実行し続けます。" }
 quit = "終了"
 tile-narrow = "デスクトップが狭すぎて、ウィンドウを横に並べられません。"
 tile-short = "デスクトップに並べられるウィンドウは {fits} 個までです。"
@@ -310,6 +320,13 @@ frame-cap-frames = "フレーム数"
 frame-cap-in-force = "ここでは画面の描画は毎秒最大 {frames} 回です。入力が待たされることはありません。"
 scrollback = "保持する行数"
 scrollback-text = "端末ウィンドウが上端より上に保持する行数です。行でいっぱいのウィンドウが多数あると、メガバイト単位になります。"
+background-exit = "バックグラウンドの終了"
+background-exit-text = "バックグラウンドは、接続が切れたときにプログラムを実行し続けます。プログラムも画面も残っていない場合、この時間だけ待ってから終了します。"
+background-exit-5m = "5分後"
+background-exit-10m = "10分後"
+background-exit-30m = "30分後"
+background-exit-1h = "1時間後"
+background-exit-never = "しない"
 
 applications = "アプリケーション"
 folders = "これらのフォルダーから項目を読み込みます。"
@@ -342,6 +359,7 @@ rate-giga = "{value}G/s"
 
 [power]
 lock = "ロック"
+detach = "分離"
 log-out = "ログアウト"
 restart = "再起動"
 power-off = "電源を切る"
@@ -416,3 +434,8 @@ denied = "読み取る権限がありません"
 cut = "全 {size} MiB のうち最初の 4 MiB を表示しています。「編集」で全体を開けます"
 not-utf8 = "表示できない文字がありました。「編集」でファイルをそのまま開けます"
 help-edit = "このウィンドウでファイルを編集"
+
+[background]
+alone-title = "この画面とともにプログラムが終了します"
+mismatch = "現在実行中のバックグラウンド デスクトップは qdesk {version} で開始されましたが、この qdesk では通信できません。そのままの状態で、そのプログラムとともに残されます。ここで開いたプログラムはこの画面を閉じると終了します。"
+unreached = "プログラムを保持するバックグラウンドを開始できませんでした: {reason}。ここで開いたプログラムはこの画面を閉じると終了します。"

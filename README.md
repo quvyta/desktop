@@ -8,7 +8,7 @@
 
 ## Where it stands
 
-This is **0.1.11**, the twelfth release. It is a young program: what is on this page is what it does on screen today, and the end of the page says plainly what it does not do yet — other files than pictures and text have no viewer of qdesk's own, and the programs in its windows do not survive a dropped connection.
+This is **0.2.0**, the thirteenth release. It is a young program: what is on this page is what it does on screen today, and the end of the page says plainly what it does not do yet — other files than pictures and text have no viewer of qdesk's own.
 
 ## Install
 
@@ -85,13 +85,15 @@ The file may also say the folder the program starts in (`folder`), variables to 
 
 ## Keeping programs alive when the connection drops
 
-**qdesk does not survive a dropped connection.** When the terminal it draws on goes away, qdesk goes with it and so do the programs in its windows. The programs live in qdesk's own process; nothing keeps them running on the machine by itself. Until that changes, open it inside tmux:
+**The programs in qdesk's windows outlive the connection.** qdesk keeps them in a background of its own, `qdesk serve`, which it starts the first time you open it and which leaves the terminal's session, so a dropped SSH connection does not reach it. Connect again and run `qdesk`: the windows come back where they were, each program still running, its screen and what it scrolled past as it left them, and whatever it wrote while you were away.
 
-```sh
-tmux new -A -s desktop qdesk
-```
+- **Detach** closes the screen and leaves the programs running. It stands in the launcher beside Log out, and in the question ctrl+q asks while programs run.
+- **Quit** ends the programs, as it always has, after asking when some still run.
+- A second connection opens a desktop of its own beside the first. `qdesk --new` always opens a new one, and `qdesk --list` says which desktops the background keeps, how many windows each has and whether a screen shows it.
+- A locked desktop comes back locked, whichever screen attaches to it.
+- The background ends by itself once it has been left with no screen and no running program for ten minutes. **Background ends** in Settings chooses five, ten or thirty minutes, an hour, or never.
 
-Reconnect and run the same command: the desktop and every program in it are where you left them.
+The background listens on `/tmp/quvyta-<your uid>/qdesk.sock` (in `$TMPDIR` when that is set), in a folder only you can enter, and answers only programs of your own user. It is not in `$XDG_RUNTIME_DIR`, because the system takes that folder away when your last session ends, which is exactly when a dropped connection needs the socket. A system set to end every process of a user at logout (systemd-logind's `KillUserProcesses=yes`, not the default) ends the background too; `loginctl enable-linger` keeps it.
 
 ## No telemetry, and what goes over the network
 
@@ -103,11 +105,11 @@ To turn it off, switch off **Say when an update is out** in **Settings**. The sw
 
 Apart from that question, qdesk itself connects to nothing. The programs you run in its windows are your programs and do whatever they do: a shell, `ssh` or a browser in a window reaches the network as it would in any other terminal.
 
-## What 0.1 does not have
+## What 0.2 does not have
 
 - **No viewer for other files.** Files opens a file that is neither a picture nor text with the terminal program your system sets for its kind, or in your editor or `less`; a file's menu offers **Open with**; an entry that says `open = "some/book.pdf"` opens nothing, and qdesk says so rather than pretending.
 - **A sixel picture is sharp only on an empty floor.** On a terminal that speaks the kitty graphics protocol (kitty, WezTerm, Ghostty, Konsole) the wallpaper stays real pixels around icons, widgets and windows. A sixel terminal paints the picture into the cells, so it is drawn in pixels only while nothing at all stands on it; with icons, a widget or a window it is half blocks. Icons are glyphs.
-- **No surviving a dropped connection**, as above.
+- **Only windows with a program come back.** After a dropped connection the windows of programs return where they were; Files, Settings and the picture and text viewers do not, and open again with a click.
 - **Booting straight into qdesk is not packaged.** The `session/` folder has the files and the steps to start qdesk at boot on the bare screen with kmscon, with no compositor; tested on a Raspberry Pi 5. Nothing installs them for you yet.
 - **No packages yet** beyond crates.io: nothing in the AUR or in a distribution's own repositories.
 

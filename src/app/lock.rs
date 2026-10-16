@@ -63,14 +63,16 @@ impl Desk {
         self.launcher = None;
         // Only what the launcher offered can be asked for: a message that names another action,
         // on a machine or a connection where it is hidden, does nothing.
-        if !self.tools.offered(self.remote).contains(&action) {
+        if !self.tools.offered(self.remote, self.offers_detach()).contains(&action) {
             return Command::focus(FLOOR);
         }
         match action {
             Action::Lock => self.lock_screen(),
             // Logging out is leaving qdesk, with the question leaving asks when programs run.
             Action::LogOut if self.programs.running() > 0 => Command::batch([Command::focus(FLOOR), self.ask_quit()]),
-            Action::LogOut => Command::quit(),
+            Action::LogOut => self.leave(),
+            // The programs live in the background; only this screen closes.
+            Action::Detach => Command::quit(),
             Action::Restart | Action::PowerOff => {
                 let running = self.programs.running();
                 let key = action.key();
@@ -96,7 +98,7 @@ impl Desk {
     /// remote one, or a message from anywhere else, never powers off what the launcher would not
     /// have offered.
     pub(super) fn carry_out(&self, action: Action) -> Command<Msg> {
-        if !self.tools.offered(self.remote).contains(&action) {
+        if !self.tools.offered(self.remote, self.offers_detach()).contains(&action) {
             return Command::none();
         }
         match self.tools.command(action) {
@@ -110,6 +112,7 @@ impl Desk {
     /// the keyboard to be told, and the screen is locked either way.
     pub(super) fn lock_screen(&mut self) -> Command<Msg> {
         self.lock = Some(Lock::default());
+        self.programs.locked(true);
         self.keys = None;
         self.help = false;
         self.more = false;
@@ -127,7 +130,7 @@ impl Desk {
     /// that ended without being opened. Only while the password can be checked, since a lock
     /// nobody can open would shut the person out of their own desktop.
     pub(super) fn starts_locked(&self) -> bool {
-        self.tools.checker().is_some() && self.lock_mark.as_deref().is_some_and(Path::exists)
+        self.tools.checker().is_some() && (self.left_locked || self.lock_mark.as_deref().is_some_and(Path::exists))
     }
 
     /// Checks what is typed on the lock screen, off the render path. The field is emptied at once:
@@ -216,6 +219,8 @@ impl Desk {
     pub(super) fn unlocked(&mut self, right: bool) -> Command<Msg> {
         if right {
             self.lock = None;
+            self.left_locked = false;
+            self.programs.locked(false);
             if let Some(mark) = &self.lock_mark {
                 let _ = std::fs::remove_file(mark);
             }

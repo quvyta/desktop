@@ -48,3 +48,4 @@ sudo systemctl daemon-reload
 - kmscon waits while no screen is plugged in, and qdesk starts the moment one is.
 - The font and its size are in `/etc/qdesk-session.conf`; a larger size gives fewer, bigger cells.
 - qdesk runs as the user you name, with that user's settings in `~/.config/quvyta`.
+- The first qdesk a user opens starts the background that keeps the programs, and every later qdesk of that user shares it. When the qdesk on this screen started it, it runs inside this service, so stopping or restarting the service ends the programs of every desktop of that user, those opened over SSH included.

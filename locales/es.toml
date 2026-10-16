@@ -6,8 +6,9 @@ code = "es"
 fallback = "en"
 
 [cli]
-usage = """
-qdesk                 abre el escritorio
+usage = """qdesk                 abre el escritorio; los programas sobreviven a la caída
+  --new               abre un escritorio más junto a los del segundo plano
+  --list              lista los escritorios guardados en el segundo plano
   -h, --help          este texto
   -V, --version       muestra la versión
 qdesk wallpaper       muestra el color, el patrón y la imagen del fondo
@@ -15,7 +16,8 @@ qdesk wallpaper       muestra el color, el patrón y la imagen del fondo
   --pattern NAME      cambia el patrón: plain, gradient, dots o both
 qdesk wallpaper FILE  coloca una imagen PNG, JPEG, GIF o WebP sobre el fondo
   --no-picture        quita la imagen
-En el escritorio, ctrl+q sale."""
+qdesk serve           guarda programas en segundo plano; qdesk lo inicia solo
+En el escritorio, ctrl+q sale y Desacoplar deja los programas en marcha."""
 unknown-argument = "qdesk: argumento desconocido {argument}; consulta qdesk --help"
 wallpaper-color = "qdesk wallpaper: --color admite theme, deep, mist o accent, no {value}"
 wallpaper-pattern = "qdesk wallpaper: --pattern admite plain, gradient, dots o both, no {value}"
@@ -24,6 +26,13 @@ wallpaper-picture = "qdesk wallpaper: {file} no puede ser el fondo de pantalla: 
 wallpaper-not-text = "su ruta no es texto que el archivo de ajustes pueda guardar"
 wallpaper-nowhere = "qdesk wallpaper: no hay carpeta de inicio donde guardar el ajuste"
 wallpaper-unsaved = "qdesk wallpaper: no se pudo escribir {file}: {error}"
+serve-running = "qdesk serve: ya hay un escritorio en segundo plano en ejecución para ti"
+serve-failed = "qdesk serve: no se puede escuchar en {path}: {error}"
+list-desktop = { one = "Escritorio {desktop}: {n} ventana, {running} en ejecución", other = "Escritorio {desktop}: {n} ventanas, {running} en ejecución" }
+list-desktop-shown = { one = "Escritorio {desktop}: {n} ventana, {running} en ejecución; mostrado en una pantalla ahora", other = "Escritorio {desktop}: {n} ventanas, {running} en ejecución; mostrado en una pantalla ahora" }
+list-none = "No hay ningún escritorio en segundo plano en ejecución."
+list-mismatch = "qdesk --list: el escritorio en segundo plano ejecuta qdesk {version}, con el que este qdesk no puede comunicarse"
+list-failed = "qdesk --list: el escritorio en segundo plano no respondió: {error}"
 
 [dock]
 workspace = "Espacio de trabajo {n}"
@@ -163,6 +172,7 @@ close-running = "{name} sigue en ejecución. Cerrar la ventana lo termina."
 # Leaving qdesk while programs are running.
 quit-title = "¿Salir de qdesk?"
 quit-running = { one = "{n} programa sigue en ejecución. Salir lo termina.", other = "{n} programas siguen en ejecución. Salir los termina." }
+quit-running-attached = { one = "{n} programa sigue en ejecución. Si sales, se termina; si lo desacoplas, sigue en ejecución para cuando vuelvas.", other = "{n} programas siguen en ejecución. Si sales, se terminan; si los desacoplas, siguen en ejecución para cuando vuelvas." }
 quit = "Salir"
 tile-narrow = "El escritorio es demasiado estrecho para poner ventanas una al lado de otra."
 tile-short = "El escritorio tiene espacio para {fits} ventanas en mosaico, no más."
@@ -310,6 +320,13 @@ frame-cap-frames = "Fotogramas"
 frame-cap-in-force = "Aquí la pantalla se dibuja como máximo {frames} veces por segundo. Escribir nunca espera por ello."
 scrollback = "Líneas recordadas"
 scrollback-text = "Cuántas líneas guarda una ventana de terminal por encima de su borde superior. Muchas ventanas llenas de líneas son muchos megabytes."
+background-exit = "Fin del segundo plano"
+background-exit-text = "El segundo plano mantiene tus programas en ejecución cuando se corta la conexión. Si no queda ningún programa ni pantalla, espera este tiempo y termina."
+background-exit-5m = "Después de 5 minutos"
+background-exit-10m = "Después de 10 minutos"
+background-exit-30m = "Después de 30 minutos"
+background-exit-1h = "Después de una hora"
+background-exit-never = "Nunca"
 
 applications = "Aplicaciones"
 folders = "Las entradas se leen de estas carpetas."
@@ -342,6 +359,7 @@ rate-giga = "{value}G/s"
 
 [power]
 lock = "Bloquear"
+detach = "Desacoplar"
 log-out = "Cerrar sesión"
 restart = "Reiniciar"
 power-off = "Apagar"
@@ -416,3 +434,8 @@ denied = "No tienes permiso para leerlo"
 cut = "Mostrando los primeros 4 MiB de {size} MiB; Editar abre todo el archivo"
 not-utf8 = "Algunos caracteres no se pudieron mostrar; Editar abre el archivo tal cual"
 help-edit = "Edita el archivo en esta ventana"
+
+[background]
+alone-title = "Los programas terminan con esta pantalla"
+mismatch = "El escritorio en segundo plano que se ejecuta ahora fue iniciado por qdesk {version}, con el que este qdesk no puede comunicarse. Se deja como está, con sus programas; los programas abiertos aquí terminan cuando se cierra esta pantalla."
+unreached = "No se pudo iniciar el fondo que mantiene los programas: {reason}. Los programas abiertos aquí terminan cuando se cierra esta pantalla."

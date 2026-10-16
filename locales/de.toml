@@ -6,8 +6,9 @@ code = "de"
 fallback = "en"
 
 [cli]
-usage = """
-qdesk                 öffnet den Desktop
+usage = """qdesk                 öffnet den Desktop; Programme überleben den Abbruch
+  --new               einen weiteren Desktop neben denen im Hintergrund öffnen
+  --list              die im Hintergrund gehaltenen Desktops auflisten
   -h, --help          dieser Text
   -V, --version       gibt die Version aus
 qdesk wallpaper       zeigt Farbe, Muster und Bild des Bodens
@@ -15,7 +16,8 @@ qdesk wallpaper       zeigt Farbe, Muster und Bild des Bodens
   --pattern NAME      setzt das Muster: plain, gradient, dots oder both
 qdesk wallpaper FILE  legt ein PNG-, JPEG-, GIF- oder WebP-Bild auf den Boden
   --no-picture        nimmt das Bild weg
-Auf dem Desktop beendet ctrl+q."""
+qdesk serve           hält Programme im Hintergrund; qdesk startet dies selbst
+Auf dem Desktop beendet ctrl+q, und Trennen lässt die Programme laufen."""
 unknown-argument = "qdesk: unbekanntes Argument {argument}; siehe qdesk --help"
 wallpaper-color = "qdesk wallpaper: --color nimmt theme, deep, mist oder accent, nicht {value}"
 wallpaper-pattern = "qdesk wallpaper: --pattern nimmt plain, gradient, dots oder both, nicht {value}"
@@ -24,6 +26,13 @@ wallpaper-picture = "qdesk wallpaper: {file} kann nicht das Hintergrundbild sein
 wallpaper-not-text = "sein Pfad ist kein Text, den die Einstellungsdatei speichern kann"
 wallpaper-nowhere = "qdesk wallpaper: es gibt keinen Home-Ordner, um die Einstellung zu speichern"
 wallpaper-unsaved = "qdesk wallpaper: {file} konnte nicht geschrieben werden: {error}"
+serve-running = "qdesk serve: Ein Hintergrund-Desktop läuft bereits für dich"
+serve-failed = "qdesk serve: kann nicht auf {path} lauschen: {error}"
+list-desktop = { one = "Desktop {desktop}: {n} Fenster, {running} laufend", other = "Desktop {desktop}: {n} Fenster, {running} laufend" }
+list-desktop-shown = { one = "Desktop {desktop}: {n} Fenster, {running} laufend; wird gerade auf einem Bildschirm angezeigt", other = "Desktop {desktop}: {n} Fenster, {running} laufend; wird gerade auf einem Bildschirm angezeigt" }
+list-none = "Kein Hintergrund-Desktop läuft."
+list-mismatch = "qdesk --list: der Hintergrund-Desktop läuft mit qdesk {version}, mit dem dieses qdesk nicht sprechen kann"
+list-failed = "qdesk --list: der Hintergrund-Desktop hat nicht geantwortet: {error}"
 
 [dock]
 workspace = "Arbeitsfläche {n}"
@@ -163,6 +172,7 @@ close-running = "{name} läuft noch. Beim Schließen des Fensters wird es beende
 # Leaving qdesk while programs are running.
 quit-title = "qdesk beenden?"
 quit-running = { one = "{n} Programm läuft noch. Beim Beenden wird es gestoppt.", other = "{n} Programme laufen noch. Beim Beenden werden sie gestoppt." }
+quit-running-attached = { one = "{n} Programm läuft noch. Beenden beendet es; Trennen lässt es für deine Rückkehr laufen.", other = "{n} Programme laufen noch. Beenden beendet sie; Trennen lässt sie für deine Rückkehr laufen." }
 quit = "Beenden"
 tile-narrow = "Der Desktop ist zu schmal, um Fenster nebeneinander anzuordnen."
 tile-short = "Auf dem Desktop ist Platz für {fits} angeordnete Fenster, mehr nicht."
@@ -310,6 +320,13 @@ frame-cap-frames = "Bilder"
 frame-cap-in-force = "Hier wird der Bildschirm höchstens {frames} Mal pro Sekunde gezeichnet. Tippen wartet nie darauf."
 scrollback = "Aufbewahrte Zeilen"
 scrollback-text = "Wie viele Zeilen ein Terminalfenster über seiner oberen Kante behält. Viele fenstervolle Zeilen sind viele Megabyte."
+background-exit = "Hintergrund-Ende"
+background-exit-text = "Der Hintergrund hält deine Programme am Laufen, wenn die Verbindung abbricht. Wenn kein Programm und kein Bildschirm mehr übrig sind, wartet er so lange und beendet sich."
+background-exit-5m = "Nach 5 Minuten"
+background-exit-10m = "Nach 10 Minuten"
+background-exit-30m = "Nach 30 Minuten"
+background-exit-1h = "Nach einer Stunde"
+background-exit-never = "Nie"
 
 applications = "Anwendungen"
 folders = "Einträge werden aus diesen Ordnern gelesen."
@@ -342,6 +359,7 @@ rate-giga = "{value}G/s"
 
 [power]
 lock = "Sperren"
+detach = "Trennen"
 log-out = "Abmelden"
 restart = "Neustarten"
 power-off = "Ausschalten"
@@ -421,3 +439,8 @@ denied = "Du darfst sie nicht lesen"
 cut = "Zeigt die ersten 4 MiB von {size} MiB; Bearbeiten öffnet alles"
 not-utf8 = "Einige Zeichen konnten nicht angezeigt werden; Bearbeiten öffnet die Datei, wie sie ist"
 help-edit = "Datei in diesem Fenster bearbeiten"
+
+[background]
+alone-title = "Programme enden mit diesem Bildschirm"
+mismatch = "Der gerade laufende Hintergrund-Desktop wurde von qdesk {version} gestartet, mit dem dieses qdesk nicht sprechen kann. Er bleibt unverändert mit seinen Programmen; die hier geöffneten Programme enden, wenn dieser Bildschirm geschlossen wird."
+unreached = "Der Hintergrund, der die Programme hält, konnte nicht gestartet werden: {reason}. Die hier geöffneten Programme enden, wenn dieser Bildschirm geschlossen wird."

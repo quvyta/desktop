@@ -180,6 +180,7 @@ fn two_saves_in_a_row_leave_a_file_that_reads_back_the_same() {
         drag: DragStyle::Live,
         frame_cap: Some(45),
         scrollback: 0,
+        background_exit: BackgroundExit::Never,
     };
 
     let mut loaded = load_in(&folder);
@@ -381,4 +382,26 @@ fn the_dots_sit_on_the_corners_of_the_icon_grid_in_its_free_rows() {
     assert!(!is_dot(0, 0), "never on an icon's glyph row");
     assert!(!is_dot(0, 1), "nor on its name row");
     assert!(!is_dot(1, CELL_HEIGHT - 1), "only on a corner");
+}
+
+#[test]
+fn how_long_the_background_waits_alone_is_read_written_and_left_out_at_its_default() {
+    assert_eq!(Prefs::default().background_exit.after(), Some(std::time::Duration::from_secs(600)));
+    assert_eq!(parse("background-exit = \"30m\"\n").prefs.background_exit, BackgroundExit::HalfHour);
+    assert_eq!(parse("background-exit = \"never\"\n").prefs.background_exit.after(), None);
+    let unknown = parse("background-exit = \"soon\"\n");
+    assert_eq!(unknown.prefs.background_exit, BackgroundExit::TenMinutes, "what it does not know is the default");
+    assert_eq!(unknown.diagnostics.len(), 1, "and it is said: {:?}", unknown.diagnostics);
+
+    let folder = temp("background-exit");
+    let mut loaded = load_in(&folder);
+    Prefs { background_exit: BackgroundExit::Hour, ..Prefs::default() }.write(&mut loaded.settings);
+    loaded.settings.save().expect("saved");
+    assert!(read(&folder).contains("background-exit = \"1h\""), "{}", read(&folder));
+    assert_eq!(load_in(&folder).prefs.background_exit.after(), Some(std::time::Duration::from_secs(3_600)));
+
+    Prefs::default().write(&mut loaded.settings);
+    loaded.settings.save().expect("saved");
+    assert!(!read(&folder).contains("background-exit"), "the default is not written: {}", read(&folder));
+    let _ = fs::remove_dir_all(&folder);
 }

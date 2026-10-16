@@ -30,7 +30,8 @@ impl Desk {
     /// body, and listens to it.
     pub(super) fn start(&mut self, id: WindowId, entry: &Entry) -> Command<Msg> {
         let Some(body) = self.body_size(id) else { return Command::none() };
-        let started = self.programs.start(id, entry, body);
+        let described = self.described(id);
+        let started = self.programs.start_described(id, entry, body, described);
         self.answer(id, started)
     }
 

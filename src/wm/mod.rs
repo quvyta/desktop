@@ -5,9 +5,10 @@
 //! focus, where each one sits and what it holds. The screen asks it questions and tells it what
 //! the person did; it answers with rectangles.
 //!
-//! It is kept this way on purpose. A later version keeps the programs in a background process and
-//! lets a screen connect to it, and then this state moves into that process unchanged: the screen
-//! only swaps a direct call for a message.
+//! It is kept this way on purpose. The programs live in the background desktop, and a screen that
+//! attaches to it opens their windows again from what [`Windows::placed`] said about each one
+//! ([`Windows::reopen`]): a window's whole state fits in a description a screen can send and read
+//! back.
 //!
 //! The desktop has [`SPACES`] workspaces. Every window belongs to one of them and only the windows
 //! of the current one are drawn; the floor under them is the same on every workspace.
@@ -36,6 +37,23 @@ pub use snap::{Edge, Snap};
 pub use tile::TooSmall;
 pub use view::{Action, Dragging, Look, Preview};
 pub use window::{Body, Placement, Run, Window, WindowId};
+
+/// A window as [`Windows::placed`] describes it and [`Windows::reopen`] opens it again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placed {
+    /// The entry it was opened from.
+    pub entry: Entry,
+    /// The title it carries when its program has none.
+    pub title: Option<String>,
+    /// Where it is, in the desktop's coordinates.
+    pub rect: Rect,
+    /// How it is placed.
+    pub placement: Placement,
+    /// Whether it is down on the dock.
+    pub minimized: bool,
+    /// The workspace it belongs to, from 0.
+    pub space: usize,
+}
 
 /// How far a new window is offset from the one before it, in columns and rows, and how many
 /// offsets there are before they start again.
@@ -238,6 +256,55 @@ impl Windows {
             space: self.current,
         });
         self.focus = Some(id);
+        id
+    }
+
+    /// The window `id` as a later screen needs it to open the same window again: what it holds,
+    /// where it is, how it is placed, on which workspace and whether it is minimized. Not its id,
+    /// which belongs to this desktop, nor how far its program is, which the program says itself.
+    #[must_use]
+    pub fn placed(&self, id: WindowId) -> Option<Placed> {
+        self.get(id).map(|window| Placed {
+            entry: window.entry.clone(),
+            title: window.title.clone(),
+            rect: window.rect,
+            placement: window.placement,
+            minimized: window.minimized,
+            space: window.space,
+        })
+    }
+
+    /// Opens a window as [`placed`](Self::placed) described it, in front of the others: on its
+    /// workspace, minimized or not, at its rectangle. The rectangles are brought inside this
+    /// desktop as [`resize`](Self::resize) brings them, since the terminal may not be the size it
+    /// was. It takes the focus when it is drawn on the workspace on screen.
+    pub fn reopen(&mut self, placed: &Placed) -> WindowId {
+        let id = self.open(&placed.entry);
+        let area = self.area();
+        let space = placed.space.min(SPACES - 1);
+        let current = self.current;
+        if let Some(window) = self.window_mut(id) {
+            window.title = placed.title.clone();
+            window.space = space;
+            window.minimized = placed.minimized;
+            (window.rect, window.placement) = match placed.placement {
+                Placement::Floating => (layout::clamp_into(placed.rect, area), Placement::Floating),
+                Placement::Maximized { restore } => {
+                    (area, Placement::Maximized { restore: layout::clamp_into(restore, area) })
+                }
+                Placement::Snapped { edge, restore } => {
+                    (snap::rect_of(edge, area), Placement::Snapped { edge, restore: layout::clamp_into(restore, area) })
+                }
+            };
+        }
+        if placed.minimized || space != current {
+            // `open` gave it the focus; a window that is not drawn here never has it.
+            let index = self.windows.len() - 1;
+            self.focus = self.below(index);
+            if space != current && !placed.minimized {
+                self.last[space] = Some(id);
+            }
+        }
         id
     }
 
@@ -654,6 +721,51 @@ mod tests {
     /// A desktop on an 80x24 terminal: 23 rows for windows and one for the dock.
     fn desk() -> Windows {
         Windows::new(Size::new(80, 24))
+    }
+
+    #[test]
+    fn a_window_opened_again_from_what_was_placed_is_the_window_that_was_there() {
+        let mut first = desk();
+        let floating = first.open(&entry("a"));
+        assert!(first.move_by(floating, 5, 3));
+        assert!(first.set_title(floating, Some("logs".to_owned())));
+        let maximized = first.open(&entry("b"));
+        assert!(first.maximize(maximized));
+        let snapped = first.open(&entry("c"));
+        assert!(first.snap(snapped, Edge::Right));
+        let minimized = first.open(&entry("d"));
+        assert!(first.minimize(minimized));
+        let away = first.open(&entry("e"));
+        assert!(first.send(away, 2));
+
+        let mut second = desk();
+        for id in [floating, maximized, snapped, minimized, away] {
+            let placed = first.placed(id).expect("placed");
+            let again = second.reopen(&placed);
+            assert_eq!(second.placed(again), Some(placed), "window {}", id.number());
+        }
+        let shown = second.focused().map(|window| window.entry().id.clone());
+        assert_eq!(shown.as_deref(), Some("c"), "the last drawn window here has the focus, not one minimized or away");
+        assert!(second.switch(2));
+        assert_eq!(
+            second.focused().map(|window| window.entry().id.as_str()),
+            Some("e"),
+            "it has it on its own workspace"
+        );
+    }
+
+    #[test]
+    fn a_window_opened_again_on_a_smaller_terminal_is_brought_inside_it() {
+        let mut first = Windows::new(Size::new(160, 50));
+        let id = first.open(&entry("a"));
+        assert!(first.move_by(id, 70, 20));
+        let placed = first.placed(id).expect("placed");
+        let mut second = desk();
+        let again = second.reopen(&placed);
+        let rect = second.get(again).map(Window::rect).expect("open");
+        let area = second.area();
+        assert!(rect.x + i32::from(rect.width) <= i32::from(area.width), "{rect:?} inside {area:?}");
+        assert!(rect.y + i32::from(rect.height) <= i32::from(area.height), "{rect:?} inside {area:?}");
     }
 
     #[test]

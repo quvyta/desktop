@@ -13,6 +13,7 @@ pub mod notice;
 pub mod pictures;
 pub mod power;
 pub mod secret;
+pub mod serve;
 pub mod session;
 pub mod settings;
 pub mod status;
@@ -20,7 +21,7 @@ pub mod texts;
 pub mod wallpapers;
 pub mod wm;
 
-pub use app::run;
+pub use app::{run, run_with};
 
 /// The application's own key bindings, compiled in, layered over the framework's. The file name
 /// only labels diagnostics.

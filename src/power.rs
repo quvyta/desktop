@@ -1,5 +1,5 @@
-//! The session actions at the foot of the launcher: lock the screen, log out, restart and power
-//! off the machine.
+//! The session actions at the foot of the launcher: lock the screen, detach, log out, restart and
+//! power off the machine.
 //!
 //! None of them needs root. On a machine qdesk was started on as the person's own session (the
 //! `qdesk-session` of a Raspberry Pi), the system lets the active local session restart and power
@@ -10,6 +10,10 @@
 //!
 //! Over SSH only logging out is offered. Powering off there would turn the server off for everyone
 //! on it, and a lock screen would lock only the one connection.
+//!
+//! Detaching closes the screen and leaves the programs running in the background desktop, to come
+//! back to. It is offered only on a screen whose programs live in the background: anywhere else
+//! closing the screen would end them.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -31,6 +35,8 @@ const CHKPWD: &str = "unix_chkpwd";
 pub enum Action {
     /// Cover the screen until the person's password is typed.
     Lock,
+    /// Close this screen and leave the programs running in the background.
+    Detach,
     /// Leave qdesk. Where a session service started it, the service starts it again.
     LogOut,
     /// Restart the machine.
@@ -42,13 +48,14 @@ pub enum Action {
 impl Action {
     /// Every action, in the order the launcher lists them: the gentlest first, so the one that
     /// ends the most stands at the far end of the row.
-    pub const ALL: [Self; 4] = [Self::Lock, Self::LogOut, Self::Restart, Self::PowerOff];
+    pub const ALL: [Self; 5] = [Self::Lock, Self::Detach, Self::LogOut, Self::Restart, Self::PowerOff];
 
     /// The key its words are looked up by, also the end of its button's id.
     #[must_use]
     pub fn key(self) -> &'static str {
         match self {
             Self::Lock => "lock",
+            Self::Detach => "detach",
             Self::LogOut => "log-out",
             Self::Restart => "restart",
             Self::PowerOff => "power-off",
@@ -84,13 +91,15 @@ impl Tools {
         Self { systemctl: env.find_tool(SYSTEMCTL), checker }
     }
 
-    /// The actions offered on a terminal that is `remote` or not, in the launcher's order.
+    /// The actions offered on a terminal that is `remote` or not, on a screen `attached` to the
+    /// background desktop or not, in the launcher's order.
     #[must_use]
-    pub fn offered(&self, remote: bool) -> Vec<Action> {
+    pub fn offered(&self, remote: bool, attached: bool) -> Vec<Action> {
         Action::ALL
             .into_iter()
             .filter(|action| match action {
                 Action::LogOut => true,
+                Action::Detach => attached,
                 Action::Lock => !remote && self.checker.is_some(),
                 Action::Restart | Action::PowerOff => !remote && self.systemctl.is_some(),
             })
@@ -114,7 +123,7 @@ impl Tools {
         let verb = match action {
             Action::Restart => "reboot",
             Action::PowerOff => "poweroff",
-            Action::Lock | Action::LogOut => return None,
+            Action::Lock | Action::Detach | Action::LogOut => return None,
         };
         let program = self.systemctl.clone()?;
         Some(Process::new(program).args(["--no-ask-password", verb]).no_stdin())
@@ -250,18 +259,20 @@ mod tests {
         script(&scratch, "bin/systemctl", "exit 0");
         script(&scratch, "bin/unix_chkpwd", "exit 1");
         let tools = Tools::find(&env(&scratch, Some("ada")));
-        assert_eq!(tools.offered(false), Action::ALL);
-        assert_eq!(tools.offered(true), [Action::LogOut], "over SSH the machine is everyone's");
+        assert_eq!(tools.offered(false, true), Action::ALL);
+        assert_eq!(tools.offered(true, false), [Action::LogOut], "over SSH the machine is everyone's");
+        assert_eq!(tools.offered(true, true), [Action::Detach, Action::LogOut], "detaching is for SSH above all");
+        assert!(!tools.offered(false, false).contains(&Action::Detach), "without a background it would end them");
     }
 
     #[test]
     fn a_missing_helper_hides_its_actions() {
         let scratch = Scratch::new();
-        assert_eq!(Tools::find(&env(&scratch, Some("ada"))).offered(false), [Action::LogOut]);
+        assert_eq!(Tools::find(&env(&scratch, Some("ada"))).offered(false, false), [Action::LogOut]);
         script(&scratch, "bin/unix_chkpwd", "exit 1");
         let nobody = Tools::find(&env(&scratch, None));
-        assert_eq!(nobody.offered(false), [Action::LogOut], "no lock without a person to check");
-        assert_eq!(Tools::find(&env(&scratch, Some("ada"))).offered(false), [Action::Lock, Action::LogOut]);
+        assert_eq!(nobody.offered(false, false), [Action::LogOut], "no lock without a person to check");
+        assert_eq!(Tools::find(&env(&scratch, Some("ada"))).offered(false, false), [Action::Lock, Action::LogOut]);
     }
 
     #[test]

@@ -130,6 +130,11 @@ fn env() -> Env {
 /// The usual floor at 80 × 24 in the environment of `scratch`, keeping its state in `scratch` too,
 /// on a terminal that is `remote` or not.
 fn desk(scratch: &Scratch, remote: bool) -> Harness<Desk> {
+    desk_of(scratch, remote, false)
+}
+
+/// [`desk`] on a screen whose programs live in the background desktop, or not.
+fn desk_of(scratch: &Scratch, remote: bool, attached: bool) -> Harness<Desk> {
     let desktop = Desktop {
         icons: ICONS.map(str::to_owned).to_vec(),
         welcome_seen: true,
@@ -142,6 +147,7 @@ fn desk(scratch: &Scratch, remote: bool) -> Harness<Desk> {
         .catalog(support::catalog())
         .desktop(desktop)
         .remote(remote)
+        .attached(attached)
         .state_folder(&scratch.0.join("state"))
         .watch_within(PATIENCE);
     let mut harness = Harness::with_env(app, env(), 80, 24);
@@ -485,6 +491,68 @@ fn a_locked_desktop_that_is_ended_starts_locked_until_the_right_password() {
     assert!(third.screen().contains('❖'), "{}", third.screen());
 }
 
+/// A screen attached to the desktop the background on `path` keeps, its state kept nowhere: what
+/// it knows of the lock it hears from the background alone.
+fn attached_desk(scratch: &Scratch, path: &Path) -> Harness<Desk> {
+    let link = qdesk::serve::link::Link::connect(path).expect("the background answers");
+    let attachment = link.attach(qdesk::serve::wire::Choice::Free, Duration::ZERO).expect("attached");
+    let desktop = Desktop {
+        icons: ICONS.map(str::to_owned).to_vec(),
+        welcome_seen: true,
+        recommended_seen: true,
+        resize_hint_seen: true,
+        ..Desktop::default()
+    };
+    let app = Desk::new(Some(MACHINE.to_owned()), Some(OFFSET), Box::new(|| MOMENT * 1_000))
+        .apps(scratch.environment())
+        .catalog(support::catalog())
+        .desktop(desktop)
+        .attach_to(link, attachment)
+        .watch_within(PATIENCE);
+    let mut harness = Harness::with_env(app, env(), 80, 24);
+    harness.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
+    harness
+}
+
+#[test]
+fn a_desktop_left_locked_in_the_background_comes_back_locked_on_the_next_screen() {
+    let scratch = Scratch::new();
+    scratch.chkpwd();
+    let path = qdesk::serve::socket::place(Some(scratch.0.join("tmp").as_os_str()), qdesk::serve::socket::own_uid());
+    let listening = qdesk::serve::Listening::on(&path).expect("listening");
+    std::thread::spawn(move || qdesk::serve::run(&listening, || None));
+    let listed = || qdesk::serve::link::Link::connect(&path).ok().and_then(|link| link.list().ok()).unwrap_or_default();
+
+    let mut first = attached_desk(&scratch, &path);
+    // A desktop with a program in it is the one the background keeps for the next screen.
+    open_terminal(&mut first);
+    open_launcher(&mut first);
+    press(&mut first, "Lock");
+    assert!(first.app().locked(), "{}", first.screen());
+    first.terminate(qframe::runtime::Termination::Hangup);
+    drop(first);
+    let start = Instant::now();
+    while listed().first().is_none_or(|desktop| desktop.attached) {
+        assert!(start.elapsed() < BUDGET, "the background never saw the screen go");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let mut second = attached_desk(&scratch, &path);
+    assert!(second.app().locked(), "another screen is no way past the lock:\n{}", second.screen());
+    assert!(second.is_focused(LOCK_FIELD), "the keys are in the password field at once");
+    second.type_text(PASSWORD).press("enter");
+    until(&mut second, "the desktop", |harness| !harness.app().locked());
+    drop(second);
+    let start = Instant::now();
+    while listed().first().is_none_or(|desktop| desktop.attached) {
+        assert!(start.elapsed() < BUDGET, "the background never saw the screen go");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let third = attached_desk(&scratch, &path);
+    assert!(!third.app().locked(), "opened with the password, it stays open:\n{}", third.screen());
+}
+
 #[test]
 fn an_answer_the_launcher_never_asked_for_powers_nothing_off_over_ssh() {
     let scratch = Scratch::new();
@@ -496,4 +564,65 @@ fn an_answer_the_launcher_never_asked_for_powers_nothing_off_over_ssh() {
         harness.render();
     }
     assert!(asked(&scratch).is_empty(), "systemctl was asked: {}", asked(&scratch));
+}
+
+#[test]
+fn a_screen_attached_to_the_background_offers_to_detach_beside_logging_out() {
+    let scratch = Scratch::new();
+    scratch.systemctl("", 0);
+    scratch.chkpwd();
+    let mut harness = desk_of(&scratch, false, true);
+    open_launcher(&mut harness);
+    let screen = harness.screen();
+    let foot = screen.lines().find(|row| row.contains("Power off")).expect("the row of the actions");
+    let at = |label: &str| foot.find(label).unwrap_or_else(|| panic!("{label} is missing:\n{screen}"));
+    assert!(at("Lock") < at("Detach") && at("Detach") < at("Log out"), "between locking and logging out:\n{screen}");
+
+    // Over SSH, where it matters most, it stands beside logging out too.
+    let mut remote = desk_of(&scratch, true, true);
+    open_launcher(&mut remote);
+    let screen = remote.screen();
+    assert!(screen.contains("Detach") && screen.contains("Log out"), "{screen}");
+}
+
+#[test]
+fn a_screen_on_its_own_never_offers_to_detach() {
+    let scratch = Scratch::new();
+    scratch.systemctl("", 0);
+    scratch.chkpwd();
+    for remote in [false, true] {
+        let mut harness = desk(&scratch, remote);
+        open_launcher(&mut harness);
+        assert!(!harness.screen().contains("Detach"), "closing it would end its programs:\n{}", harness.screen());
+    }
+    let scratch = Scratch::new();
+    let mut busy = desk(&scratch, false);
+    open_terminal(&mut busy);
+    busy.press("ctrl+q");
+    let question = busy.screen();
+    assert!(question.contains("Quit qdesk?"), "{question}");
+    assert!(!question.contains("Detach") && !question.contains("detaching"), "{question}");
+}
+
+#[test]
+fn detaching_closes_the_screen_without_a_question_from_the_launcher_or_the_quit_question() {
+    let scratch = Scratch::new();
+    let mut busy = desk_of(&scratch, false, true);
+    open_terminal(&mut busy);
+    open_launcher(&mut busy);
+    press(&mut busy, "Detach");
+    assert!(busy.quit_requested(), "the programs live on, so nothing is asked:\n{}", busy.screen());
+
+    let scratch = Scratch::new();
+    let mut asked = desk_of(&scratch, false, true);
+    open_terminal(&mut asked);
+    asked.press("ctrl+q");
+    let question = asked.screen();
+    assert!(!asked.quit_requested(), "{question}");
+    assert!(question.contains("Quit qdesk?") && question.contains("detaching leaves it running"), "{question}");
+    let buttons = question.lines().rev().find(|row| row.contains("Quit") && !row.contains('?')).expect("the buttons");
+    let at = |label: &str| buttons.find(label).unwrap_or_else(|| panic!("no {label}:\n{question}"));
+    assert!(at("Cancel") < at("Detach") && at("Detach") < at("Quit"), "{question}");
+    press(&mut asked, "Detach");
+    assert!(asked.quit_requested(), "{}", asked.screen());
 }

@@ -1,6 +1,7 @@
 //! The desktop application: the floor with its icons, the launcher, the dock, and the runtime
 //! that drives them.
 
+mod background;
 mod file_windows;
 mod floor;
 mod follow;
@@ -47,6 +48,9 @@ use crate::launcher::{self, Launcher, Way};
 use crate::pictures::{PictureWindow, Step};
 use crate::power::{Action, Tools};
 use crate::secret::Secret;
+use crate::serve::link::{Attachment, Kept, Link, Unreached};
+use crate::serve::socket;
+use crate::serve::wire::Choice;
 use crate::session::{self, Sessions};
 use crate::settings::{self, FRAME_CAP_LEAST, FRAME_CAP_MOST, Prefs, UpdateFolders};
 use crate::status::{Probe, Status};
@@ -54,6 +58,7 @@ use crate::texts::{ReadText, TextWindow, Unread};
 use crate::wallpapers;
 use crate::wm::{self, WindowId, Windows};
 
+pub use background::Alone;
 pub use follow::FolderNews;
 pub use gadgets::note_field;
 pub use lock::LOCK_FIELD;
@@ -92,6 +97,17 @@ pub type WallClock = Box<dyn Fn() -> i64>;
 ///
 /// Returns the terminal's error when the screen cannot be taken over or restored.
 pub fn run() -> io::Result<()> {
+    run_with(Choice::Free)
+}
+
+/// [`run`], attaching to the desktop of the background that `choice` picks: one no screen shows,
+/// or a new one. The background is started when none is running; when it cannot be reached the
+/// desktop runs its programs itself and says so.
+///
+/// # Errors
+///
+/// As [`run`].
+pub fn run_with(choice: Choice) -> io::Result<()> {
     let environment = Environment::from_process();
     let path = Desktop::path();
     let (desktop, mut notices) = match &path {
@@ -104,6 +120,8 @@ pub fn run() -> io::Result<()> {
     // The settings an older qdesk wrote are settled with the ecosystem before anything reads them.
     let chosen = settings::start();
     let stored = chosen.settings;
+    let prefs = chosen.prefs;
+    let remote = remote_link();
     let probe = Probe::new(&environment);
     let notes = qframe::storage::data_dir("quvyta").map(|dir| dir.join("desktop").join("notes"));
     let mut app = Desk::new(machine_name(), local_offset(), Box::new(wall_now)).probe(probe);
@@ -119,10 +137,27 @@ pub fn run() -> io::Result<()> {
         .desktop(desktop)
         .config(path)
         .settings(stored.clone(), chosen.prefs, chosen.diagnostics)
-        .remote(remote_link())
+        .remote(remote)
         .notices(notices)
         .update_notice(UpdateFolders::here());
+    let app = match attach(choice, prefs, remote) {
+        Ok((link, attachment)) => app.attach_to(link, attachment),
+        Err(alone) => app.alone(alone),
+    };
     runtime(app, &stored).run()
+}
+
+/// Reaches the background, starting it with this program when none answers, and attaches to the
+/// desktop `choice` picks.
+fn attach(choice: Choice, prefs: Prefs, remote: bool) -> Result<(Link, Attachment), Alone> {
+    let unreached = |error: io::Error| Alone::Unreached { reason: error.to_string() };
+    let program = std::env::current_exe().map_err(unreached)?;
+    let link = Link::reach(&socket::here(), &program).map_err(|why| match why {
+        Unreached::Mismatch { version } => Alone::Mismatch { version },
+        Unreached::Failed(error) => unreached(error),
+    })?;
+    let attachment = link.attach(choice, session::pace(prefs, remote)).map_err(unreached)?;
+    Ok((link, attachment))
 }
 
 /// The framework runtime that runs `app`, everything but the terminal: the desktop as a member of
@@ -438,6 +473,17 @@ pub struct Desk {
     written: Vec<String>,
     /// Whether the terminal is reached over a network, as the framework's environment says.
     remote: bool,
+    /// Whether this screen's programs live in the background desktop, so closing the screen
+    /// leaves them running and detaching is offered.
+    attached: bool,
+    /// The background this screen is attached to; `None` for a screen of its own.
+    link: Option<Link>,
+    /// The programs the background kept, whose windows open at the first size the terminal gives.
+    kept: Vec<Kept>,
+    /// Whether the desktop this screen attached to was left locked.
+    left_locked: bool,
+    /// Why this screen runs its programs itself though it was meant to attach, said once at start.
+    alone: Option<Alone>,
     screen: settings::Screen,
     /// The appearance section of the Settings screen: the language, the theme, the icons and
     /// reduced motion as the Quvyta ecosystem shares them, where each comes from, and where a
@@ -540,6 +586,11 @@ impl Desk {
             settings_run: 0,
             written: Vec::new(),
             remote: false,
+            attached: false,
+            link: None,
+            kept: Vec::new(),
+            left_locked: false,
+            alone: None,
             screen: settings::Screen::default(),
             appearance: detached_appearance(),
             // The terminal says how large it is before the first frame; until then the desktop
@@ -628,6 +679,52 @@ impl Desk {
         self
     }
 
+    /// Whether this screen's programs live in the background desktop: then the launcher and the
+    /// quit question offer to detach. A screen on its own, as every one is until the screen
+    /// attaches to the background, never offers it, since closing it ends its programs.
+    #[must_use]
+    pub fn attached(mut self, attached: bool) -> Self {
+        self.attached = attached;
+        self
+    }
+
+    /// The same desktop, attached to the background `link` reaches as `attachment` says: its
+    /// programs are started there and outlive this screen, the windows of the programs it kept
+    /// open again where they were, and detaching is offered. A desktop that was left locked starts
+    /// locked.
+    #[must_use]
+    pub fn attach_to(mut self, link: Link, attachment: Attachment) -> Self {
+        self.attached = true;
+        self.programs =
+            std::mem::replace(&mut self.programs, Sessions::new(&Environment::default(), Prefs::default(), false))
+                .through(link.clone());
+        self.link = Some(link);
+        self.kept = attachment.programs;
+        self.left_locked = attachment.locked;
+        self
+    }
+
+    /// The same desktop, saying at start why it runs its programs itself.
+    #[must_use]
+    pub fn alone(mut self, alone: Alone) -> Self {
+        self.alone = Some(alone);
+        self
+    }
+
+    /// The process id of the program of the window `id`, as the system or the background gave it;
+    /// `None` when it holds no program or none was given.
+    #[must_use]
+    pub fn program_pid(&self, id: WindowId) -> Option<u32> {
+        self.programs.pid(id)
+    }
+
+    /// Whether leaving this screen may leave its programs running: it is attached to a background
+    /// that can still be reached. A screen whose background went away runs the programs it starts
+    /// itself, and detaching would end them.
+    pub(crate) fn offers_detach(&self) -> bool {
+        self.attached && self.link.as_ref().is_none_or(|link| !link.is_lost())
+    }
+
     /// The environment the entries and the programs are looked for in.
     #[must_use]
     pub fn apps(mut self, apps: Environment) -> Self {
@@ -638,6 +735,10 @@ impl Desk {
         // The programs need the shell and the home folder of this environment, and keep whatever
         // settings have been given so far, in whichever order the two were set.
         self.programs = Sessions::new(&self.apps, self.prefs, self.remote);
+        if let Some(link) = &self.link {
+            self.programs = std::mem::replace(&mut self.programs, Sessions::new(&self.apps, self.prefs, self.remote))
+                .through(link.clone());
+        }
         self.tools = Tools::find(&self.apps);
         self.monitor = strip::monitor(&self.apps);
         self
@@ -987,7 +1088,12 @@ impl Desk {
             Msg::Close => self.on_close(),
             Msg::Resized(size) => {
                 self.windows.resize(size);
-                self.wallpaper_resized(size)
+                let reopened = if self.kept.is_empty() || size.width == 0 || size.height == 0 {
+                    Command::none()
+                } else {
+                    self.reopen_kept()
+                };
+                Command::batch([reopened, self.wallpaper_resized(size)])
             }
             Msg::Window(action) => self.on_window(action),
             Msg::Dock(id) => self.on_dock(id),
@@ -1001,7 +1107,7 @@ impl Desk {
             Msg::Restart(id) => self.restart(id),
             Msg::Bring(id) => self.bring(id),
             Msg::AskQuit => self.ask_quit(),
-            Msg::Quit => Command::quit(),
+            Msg::Quit => self.leave(),
             Msg::KeepRunning => self.keep_running(),
             Msg::MoreWindows => self.more_windows(),
             Msg::Notices => self.on_notices(),
@@ -1059,17 +1165,11 @@ impl Desk {
 }
 
 /// The appearance section of a desktop given no settings file: it saves nothing, and starts from
-/// what the machine is detected to have, since there are no files to read.
-///
-/// The framework resolves preferences only from a folder, so it is given one that cannot exist: a
-/// folder inside `/dev/null`, which is not a folder. Nothing is read there and nothing written.
-/// The machine is looked at once for all such desktops, since detecting the icons reads the font
-/// folders.
+/// what the machine is detected to have, since there are no files to read. The machine is looked
+/// at once for all such desktops, since detecting the icons reads the font folders.
 fn detached_appearance() -> Appearance {
     static DETECTED: std::sync::OnceLock<Preferences> = std::sync::OnceLock::new();
-    let preferences = DETECTED.get_or_init(|| {
-        Ecosystem::QUVYTA.preferences_without_saving_in(Path::new("/dev/null/quvyta"), settings::APP, &I18n::builtin())
-    });
+    let preferences = DETECTED.get_or_init(|| Preferences::detected(&I18n::builtin()));
     Appearance::new(Ecosystem::QUVYTA, settings::APP, preferences.clone()).without_saving()
 }
 
@@ -1106,9 +1206,12 @@ impl App for Desk {
         let asked = self.ask_for_update();
         let notes = self.read_notes();
         let ticks = self.gadget_ticks();
-        let keys = if self.starts_locked() { self.lock_screen() } else { Command::focus(FLOOR) };
+        // The keys go to the window in front when windows came back from the background, as they
+        // went there when it was opened; on an empty desktop that is the floor.
+        let keys = if self.starts_locked() { self.lock_screen() } else { self.body_focus() };
+        let alone = self.tell_alone();
         Command::batch(
-            [self.next_minute(), watching, following, reading, picture, keys, asked, notes, ticks]
+            [self.next_minute(), watching, following, reading, picture, keys, asked, notes, ticks, alone]
                 .into_iter()
                 .chain(notices),
         )
@@ -1231,7 +1334,12 @@ impl App for Desk {
             return Some(Msg::Ignore);
         }
         // The person's programs are their data: leaving with one running is asked about, counted.
-        (self.programs.running() > 0).then_some(Msg::AskQuit)
+        if self.programs.running() > 0 {
+            return Some(Msg::AskQuit);
+        }
+        // Leaving a desktop the background keeps is said to it, so it lets go of the windows of
+        // programs that have ended; a screen of its own just goes.
+        self.programs.background().is_some().then_some(Msg::Quit)
     }
 
     /// The system ending qdesk is answered as the framework does, except that a locked screen
@@ -1250,6 +1358,7 @@ impl App for Desk {
         if let Some(id) = self.windows.focus() {
             self.attention.remove(&id);
         }
+        self.describe_windows();
         command
     }
 

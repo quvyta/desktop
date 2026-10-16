@@ -577,3 +577,48 @@ fn settings_opened_on_the_desktop_over_an_unreadable_file_show_what_it_could_not
     assert!(harness.is_focused(settings::LIST), "the list has the keyboard again");
     let _ = std::fs::remove_dir_all(&config);
 }
+
+#[test]
+fn how_long_the_background_waits_alone_is_chosen_on_the_screen_and_reaches_the_background() {
+    let config = folder("background-exit");
+    let (width, height) = (140, 44);
+    let mut harness = support::desk_in(&config, width, height);
+    open_settings(&mut harness);
+    // The row is at the foot of the list: the wheel over the window reaches it.
+    let window = harness.app().windows().iter().next().expect("the Settings window").rect();
+    let (x, y) = (window.x + i32::from(window.width / 2), window.y + 3);
+    for _ in 0..80 {
+        if harness.screen().contains("Background ends") {
+            break;
+        }
+        harness.mouse(qframe::event::MouseKind::ScrollDown, x, y);
+    }
+    assert_eq!(qdesk::serve::idle_limit(Some(&config)), Some(std::time::Duration::from_secs(600)), "ten minutes first");
+
+    support::pick(&mut harness, "Background ends", "After 10 minutes", "Never");
+
+    assert_eq!(harness.app().prefs().background_exit, qdesk::settings::BackgroundExit::Never);
+    let written = std::fs::read_to_string(config.join("desktop.conf")).expect("the settings file is written");
+    assert!(written.contains("background-exit = \"never\""), "{written}");
+    assert_eq!(qdesk::serve::idle_limit(Some(&config)), None, "the background reads what was chosen");
+
+    // The list opens over the window's foot: "After 30 minutes" lies on the row of the window's
+    // bottom edge, where a press would start resizing the window if the open list did not take it
+    // first.
+    let window = harness.app().windows().iter().next().expect("the Settings window").rect();
+    let (x, y) = support::on_row(&harness, "Background ends", "Never").expect("the field");
+    harness.click(x, y);
+    harness.advance(std::time::Duration::from_millis(300));
+    let (x, y) = support::in_list_near(&harness, y, "After 30 minutes").expect("the option");
+    assert_eq!(y, window.y + i32::from(window.height) - 1, "on the window's edge:\n{}", harness.screen());
+    harness.click(x, y);
+    assert_eq!(
+        harness.app().prefs().background_exit,
+        qdesk::settings::BackgroundExit::HalfHour,
+        "{}",
+        harness.screen()
+    );
+    assert_eq!(harness.app().windows().iter().next().map(qdesk::wm::Window::rect), Some(window), "and not resized");
+    assert_eq!(qdesk::serve::idle_limit(Some(&config)), Some(std::time::Duration::from_secs(1_800)));
+    let _ = std::fs::remove_dir_all(&config);
+}

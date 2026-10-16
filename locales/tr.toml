@@ -5,7 +5,9 @@ name = "Türkçe"
 code = "tr"
 
 [cli]
-usage = """qdesk                 masaüstünü açar
+usage = """qdesk                 masaüstünü açar; bağlantı koparsa programlar yaşar
+  --new               arka planda tutulanların yanında yeni bir masaüstü açar
+  --list              arka planda tutulan masaüstlerini sayar
   -h, --help          bu yardımı gösterir
   -V, --version       sürümü yazar
 qdesk wallpaper       zeminin rengini, desenini ve resmini yazar
@@ -13,7 +15,8 @@ qdesk wallpaper       zeminin rengini, desenini ve resmini yazar
   --pattern AD        deseni seçer: plain, gradient, dots ya da both
 qdesk wallpaper DOSYA zemine bir PNG, JPEG, GIF ya da WebP resmi serer
   --no-picture        resmi kaldırır
-Masaüstündeyken ctrl+q ile çıkılır."""
+qdesk serve           programları arka planda tutar; qdesk bunu kendisi başlatır
+Masaüstündeyken ctrl+q ile çıkılır; Ayrıl programları çalışır bırakır."""
 unknown-argument = "qdesk: {argument} diye bir seçenek yok; seçenekler için qdesk --help"
 wallpaper-color = "qdesk wallpaper: --color theme, deep, mist ya da accent olur; {value} olmaz"
 wallpaper-pattern = "qdesk wallpaper: --pattern plain, gradient, dots ya da both olur; {value} olmaz"
@@ -22,6 +25,13 @@ wallpaper-picture = "qdesk wallpaper: {file} duvar kâğıdı olamaz: {reason}"
 wallpaper-not-text = "yolu ayar dosyasının saklayabileceği bir metin değil"
 wallpaper-nowhere = "qdesk wallpaper: ayarın saklanacağı bir ev klasörü yok"
 wallpaper-unsaved = "qdesk wallpaper: {file} yazılamadı: {error}"
+serve-running = "qdesk serve: senin için zaten çalışan bir arka plan masaüstü var"
+serve-failed = "qdesk serve: {path} dinlenemiyor: {error}"
+list-desktop = { one = "Masaüstü {desktop}: {n} pencere, {running} tanesi çalışıyor", other = "Masaüstü {desktop}: {n} pencere, {running} tanesi çalışıyor" }
+list-desktop-shown = { one = "Masaüstü {desktop}: {n} pencere, {running} tanesi çalışıyor; şu an bir ekranda açık", other = "Masaüstü {desktop}: {n} pencere, {running} tanesi çalışıyor; şu an bir ekranda açık" }
+list-none = "Arka planda çalışan bir masaüstü yok."
+list-mismatch = "qdesk --list: arka plandaki masaüstü qdesk {version} ile çalışıyor; bu qdesk ona soru soramıyor"
+list-failed = "qdesk --list: arka plandaki masaüstü cevap vermedi: {error}"
 
 [dock]
 # Başlatıcı düğmesinin yanındaki çalışma alanı işaretleri ve dar satırda onların yerine duran numara.
@@ -152,6 +162,7 @@ close-title = "{name} kapatılsın mı?"
 close-running = "{name} hâlâ çalışıyor. Kapatılırsa sonlandırılacak."
 quit-title = "qdesk'ten çıkılsın mı?"
 quit-running = { one = "{n} program hâlâ çalışıyor. Çıkılırsa sonlandırılacak.", other = "{n} program hâlâ çalışıyor. Çıkılırsa hepsi sonlandırılacak." }
+quit-running-attached = { one = "{n} program hâlâ çalışıyor. Çıkarsan sonlandırılır; ayrılırsan çalışmaya devam eder, döndüğünde seni bekler.", other = "{n} program hâlâ çalışıyor. Çıkarsan hepsi sonlandırılır; ayrılırsan çalışmaya devam ederler, döndüğünde seni beklerler." }
 quit = "Çık"
 tile-narrow = "Masaüstü pencereleri yan yana dizecek kadar geniş değil."
 tile-short = "Masaüstüne en çok {fits} pencere döşenebiliyor."
@@ -302,6 +313,13 @@ frame-cap-frames = "Kare"
 frame-cap-in-force = "Burada ekran saniyede en çok {frames} kez çiziliyor. Yazmak bunu beklemiyor."
 scrollback = "Hatırlanan satır"
 scrollback-text = "Bir terminal penceresi üst kenarının üstünde kaç satır tutsun. Dolu pek çok pencere megabaytlar demek."
+background-exit = "Arka plan kapanır"
+background-exit-text = "Arka plan, bağlantı kopunca programlarını çalışır tutar. Hiç program ve bağlı ekran kalmayınca bu kadar bekler ve kapanır."
+background-exit-5m = "5 dakika sonra"
+background-exit-10m = "10 dakika sonra"
+background-exit-30m = "30 dakika sonra"
+background-exit-1h = "1 saat sonra"
+background-exit-never = "Hiçbir zaman"
 
 applications = "Uygulamalar"
 folders = "Girdiler bu klasörlerden okunuyor."
@@ -338,6 +356,7 @@ rate-giga = "{value}G/sn"
 [power]
 # Başlatıcının altındaki oturum işlemleri.
 lock = "Kilitle"
+detach = "Ayrıl"
 log-out = "Oturumu kapat"
 restart = "Yeniden başlat"
 power-off = "Kapat"
@@ -436,3 +455,8 @@ cut = "{size} MiB'lık dosyanın ilk 4 MiB'ı gösteriliyor; Düzenle dosyanın 
 not-utf8 = "Bazı karakterler gösterilemedi; Düzenle dosyayı olduğu gibi açar"
 # Bir metin penceresi öndeyken yardım katmanında.
 help-edit = "Dosyayı bu pencerede düzenle"
+
+[background]
+alone-title = "Programlar bu ekranla birlikte biter"
+mismatch = "Şu an arka planda çalışan masaüstünü qdesk {version} başlatmış ve bu qdesk onunla konuşamıyor. Programlarıyla birlikte olduğu gibi bırakıldı; burada açılan programlar bu ekran kapanınca biter."
+unreached = "Programları tutan arka plan başlatılamadı: {reason}. Burada açılan programlar bu ekran kapanınca biter."

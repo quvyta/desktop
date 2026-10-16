@@ -115,6 +115,8 @@ use qframe::geometry::Size;
 use qframe::widgets::{Terminal, TerminalChange, TerminalSession, TerminalWatch};
 
 use crate::apps::{Entry, Environment, Launch, Screen};
+use crate::serve::link::{Kept, Link};
+use crate::serve::wire::{Message, Spec};
 use crate::settings::{Prefs, frame_cap};
 use crate::wm::WindowId;
 
@@ -304,10 +306,21 @@ pub enum Start {
     Failed(io::Error),
 }
 
+/// Where a program runs: here, in a pseudo-terminal this screen opened, or in the background, as
+/// the program of that number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Host {
+    Here,
+    Background { program: u64, pid: Option<u32> },
+}
+
 /// One window's program: the pseudo-terminal, what it last said, and what started it.
 #[derive(Debug)]
 struct Program {
     session: TerminalSession,
+    host: Host,
+    /// What the background was last told about the window, for a program that runs there.
+    described: Vec<u8>,
     /// The entry it was started from, so the window can start it again in place.
     entry: Entry,
     /// Which program of this window it is; a report of an earlier one is stale.
@@ -345,6 +358,9 @@ pub struct Sessions {
     closing: Vec<Closing>,
     /// Numbers the programs, so a report of one that has been replaced is recognised.
     runs: u64,
+    /// The background the programs are started in, for a screen attached to one; `None` starts
+    /// them here.
+    link: Option<Link>,
 }
 
 impl Sessions {
@@ -364,7 +380,22 @@ impl Sessions {
             programs: BTreeMap::new(),
             closing: Vec::new(),
             runs: 0,
+            link: None,
         }
+    }
+
+    /// The same, starting every program in the background `link` reaches, so the programs outlive
+    /// this screen. When the background goes away, the programs started after are started here.
+    #[must_use]
+    pub fn through(mut self, link: Link) -> Self {
+        self.link = Some(link);
+        self
+    }
+
+    /// The background the programs are started in, while it can still be reached.
+    #[must_use]
+    pub fn background(&self) -> Option<&Link> {
+        self.link.as_ref().filter(|link| !link.is_lost())
     }
 
     /// The same, giving a closing program a different grace than [`GRACE`].
@@ -402,6 +433,13 @@ impl Sessions {
     /// A window that already has a program keeps none: the old one is closed as
     /// [`close`](Self::close) closes it and its later reports become stale.
     pub fn start(&mut self, window: WindowId, entry: &Entry, body: Size) -> Start {
+        self.start_described(window, entry, body, Vec::new())
+    }
+
+    /// [`start`](Self::start), telling a background the program starts in that the window is
+    /// `described` so: what a later screen opens the window from. A program started here keeps
+    /// nothing of it.
+    pub fn start_described(&mut self, window: WindowId, entry: &Entry, body: Size, described: Vec<u8>) -> Start {
         self.close(window);
         let (program, args) = match &entry.launch {
             Launch::Command(words) => match words.split_first() {
@@ -413,6 +451,9 @@ impl Sessions {
             Launch::Screen(Screen::Settings | Screen::Files) | Launch::Open(_) => return Start::Screen,
         };
         let started_in = self.folder_for(entry);
+        if let Some(link) = self.background().cloned() {
+            return self.start_there(&link, window, entry, (program, args, started_in), body, described);
+        }
         let mut builder = TerminalSession::builder(program)
             .args(args)
             .folder(&started_in)
@@ -430,13 +471,118 @@ impl Sessions {
         }
         match builder.spawn() {
             Ok(session) => {
-                self.runs += 1;
-                let program =
-                    Program { session, entry: entry.clone(), run: self.runs, started_in, title: None, folder: None };
-                self.programs.insert(window, program);
+                self.keep(window, session, Host::Here, entry, started_in, described);
                 Start::Running
             }
             Err(error) => Start::Failed(error),
+        }
+    }
+
+    /// Asks the background to start the program for the window, with what a program started here
+    /// would get: this screen's environment, the desktop's variables on top, then the entry's.
+    fn start_there(
+        &mut self,
+        link: &Link,
+        window: WindowId,
+        entry: &Entry,
+        (program, args, started_in): (OsString, Vec<String>, PathBuf),
+        body: Size,
+        described: Vec<u8>,
+    ) -> Start {
+        let mut env: Vec<(OsString, OsString)> = std::env::vars_os().collect();
+        let mut set = |name: &str, value: &str| {
+            env.retain(|(have, _)| have != name);
+            env.push((OsString::from(name), OsString::from(value)));
+        };
+        set("TERM", "xterm-256color");
+        set("COLORTERM", "truecolor");
+        set(MARK, "1");
+        for (name, value) in &entry.env {
+            set(name, value);
+        }
+        env.retain(|(name, _)| !entry.unset.iter().any(|unset| name == unset.as_str()));
+        let spec = Spec {
+            program,
+            args: args.into_iter().map(OsString::from).collect(),
+            folder: started_in.clone(),
+            env,
+            columns: body.width,
+            rows: body.height,
+            scrollback: u32::try_from(self.scrollback).unwrap_or(u32::MAX),
+        };
+        match link.open(&spec, described.clone(), self.coalesce) {
+            Ok(opened) => {
+                let host = Host::Background { program: opened.program, pid: opened.pid };
+                self.keep(window, opened.session, host, entry, started_in, described);
+                Start::Running
+            }
+            Err(error) => Start::Failed(error),
+        }
+    }
+
+    /// Keeps a started program as the program of `window`.
+    fn keep(
+        &mut self,
+        window: WindowId,
+        session: TerminalSession,
+        host: Host,
+        entry: &Entry,
+        started_in: PathBuf,
+        described: Vec<u8>,
+    ) {
+        self.runs += 1;
+        let program = Program {
+            session,
+            host,
+            described,
+            entry: entry.clone(),
+            run: self.runs,
+            started_in,
+            title: None,
+            folder: None,
+        };
+        self.programs.insert(window, program);
+    }
+
+    /// Takes a program a background kept, for the window `window` a screen that attached opened
+    /// again from the entry `entry`: it is drawn and watched as one started for that window, and
+    /// says the title and the folder it last said.
+    pub fn adopt(&mut self, window: WindowId, entry: &Entry, kept: Kept) {
+        let started_in = kept.record.folder.clone().unwrap_or_else(|| self.folder_for(entry));
+        let host = Host::Background { program: kept.record.program, pid: kept.record.pid };
+        self.keep(window, kept.session, host, entry, started_in, kept.record.window);
+        if let Some(program) = self.programs.get_mut(&window) {
+            program.title = kept.record.title;
+            program.folder = kept.record.folder;
+        }
+    }
+
+    /// Tells the background where the window of `window` is now, when that has changed since it
+    /// was last told: what the next screen opens it from.
+    pub fn describe(&mut self, window: WindowId, described: Vec<u8>) {
+        let Some(link) = self.background().cloned() else { return };
+        let Some(program) = self.programs.get_mut(&window) else { return };
+        let Host::Background { program: number, .. } = program.host else { return };
+        if program.described != described {
+            let _ = link.send(&Message::Place { program: number, window: described.clone() });
+            program.described = described;
+        }
+    }
+
+    /// The person left the desktop: the background ends every program of it and forgets it.
+    /// Leaving any other way — detaching, the connection dropping, the screen being killed — says
+    /// nothing, and the programs live on.
+    pub fn finish(&self) {
+        if let Some(link) = self.background() {
+            let _ = link.send(&Message::Finish);
+        }
+    }
+
+    /// Tells the background whether this desktop's screen is locked, so a screen that attaches
+    /// after this one went starts locked.
+    pub fn locked(&self, locked: bool) {
+        if let Some(link) = self.background() {
+            let _ = link.send(&Message::Lock { locked });
         }
     }
 
@@ -446,8 +592,9 @@ impl Sessions {
     /// This is the Restart of a window whose program ended. A program still running is closed
     /// first, as [`close`](Self::close) closes it.
     pub fn restart(&mut self, window: WindowId, body: Size) -> Option<Start> {
-        let entry = self.programs.get(&window).map(|program| program.entry.clone())?;
-        Some(self.start(window, &entry, body))
+        let (entry, described) =
+            self.programs.get(&window).map(|program| (program.entry.clone(), program.described.clone()))?;
+        Some(self.start_described(window, &entry, body, described))
     }
 
     /// A wait for the next change of the program of `window`; `None` when it has none.
@@ -508,7 +655,10 @@ impl Sessions {
     /// answer; `None` when the window holds no program or the system gave no id.
     #[must_use]
     pub fn pid(&self, window: WindowId) -> Option<u32> {
-        self.programs.get(&window).and_then(|program| program.session.pid())
+        self.programs.get(&window).and_then(|program| match program.host {
+            Host::Here => program.session.pid(),
+            Host::Background { pid, .. } => pid,
+        })
     }
 
     /// Whether the program of `window` is still going. A window whose program ended, and one that
@@ -546,6 +696,15 @@ impl Sessions {
     pub fn close(&mut self, window: WindowId) -> bool {
         self.sweep();
         let Some(program) = self.programs.remove(&window) else { return false };
+        if let Host::Background { program: number, .. } = program.host {
+            // The background gives the program its grace and holds it meanwhile; this screen may
+            // let go of the session at once.
+            let grace_ms = u32::try_from(self.grace.as_millis()).unwrap_or(u32::MAX);
+            if let Some(link) = self.background() {
+                let _ = link.send(&Message::Close { program: number, grace_ms });
+            }
+            return true;
+        }
         if program.session.exit().is_none() {
             program.session.terminate(self.grace);
             self.closing.push(Closing { session: program.session, until: Instant::now() + self.grace });
@@ -590,6 +749,11 @@ impl Sessions {
 /// The shortest time between two reports of output: one frame of the cap in force. Output that
 /// arrives faster than that asks for one frame per interval instead of one per read, which is what
 /// keeps a program writing fast from spending a slow link on frames nobody can see.
+#[must_use]
+pub fn pace(prefs: Prefs, remote: bool) -> Duration {
+    coalesce(prefs, remote)
+}
+
 fn coalesce(prefs: Prefs, remote: bool) -> Duration {
     let frames = u32::from(frame_cap(prefs.frame_cap, remote)).max(1);
     Duration::from_secs(1) / frames

@@ -206,7 +206,7 @@ impl Desk {
         let shelves = launcher::shelves(&self.catalog, &self.desktop, &language);
         let targets: Vec<Target> =
             apps.iter().filter_map(|app| self.catalog.get(&app.id)).map(|entry| Target::of(entry, &language)).collect();
-        let actions = self.tools.offered(self.remote);
+        let actions = self.tools.offered(self.remote, self.offers_detach());
         self.against_dock(ui, |ui| {
             ui.row(|ui| {
                 ui.map(

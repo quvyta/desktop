@@ -21,7 +21,8 @@ use qframe::widgets::{
 };
 
 use super::{
-    DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, FloorColor, FloorStyle, Prefs, SCROLLBACK_MOST, frame_cap,
+    BackgroundExit, DockPosition, DragStyle, FRAME_CAP_LEAST, FRAME_CAP_MOST, FloorColor, FloorStyle, Prefs,
+    SCROLLBACK_MOST, frame_cap,
 };
 use crate::apps::{Diagnostic, Folders};
 
@@ -42,6 +43,10 @@ pub const SHOW_RECOMMENDED: &str = "settings-show-recommended";
 
 /// Width of the desktop's own drop-downs: enough for the longest drag style and picture name.
 const CONTROL_WIDTH: u16 = 18;
+
+/// Width of the drop-down of how long the background waits alone: "Después de 30 minutos" whole,
+/// the longest way a language qdesk carries says it.
+const WAIT_WIDTH: u16 = 28;
 
 /// Cells a number field takes: five digits, the room the cursor needs after them, and the two
 /// steppers. Two fewer cut the largest scrollback to its last three digits.
@@ -82,6 +87,8 @@ pub enum Msg {
     FrameCap(Option<u16>),
     /// A number of scrollback lines was set.
     Scrollback(u16),
+    /// How long the background desktop waits alone was chosen.
+    BackgroundExit(BackgroundExit),
     /// What the settings file could not be read as was read and can go.
     ReadProblems,
     /// The application wrote the settings, or could not.
@@ -242,6 +249,9 @@ pub fn update<M: From<Msg> + Clone + Send + 'static>(
             let scrollback = lines.min(SCROLLBACK_MOST);
             (Command::none(), Some(Request::Prefs(Prefs { scrollback, ..*prefs })))
         }
+        Msg::BackgroundExit(background_exit) => {
+            (Command::none(), Some(Request::Prefs(Prefs { background_exit, ..*prefs })))
+        }
         Msg::ReadProblems => {
             screen.problems_read = true;
             (Command::none(), None)
@@ -379,6 +389,18 @@ pub fn view<M: From<Msg> + Clone + Send + 'static>(
                             .on_change(|lines| M::from(Msg::Scrollback(whole(lines)))),
                     )
                     .width(Length::Cells(NUMBER_WIDTH));
+                });
+                let waits = BackgroundExit::ALL.map(|wait| t!(&format!("settings.background-exit-{}", wait.name())));
+                let chosen = BackgroundExit::ALL.iter().position(|wait| *wait == prefs.background_exit);
+                let row =
+                    SettingRow::new(t!("settings.background-exit")).description(t!("settings.background-exit-text"));
+                list.row(row, |ui| {
+                    ui.add(
+                        Select::new(waits)
+                            .selected(chosen)
+                            .on_select(|index| M::from(Msg::BackgroundExit(BackgroundExit::ALL[index]))),
+                    )
+                    .width(Length::Cells(WAIT_WIDTH));
                 });
             });
             list.id(LIST);

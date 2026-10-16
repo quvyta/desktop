@@ -2,6 +2,23 @@
 
 Every release of quvyta-desktop, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version starts with 0, a minor release may change the files qdesk writes; the notes say so when it does.
 
+## 0.2.0 - 2026-10-16
+
+### Added
+
+- The programs in qdesk's windows outlive a dropped connection. qdesk keeps them in a background of its own, `qdesk serve`, which it starts the first time it opens and which leaves the terminal's session, so an SSH connection that drops does not reach it. Run `qdesk` again and the windows come back where they were, each program still running with its screen, its scrollback and whatever it wrote while you were away; a program that ended meanwhile says how. The programs get the environment of the screen that opened them, not the background's.
+- Detach, beside Log out in the launcher and in the question ctrl+q asks while programs run, closes the screen and leaves the programs running. Quit ends them, as before.
+- A second connection opens a desktop of its own; `qdesk --new` always opens a new one and `qdesk --list` says which desktops the background keeps. A locked desktop comes back locked on whichever screen attaches to it.
+- Background ends, in the Connection section of Settings: the background ends by itself once it has been left with no screen and no running program for ten minutes, or five, thirty, an hour, or never (`background-exit` in `desktop.conf`).
+- When the background cannot be started, or one started by a qdesk of another version is running, the desktop runs its programs itself and says so once.
+
+### Changed
+
+- The README no longer asks you to run qdesk inside tmux.
+- The background's socket is `/tmp/quvyta-<uid>/qdesk.sock` (or under `$TMPDIR`), in a folder only you can enter, answering only your own user.
+- An option of a list that opens over a window's bottom edge can be chosen there; before, a click on it did nothing.
+- Built on quvyta-framework 0.1.34.
+
 ## 0.1.11 - 2026-10-03
 
 ### Added

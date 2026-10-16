@@ -5,7 +5,9 @@ name = "English"
 code = "en"
 
 [cli]
-usage = """qdesk                 open the desktop
+usage = """qdesk                 open the desktop; programs outlive a dropped connection
+  --new               open one more desktop next to those in the background
+  --list              list the desktops kept in the background
   -h, --help          this text
   -V, --version       print the version
 qdesk wallpaper       print the floor's colour, pattern and picture
@@ -13,7 +15,8 @@ qdesk wallpaper       print the floor's colour, pattern and picture
   --pattern NAME      set the pattern: plain, gradient, dots or both
 qdesk wallpaper FILE  lay a PNG, JPEG, GIF or WebP picture over the floor
   --no-picture        take the picture away
-On the desktop, ctrl+q quits."""
+qdesk serve           keep programs in the background; qdesk starts this itself
+On the desktop, ctrl+q quits and Detach leaves the programs running."""
 unknown-argument = "qdesk: unknown argument {argument}; see qdesk --help"
 # qdesk wallpaper refuses a value: one line, then the command ends with status 2.
 wallpaper-color = "qdesk wallpaper: --color takes theme, deep, mist or accent, not {value}"
@@ -25,6 +28,15 @@ wallpaper-not-text = "its path is not text the settings file can keep"
 # There is no home folder, so the setting has nowhere to be kept.
 wallpaper-nowhere = "qdesk wallpaper: there is no home folder to keep the setting in"
 wallpaper-unsaved = "qdesk wallpaper: {file} could not be written: {error}"
+# qdesk serve, the background that keeps the programs: one is already running, or it could not listen. {path} is its socket.
+serve-running = "qdesk serve: a background desktop is already running for you"
+serve-failed = "qdesk serve: cannot listen on {path}: {error}"
+# qdesk --list: the desktops the background keeps, one line each; {n} counts the windows with a program, {running} those whose program still runs.
+list-desktop = { one = "Desktop {desktop}: {n} window, {running} running", other = "Desktop {desktop}: {n} windows, {running} running" }
+list-desktop-shown = { one = "Desktop {desktop}: {n} window, {running} running; shown on a screen now", other = "Desktop {desktop}: {n} windows, {running} running; shown on a screen now" }
+list-none = "No background desktop is running."
+list-mismatch = "qdesk --list: the background desktop runs qdesk {version}, which this qdesk cannot ask"
+list-failed = "qdesk --list: the background desktop did not answer: {error}"
 
 [dock]
 # The marks of the workspaces beside the launcher button, and the number that stands for them on a
@@ -171,6 +183,8 @@ close-running = "{name} is still running. Closing the window ends it."
 # Leaving qdesk while programs are running.
 quit-title = "Quit qdesk?"
 quit-running = { one = "{n} program is still running. Quitting ends it.", other = "{n} programs are still running. Quitting ends them." }
+# The quit question on a screen whose programs live in the background: detaching leaves them running.
+quit-running-attached = { one = "{n} program is still running. Quitting ends it; detaching leaves it running for when you come back.", other = "{n} programs are still running. Quitting ends them; detaching leaves them running for when you come back." }
 quit = "Quit"
 tile-narrow = "The desktop is too narrow to tile windows side by side."
 tile-short = "The desktop has room for {fits} tiled windows, no more."
@@ -323,6 +337,14 @@ frame-cap-frames = "Frames"
 frame-cap-in-force = "Here the screen is drawn at most {frames} times a second. Typing never waits for it."
 scrollback = "Remembered lines"
 scrollback-text = "How many lines a terminal window keeps above its top edge. Many windows full of lines are many megabytes."
+# How long qdesk's background process, which keeps the programs running when the connection drops, waits with nothing left to hold before it ends.
+background-exit = "Background ends"
+background-exit-text = "The background keeps your programs running when the connection drops. With no program and no screen left, it waits this long and ends."
+background-exit-5m = "After 5 minutes"
+background-exit-10m = "After 10 minutes"
+background-exit-30m = "After 30 minutes"
+background-exit-1h = "After an hour"
+background-exit-never = "Never"
 
 applications = "Applications"
 folders = "Entries are read from these folders."
@@ -359,6 +381,8 @@ rate-giga = "{value}G/s"
 [power]
 # The session actions at the foot of the launcher.
 lock = "Lock"
+# Closes this screen and leaves the programs running in the background, to come back to with qdesk.
+detach = "Detach"
 log-out = "Log out"
 restart = "Restart"
 power-off = "Power off"
@@ -461,3 +485,12 @@ cut = "Showing the first 4 MiB of {size} MiB; Edit opens all of it"
 not-utf8 = "Some characters could not be shown; Edit opens the file as it is"
 # The help layer, while a text's window is in front.
 help-edit = "Edit the file in this window"
+
+[background]
+# Said once when the desktop opens but could not attach to the background that keeps the programs:
+# this screen runs them itself, and they end when it closes.
+alone-title = "Programs end with this screen"
+# {version} is the version of the qdesk that started the background already running.
+mismatch = "The background desktop running now was started by qdesk {version}, which this qdesk cannot talk to. It is left as it is, with its programs; the programs opened here end when this screen closes."
+# {reason} is what the system said.
+unreached = "The background that keeps the programs could not be started: {reason}. The programs opened here end when this screen closes."

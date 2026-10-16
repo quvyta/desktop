@@ -8,7 +8,8 @@
 //! runs; the Settings screen shows them with the framework's own appearance section. qdesk's own keys
 //! say where the dock sits, what colour and pattern the floor has and which picture lies over it, whether a folder opens in the ecosystem's
 //! file explorer, how a window follows the mouse while it is
-//! dragged, how often the screen may be drawn and how many lines a terminal window remembers.
+//! dragged, how often the screen may be drawn, how many lines a terminal window remembers and how
+//! long the background desktop waits alone before it ends.
 //!
 //! The file is `desktop.conf` in the Quvyta ecosystem's folder, `~/.config/quvyta` on Linux, next
 //! to the files of the other Quvyta applications; the desktop's other configuration files
@@ -34,6 +35,7 @@ mod screen;
 mod tests;
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use qframe::runtime::FrameLimit;
 use qframe::storage::{Ecosystem, Schema, Setting, SettingKind, Settings};
@@ -92,6 +94,9 @@ pub const STATUS_STRIP: &str = "status-on-dock";
 pub const DRAG_STYLE: &str = "drag-style";
 /// The key of the frame cap in frames a second. Without it the cap follows the link.
 pub const FRAME_CAP: &str = "frame-cap";
+/// The key of how long the background desktop waits alone before it ends: `5m`, `10m`, `30m`,
+/// `1h` or `never`.
+pub const BACKGROUND_EXIT: &str = "background-exit";
 /// The key of how many lines a terminal window remembers above its top edge.
 pub const SCROLLBACK: &str = "scrollback";
 
@@ -177,6 +182,63 @@ impl DragStyle {
     }
 }
 
+/// How long the background desktop waits once nothing is left for it to hold and no screen is
+/// connected, before it ends by itself.
+///
+/// Ten minutes is long enough to come back after a dropped connection, and short enough that a
+/// background nobody returns to does not stay on a server for good. `Never` is for a machine where
+/// it may as well always be there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum BackgroundExit {
+    /// Five minutes.
+    FiveMinutes,
+    /// Ten minutes.
+    #[default]
+    TenMinutes,
+    /// Half an hour.
+    HalfHour,
+    /// An hour.
+    Hour,
+    /// It does not end by itself.
+    Never,
+}
+
+impl BackgroundExit {
+    /// Every choice, shortest first, in the order a chooser lists them.
+    pub const ALL: [Self; 5] = [Self::FiveMinutes, Self::TenMinutes, Self::HalfHour, Self::Hour, Self::Never];
+
+    /// The name written in the settings file, also the key its label is looked up by.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::FiveMinutes => "5m",
+            Self::TenMinutes => "10m",
+            Self::HalfHour => "30m",
+            Self::Hour => "1h",
+            Self::Never => "never",
+        }
+    }
+
+    /// The choice a name means, if it is one of ours.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|choice| choice.name() == name)
+    }
+
+    /// How long the background waits alone; `None` is never.
+    #[must_use]
+    pub fn after(self) -> Option<Duration> {
+        let minutes = match self {
+            Self::FiveMinutes => 5,
+            Self::TenMinutes => 10,
+            Self::HalfHour => 30,
+            Self::Hour => 60,
+            Self::Never => return None,
+        };
+        Some(Duration::from_secs(minutes * 60))
+    }
+}
+
 /// The frame cap in force, in frames a second: the number that was chosen, or the one a `remote`
 /// link asks for when none was.
 #[must_use]
@@ -210,12 +272,14 @@ pub struct Prefs {
     pub frame_cap: Option<u16>,
     /// Lines a terminal window remembers above its top edge; `0` remembers none.
     pub scrollback: u16,
+    /// How long the background desktop waits alone before it ends.
+    pub background_exit: BackgroundExit,
 }
 
 impl Default for Prefs {
     /// The dock at the bottom with the status strip, the floor in the theme's canvas, folders in
     /// the explorer, a ghost drag, the frame cap following the link, two thousand lines of
-    /// scrollback.
+    /// scrollback, a background that ends ten minutes after it is left alone.
     fn default() -> Self {
         Self {
             dock: DockPosition::default(),
@@ -226,6 +290,7 @@ impl Default for Prefs {
             drag: DragStyle::default(),
             frame_cap: None,
             scrollback: SCROLLBACK_DEFAULT,
+            background_exit: BackgroundExit::default(),
         }
     }
 }
@@ -253,6 +318,7 @@ impl Prefs {
             .check(SCROLLBACK, i64::from(SCROLLBACK_DEFAULT), |lines: &i64| {
                 (0..=i64::from(SCROLLBACK_MOST)).contains(lines)
             })
+            .choice(BACKGROUND_EXIT, BackgroundExit::ALL.map(BackgroundExit::name), BackgroundExit::default().name())
     }
 
     /// What `settings` hold. A key that is missing, or holds what the schema would not accept,
@@ -288,6 +354,10 @@ impl Prefs {
                 .and_then(|lines| u16::try_from(lines).ok())
                 .filter(|lines| *lines <= SCROLLBACK_MOST)
                 .unwrap_or(defaults.scrollback),
+            background_exit: settings
+                .get::<String>(BACKGROUND_EXIT)
+                .and_then(|name| BackgroundExit::from_name(&name))
+                .unwrap_or(defaults.background_exit),
         }
     }
 
@@ -310,6 +380,12 @@ impl Prefs {
         let frames = self.frame_cap.unwrap_or(FRAME_CAP_LOCAL);
         store(settings, FRAME_CAP, i64::from(frames), self.frame_cap.is_none());
         store(settings, SCROLLBACK, i64::from(self.scrollback), self.scrollback == defaults.scrollback);
+        store(
+            settings,
+            BACKGROUND_EXIT,
+            self.background_exit.name().to_owned(),
+            self.background_exit == defaults.background_exit,
+        );
     }
 }
 

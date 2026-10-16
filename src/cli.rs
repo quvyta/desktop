@@ -1,5 +1,7 @@
 //! The command line: `--help` and `--version` answer and exit; `wallpaper` shows or sets the
-//! floor, its colour, its pattern and the picture over it; no argument opens the desktop.
+//! floor, its colour, its pattern and the picture over it; `serve` runs the background desktop
+//! that keeps the programs and `--list` lists its desktops; no argument opens the desktop, and
+//! `--new` opens one beside those the background keeps.
 //!
 //! [`run`] is what the binaries call, in the system's language. [`execute`] underneath takes the
 //! language as a value, so a test can check the text in each one, and [`execute_in`] takes the
@@ -20,6 +22,9 @@ use qframe::t;
 use qframe::widgets::ImageData;
 
 use crate::locales;
+use crate::serve::link::{Link, Unreached};
+use crate::serve::socket::{self, BindError};
+use crate::serve::wire::Choice;
 use crate::settings::{self, FloorColor, FloorStyle};
 use crate::wallpapers;
 
@@ -46,6 +51,11 @@ pub enum Command {
     Version,
     /// Set what the floor is given, or print what is set when it is given nothing.
     Wallpaper(Floor),
+    /// Run the background desktop that keeps the programs; see [`crate::serve`]. A desktop starts
+    /// it by itself when none is running.
+    Serve,
+    /// List the desktops the background keeps.
+    List,
     /// `qdesk wallpaper` with something it cannot take.
     Refused(Refusal),
     /// An argument that is not known.
@@ -114,21 +124,35 @@ pub fn pattern_name(style: FloorStyle) -> &'static str {
     PATTERNS.iter().find(|(_, known)| *known == style).map_or("plain", |(name, _)| name)
 }
 
-/// Reads the arguments after the program name; `None` means there are none and the desktop
-/// opens. The first argument decides: qdesk takes nothing besides `--help`, `--version` and
-/// `wallpaper`, so anything else is refused rather than ignored.
+/// The option that opens a desktop of its own beside those the background keeps.
+pub const NEW: &str = "--new";
+
+/// Reads the arguments after the program name; `None` means the desktop opens, as it does for no
+/// argument and for [`NEW`] alone. The first argument decides: qdesk takes nothing besides
+/// `--help`, `--version`, `--list`, `--new`, `wallpaper` and `serve`, so anything else is refused
+/// rather than ignored.
 #[must_use]
 pub fn parse(args: &[String]) -> Option<Command> {
     let first = args.first()?;
     Some(match first.as_str() {
         "--help" | "-h" => Command::Help,
         "--version" | "-V" => Command::Version,
+        NEW if args.len() == 1 => return None,
+        "--list" if args.len() == 1 => Command::List,
+        "serve" if args.len() == 1 => Command::Serve,
         "wallpaper" => match wallpaper(&args[1..]) {
             Ok(floor) => Command::Wallpaper(floor),
             Err(refusal) => Command::Refused(refusal),
         },
         other => Command::Unknown(other.to_owned()),
     })
+}
+
+/// Which desktop of the background the arguments open: a new one for [`NEW`], else one no screen
+/// shows, or a new one when every one is shown.
+#[must_use]
+pub fn choice(args: &[String]) -> Choice {
+    if args.first().map(String::as_str) == Some(NEW) { Choice::New } else { Choice::Free }
 }
 
 /// Reads the arguments of `qdesk wallpaper`. Every value is checked here, before anything is
@@ -201,6 +225,8 @@ pub fn execute_in(
             Command::Help => writeln!(out, "{}", t!("cli.usage")).map(|()| EXIT_OK),
             Command::Version => writeln!(out, "{}", version_line()).map(|()| EXIT_OK),
             Command::Wallpaper(floor) => set_wallpaper(&floor, config, out, err),
+            Command::Serve => serve(err),
+            Command::List => list(&socket::here(), out, err),
             Command::Refused(refusal) => {
                 writeln!(err, "{}", refused(&refusal))?;
                 Ok(EXIT_USAGE)
@@ -212,6 +238,54 @@ pub fn execute_in(
         }
     });
     Some(answered.unwrap_or(EXIT_FAILED))
+}
+
+/// `qdesk serve`: runs the background until it ends by itself, or says in one line why it does
+/// not run.
+fn serve(err: &mut impl Write) -> io::Result<u8> {
+    match crate::serve::serve() {
+        Ok(()) => Ok(EXIT_OK),
+        Err(BindError::Serving) => {
+            writeln!(err, "{}", t!("cli.serve-running"))?;
+            Ok(EXIT_OK)
+        }
+        Err(BindError::Io(error)) => {
+            let path = crate::serve::socket::here().display().to_string();
+            writeln!(err, "{}", t!("cli.serve-failed", path = path.as_str(), error = error.to_string().as_str()))?;
+            Ok(EXIT_FAILED)
+        }
+    }
+}
+
+/// `qdesk --list`: one line for every desktop the background on `path` keeps, or one that says
+/// none is running. Asking starts no background.
+fn list(path: &Path, out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
+    let link = match Link::connect(path) {
+        Ok(link) => link,
+        Err(Unreached::Mismatch { version }) => {
+            writeln!(err, "{}", t!("cli.list-mismatch", version = version.as_str()))?;
+            return Ok(EXIT_FAILED);
+        }
+        Err(Unreached::Failed(_)) => {
+            writeln!(out, "{}", t!("cli.list-none"))?;
+            return Ok(EXIT_OK);
+        }
+    };
+    let desktops = match link.list() {
+        Ok(desktops) => desktops,
+        Err(error) => {
+            writeln!(err, "{}", t!("cli.list-failed", error = error.to_string().as_str()))?;
+            return Ok(EXIT_FAILED);
+        }
+    };
+    if desktops.is_empty() {
+        writeln!(out, "{}", t!("cli.list-none"))?;
+    }
+    for desktop in desktops {
+        let key = if desktop.attached { "cli.list-desktop-shown" } else { "cli.list-desktop" };
+        writeln!(out, "{}", t!(key, desktop = desktop.desktop, n = desktop.programs, running = desktop.running))?;
+    }
+    Ok(EXIT_OK)
 }
 
 /// The one line that says why `qdesk wallpaper` was refused, in the active language.

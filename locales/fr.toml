@@ -6,8 +6,9 @@ code = "fr"
 fallback = "en"
 
 [cli]
-usage = """
-qdesk                 ouvrir le bureau
+usage = """qdesk                 ouvre le bureau ; les programmes survivent à la coupure
+  --new               ouvre un bureau de plus à côté de ceux en arrière-plan
+  --list              liste les bureaux gardés en arrière-plan
   -h, --help          ce texte
   -V, --version       afficher la version
 qdesk wallpaper       afficher la couleur, le motif et l'image du fond
@@ -15,7 +16,8 @@ qdesk wallpaper       afficher la couleur, le motif et l'image du fond
   --pattern NAME      régler le motif : plain, gradient, dots ou both
 qdesk wallpaper FILE  poser une image PNG, JPEG, GIF ou WebP sur le fond
   --no-picture        retirer l'image
-Sur le bureau, ctrl+q quitte."""
+qdesk serve           garde les programmes en arrière-plan ; qdesk s'en charge
+Sur le bureau, ctrl+q quitte et Détacher laisse les programmes tourner."""
 unknown-argument = "qdesk : argument inconnu {argument} ; consultez qdesk --help"
 wallpaper-color = "qdesk wallpaper : --color attend theme, deep, mist ou accent, et non {value}"
 wallpaper-pattern = "qdesk wallpaper : --pattern attend plain, gradient, dots ou both, et non {value}"
@@ -24,6 +26,13 @@ wallpaper-picture = "qdesk wallpaper : {file} ne peut pas être le fond d'écran
 wallpaper-not-text = "son chemin n'est pas du texte que le fichier de réglages peut conserver"
 wallpaper-nowhere = "qdesk wallpaper : aucun dossier personnel où enregistrer le réglage"
 wallpaper-unsaved = "qdesk wallpaper : impossible d'écrire {file} : {error}"
+serve-running = "qdesk serve : un bureau en arrière-plan est déjà actif pour vous"
+serve-failed = "qdesk serve : impossible d'écouter sur {path} : {error}"
+list-desktop = { one = "Bureau {desktop}: {n} fenêtre, {running} en cours", other = "Bureau {desktop}: {n} fenêtres, {running} en cours" }
+list-desktop-shown = { one = "Bureau {desktop}: {n} fenêtre, {running} en cours ; affiché sur un écran à présent", other = "Bureau {desktop}: {n} fenêtres, {running} en cours ; affiché sur un écran à présent" }
+list-none = "Aucun bureau en arrière-plan n'est en cours d'exécution."
+list-mismatch = "qdesk --list : le bureau en arrière-plan exécute qdesk {version}, que ce qdesk ne peut pas interroger"
+list-failed = "qdesk --list : le bureau en arrière-plan n'a pas répondu : {error}"
 
 [dock]
 workspace = "Espace de travail {n}"
@@ -163,6 +172,7 @@ close-running = "{name} est encore en cours. Fermer la fenêtre le terminera."
 # Leaving qdesk while programs are running.
 quit-title = "Quitter qdesk ?"
 quit-running = { one = "{n} programme est encore en cours. Quitter le terminera.", other = "{n} programmes sont encore en cours. Quitter les terminera." }
+quit-running-attached = { one = "{n} programme est toujours en cours d'exécution. Quitter l'arrête ; détacher le laisse en cours d'exécution pour votre retour.", other = "{n} programmes sont toujours en cours d'exécution. Quitter les arrête ; détacher les laisse en cours d'exécution pour votre retour." }
 quit = "Quitter"
 tile-narrow = "Le bureau est trop étroit pour placer les fenêtres côte à côte."
 tile-short = "Le bureau n'a de la place que pour {fits} fenêtres en mosaïque, pas plus."
@@ -310,6 +320,13 @@ frame-cap-frames = "Images"
 frame-cap-in-force = "Ici l'écran est dessiné au plus {frames} fois par seconde. La frappe n'attend jamais."
 scrollback = "Lignes mémorisées"
 scrollback-text = "Combien de lignes une fenêtre de terminal garde au-dessus de son bord supérieur. Beaucoup de fenêtres pleines de lignes, c'est beaucoup de mégaoctets."
+background-exit = "Fin de l'arrière-plan"
+background-exit-text = "L'arrière-plan maintient vos programmes en cours d'exécution lorsque la connexion tombe. Quand il ne reste ni programme ni écran, il attend ce délai puis se termine."
+background-exit-5m = "Après 5 minutes"
+background-exit-10m = "Après 10 minutes"
+background-exit-30m = "Après 30 minutes"
+background-exit-1h = "Après une heure"
+background-exit-never = "Jamais"
 
 applications = "Applications"
 folders = "Les entrées sont lues dans ces dossiers."
@@ -342,6 +359,7 @@ rate-giga = "{value}Go/s"
 
 [power]
 lock = "Verrouiller"
+detach = "Détacher"
 log-out = "Se déconnecter"
 restart = "Redémarrer"
 power-off = "Éteindre"
@@ -416,3 +434,8 @@ denied = "Vous n'avez pas le droit de le lire"
 cut = "Affichage des 4 premiers Mo sur {size} Mo ; Modifier ouvre tout le fichier"
 not-utf8 = "Certains caractères n'ont pas pu être affichés ; Modifier ouvre le fichier tel quel"
 help-edit = "Modifier le fichier dans cette fenêtre"
+
+[background]
+alone-title = "Les programmes se terminent avec cet écran"
+mismatch = "Le bureau en arrière-plan en cours d'exécution a été démarré par qdesk {version}, avec lequel ce qdesk ne peut pas communiquer. Il est laissé tel quel, avec ses programmes ; les programmes ouverts ici se terminent à la fermeture de cet écran."
+unreached = "L'arrière-plan qui conserve les programmes n'a pas pu être démarré : {reason}. Les programmes ouverts ici se terminent à la fermeture de cet écran."
